@@ -79,19 +79,12 @@ async def save_fragments(data: Dict[str, Any]):
     video_name = data.get("video_name", "unknown")
     json_data = data.get("data", {})
 
-    # Зберігаємо JSON в окрему папку
-    output_file = os.path.join(JSON_FOLDER, f"{video_name}_data.json")
-    with open(output_file, "w", encoding="utf-8") as f:
-        json.dump(json_data, f, indent=2, ensure_ascii=False)
-
     try:
         # Зберігаємо дані в MongoDB
         repo = create_repository(collection_name="анотації_соурс_відео")
         # Переконуємося що індекси створено
         repo.create_indexes()
-
-        # Зберігаємо анотацію
-        result = repo.save_annotation(json_data)
+        repo.save_annotation(json_data)
 
         # Запускаємо Celery задачу
         task_result = process_video_annotation.delay(json_data["source"])
@@ -102,8 +95,6 @@ async def save_fragments(data: Dict[str, Any]):
 
         return {
             "success": True,
-            "file_path": output_file,
-            "mongodb_result": result,
             "task_id": task_result.id
         }
     except Exception as e:
@@ -111,24 +102,10 @@ async def save_fragments(data: Dict[str, Any]):
         return {
             "success": False,
             "error": str(e),
-            "file_path": output_file
         }
     finally:
         if 'repo' in locals():
             repo.close()
-
-@app.get("/get_json/{video_name}")
-async def get_json(video_name: str):
-    json_path = os.path.join(JSON_FOLDER, f"{video_name}_data.json")
-
-    if not os.path.exists(json_path):
-        raise HTTPException(status_code=404, detail="JSON файл не знайдено")
-
-    with open(json_path, "r", encoding="utf-8") as f:
-        data = json.load(f)
-
-    return data
-
 
 # Для запуску сервера
 if __name__ == "__main__":

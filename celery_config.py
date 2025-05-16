@@ -14,7 +14,6 @@ enable_utc = True
 timezone = 'Europe/Kiev'
 
 # Налаштування черг
-task_queues: List[str] = ['default']
 task_default_queue = 'default'
 
 # Налаштування для моніторингу

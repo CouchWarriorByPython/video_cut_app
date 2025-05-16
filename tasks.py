@@ -2,6 +2,7 @@ from typing import Any, Dict
 from celery import Celery
 from db_connector import create_repository
 import json
+from bson import json_util
 
 # Створюємо екземпляр Celery
 app = Celery('tasks')
@@ -11,20 +12,8 @@ app.config_from_object('celery_config')
 
 @app.task(name="process_video_annotation")
 def process_video_annotation(source: str) -> Dict[str, Any]:
-    """
-    Задача для обробки анотацій відео
-
-    Args:
-        source: Ідентифікатор відео
-
-    Returns:
-        Dict з даними анотації
-    """
     try:
-        # Створюємо синхронний репозиторій (для Celery)
         repo = create_repository(collection_name="анотації_соурс_відео", async_mode=False)
-
-        # Отримуємо дані з MongoDB
         annotation = repo.get_annotation(source)
 
         if not annotation:
@@ -33,14 +22,17 @@ def process_video_annotation(source: str) -> Dict[str, Any]:
                 "message": f"Анотацію для відео '{source}' не знайдено"
             }
 
-        # Виводимо дані для логування
+        # Просте рішення - використати json для конвертації документа
+        json_string = json_util.dumps(annotation)
+        parsed_document = json.loads(json_string)  # Це поверне звичайні Python об'єкти
+
         print(f"Отримано дані для відео '{source}':")
-        print(json.dumps(annotation, indent=2, ensure_ascii=False))
+        print(json.dumps(parsed_document, indent=2, ensure_ascii=False))
 
         return {
             "status": "ok",
             "source": source,
-            "annotation": annotation
+            "annotation": parsed_document
         }
     except Exception as e:
         return {
@@ -48,5 +40,4 @@ def process_video_annotation(source: str) -> Dict[str, Any]:
             "message": str(e)
         }
     finally:
-        # Закриваємо з'єднання
         repo.close()

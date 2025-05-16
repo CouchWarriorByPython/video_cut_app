@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Розмітка відео</title>
+    <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+    <div class="container">
+        <h1>Розмітка відео</h1>
+
+        <div id="drop-area" class="drop-area">
+            <p>Перетягніть відео сюди або натисніть для вибору файлу</p>
+            <input type="file" id="file-input" accept="video/*" class="hidden">
+        </div>
+
+        <div id="video-editor" class="hidden">
+            <!-- Інформація про відео - видалено поле перейменування -->
+            <div class="video-info">
+                <h3>Інформація про відео</h3>
+                <p id="video-filename">Назва файлу: <span></span></p>
+            </div>
+
+            <!-- Відео та таймлайн -->
+            <div class="video-section">
+                <div class="video-container">
+                    <video id="video-player" controls></video>
+                    <div id="timeline" class="timeline-container">
+                        <div id="timeline-progress" class="timeline-progress"></div>
+                        <!-- Фрагменти додаватимуться сюди -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Селектор проєкту -->
+            <div class="project-selector">
+                <h3>Виберіть проєкти для розмітки:</h3>
+                <div class="checkbox-grid">
+                    <label>
+                        <input type="checkbox" name="project" value="motion-det" checked> Motion Detection
+                    </label>
+                    <label>
+                        <input type="checkbox" name="project" value="tracking"> Tracking & Re-identification
+                    </label>
+                    <label>
+                        <input type="checkbox" name="project" value="mil-hardware"> Mil Hardware Detection
+                    </label>
+                    <label>
+                        <input type="checkbox" name="project" value="re-id"> Re-ID
+                    </label>
+                </div>
+            </div>
+
+            <!-- Статус незавершених фрагментів -->
+            <div id="unfinished-fragments-status" class="unfinished-status"></div>
+
+            <!-- Новий двоколонковий макет -->
+            <div class="main-layout">
+                <!-- Ліва колонка з фрагментами -->
+                <div class="left-column">
+                    <div class="controls">
+                        <button id="start-fragment" class="btn">Встановити початок фрагменту</button>
+                        <button id="end-fragment" class="btn" disabled>Встановити кінець фрагменту</button>
+                        <button id="cancel-fragment" class="btn btn-secondary" disabled>Скасувати</button>
+                    </div>
+
+                    <div class="fragment-list">
+                        <h2>Фрагменти відео</h2>
+                        <div class="fragments-container">
+                            <ul id="fragments-list"></ul>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Права колонка з метаданими -->
+                <div class="right-column">
+                    <div class="meta-form">
+                        <h2>Метадані відео</h2>
+
+                        <div class="form-group">
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="skip-video">
+                                <span>Skip - Відео повністю нерелевантне</span>
+                            </label>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="uav-type">UAV (тип дрона):</label>
+                            <select id="uav-type" class="form-control">
+                                <option value="">Оберіть тип дрона</option>
+                                <option value="type1">Type 1</option>
+                                <option value="type2">Type 2</option>
+                                <option value="type3">Type 3</option>
+                            </select>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="video-content">Контент відео:</label>
+                            <select id="video-content" class="form-control">
+                                <option value="">Оберіть тип контенту</option>
+                                <option value="reconnaissance">Розвідувальна місія</option>
+                                <option value="intercept">Перехоплення</option>
+                                <option value="bombing">Скид боєприпасу</option>
+                                <option value="kamikaze">Ураження</option>
+                                <option value="panoramic">Коротке відео з панорамним оглядом</option>
+                                <option value="panoramic">Інше</option>
+                            </select>
+                        </div>
+
+                        <div class="form-group">
+                            <h3>Додаткові параметри:</h3>
+                            <div class="checkbox-group">
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="is-urban">
+                                    <span>Is urban</span>
+                                </label>
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="has-osd">
+                                    <span>Has OSD</span>
+                                </label>
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="is-analog">
+                                    <span>Is analog</span>
+                                </label>
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="night-video">
+                                    <span>Night video</span>
+                                </label>
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="multiple-streams">
+                                    <span>Multiple streams</span>
+                                </label>
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="has-infantry">
+                                    <span>Has infantry</span>
+                                </label>
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="has-explosions">
+                                    <span>Has explosions</span>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <button id="save-fragments" class="btn full-width">Почати нарізку</button>
+        </div>
+    </div>
+
+    <script src="/script.js"></script>
+</body>
+</html>

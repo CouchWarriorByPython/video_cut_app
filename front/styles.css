@@ -1,0 +1,544 @@
+:root {
+    --bg-dark: #1a1a1a;
+    --bg-darker: #121212;
+    --primary-color: #3498db;
+    --primary-hover: #2980b9;
+    --secondary-color: #2ecc71;
+    --secondary-hover: #27ae60;
+    --danger-color: #e74c3c;
+    --danger-hover: #c0392b;
+    --text-light: #f5f5f5;
+    --text-dark: #333;
+    --text-muted: #888;
+    --border-color: #2c2c2c;
+    --card-bg: #222;
+    --input-bg: #333;
+    --timeline-bg: #2a2a2a;
+}
+
+body {
+    font-family: 'Segoe UI', Arial, sans-serif;
+    background-color: var(--bg-dark);
+    color: var(--text-light);
+    margin: 0;
+    padding: 0;
+    line-height: 1.6;
+}
+
+.container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+h1, h2, h3 {
+    margin-top: 0;
+    color: var(--text-light);
+}
+
+.drop-area {
+    border: 2px dashed var(--border-color);
+    border-radius: 8px;
+    padding: 40px;
+    text-align: center;
+    margin-bottom: 20px;
+    transition: all 0.3s;
+    background-color: var(--card-bg);
+}
+
+.drop-area.highlight {
+    border-color: var(--secondary-color);
+    background-color: rgba(46, 204, 113, 0.1);
+}
+
+.video-section {
+    margin-bottom: 20px;
+    background-color: var(--bg-darker);
+    border-radius: 8px;
+    padding: 15px;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+}
+
+.video-container {
+    width: 100%;
+    position: relative;
+}
+
+video {
+    width: 100%;
+    display: block;
+    background-color: #000;
+    border-radius: 4px;
+}
+
+.timeline-container {
+    position: relative;
+    height: 40px;
+    background-color: var(--timeline-bg);
+    margin-top: 10px;
+    border-radius: 4px;
+    overflow: hidden;
+    width: 100%;
+}
+
+.timeline-progress {
+    position: absolute;
+    height: 100%;
+    background-color: rgba(255, 255, 255, 0.1);
+    width: 0;
+    pointer-events: none;
+}
+
+.fragment {
+    position: absolute;
+    height: 100%;
+    top: 0;
+    cursor: pointer;
+    border-left: 2px solid;
+    border-right: 2px solid;
+}
+
+.fragment:hover {
+    opacity: 0.8;
+}
+
+/* Кольори для кожного проєкту */
+.fragment.motion-det {
+    background-color: rgba(52, 152, 219, 0.4);
+    border-color: #3498db;
+}
+
+.fragment.tracking {
+    background-color: rgba(230, 126, 34, 0.4);
+    border-color: #e67e22;
+}
+
+.fragment.mil-hardware {
+    background-color: rgba(46, 204, 113, 0.4);
+    border-color: #2ecc71;
+}
+
+.fragment.re-id {
+    background-color: rgba(156, 39, 176, 0.4);
+    border-color: #9c27b0;
+}
+
+.fragment-marker {
+    position: absolute;
+    width: 2px;
+    height: 100%;
+    top: 0;
+}
+
+.fragment-marker.start {
+    background-color: #f1c40f;
+    cursor: w-resize;
+}
+
+.fragment-marker.end {
+    background-color: #e74c3c;
+    cursor: e-resize;
+}
+
+/* Стилі для міток початку різних проєктів */
+.fragment-marker.start.motion-det {
+    background-color: #3498db;
+}
+
+.fragment-marker.start.tracking {
+    background-color: #e67e22;
+}
+
+.fragment-marker.start.mil-hardware {
+    background-color: #2ecc71;
+}
+
+.fragment-marker.start.re-id {
+    background-color: #9c27b0;
+}
+
+.fragment-list {
+    margin-top: 20px;
+}
+
+.fragment-list ul {
+    list-style-type: none;
+    padding: 0;
+    margin: 0;
+}
+
+.fragment-list li {
+    padding: 12px;
+    margin-bottom: 8px;
+    background-color: var(--card-bg);
+    border-radius: 4px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.fragment-list li.motion-det {
+    border-left: 4px solid #3498db;
+}
+
+.fragment-list li.tracking {
+    border-left: 4px solid #e67e22;
+}
+
+.fragment-list li.mil-hardware {
+    border-left: 4px solid #2ecc71;
+}
+
+.fragment-list li.re-id {
+    border-left: 4px solid #9c27b0;
+}
+
+.hidden {
+    display: none;
+}
+
+.btn {
+    background-color: var(--primary-color);
+    color: white;
+    padding: 10px 16px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    margin-right: 8px;
+    transition: background-color 0.2s, transform 0.1s;
+    font-weight: 500;
+}
+
+.btn:hover {
+    background-color: var(--primary-hover);
+    transform: translateY(-1px);
+}
+
+.btn:active {
+    transform: translateY(1px);
+}
+
+.btn-secondary {
+    background-color: #6c757d;
+}
+
+.btn-secondary:hover {
+    background-color: #5a6268;
+}
+
+.btn-danger {
+    background-color: var(--danger-color);
+}
+
+.btn-danger:hover {
+    background-color: var(--danger-hover);
+}
+
+.project-selector {
+    margin-bottom: 20px;
+    padding: 15px;
+    border-radius: 8px;
+    background-color: var(--card-bg);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+.checkbox-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 12px;
+    margin-top: 10px;
+}
+
+.project-selector label {
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+}
+
+.project-selector input[type="checkbox"] {
+    margin-right: 8px;
+}
+
+.meta-form {
+    padding: 20px;
+    border-radius: 8px;
+    background-color: var(--card-bg);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+    height: 100%;
+}
+
+.form-group {
+    margin-bottom: 16px;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 8px;
+    font-weight: 500;
+}
+
+.form-control {
+    width: 100%;
+    padding: 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    background-color: var(--input-bg);
+    color: var(--text-light);
+}
+
+.form-control:focus {
+    outline: none;
+    border-color: var(--primary-color);
+}
+
+.checkbox-group {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 12px;
+}
+
+.checkbox-label {
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+}
+
+.checkbox-label input[type="checkbox"] {
+    margin-right: 8px;
+}
+
+.video-info {
+    margin-bottom: 20px;
+    padding: 15px;
+    background-color: var(--card-bg);
+    border-radius: 8px;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+.edit-filename {
+    display: flex;
+    align-items: center;
+    margin-top: 12px;
+}
+
+.edit-filename input {
+    flex: 1;
+    padding: 10px;
+    margin-right: 8px;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    background-color: var(--input-bg);
+    color: var(--text-light);
+}
+
+.edit-filename input:focus {
+    outline: none;
+    border-color: var(--primary-color);
+}
+
+/* Двоколонковий макет */
+.main-layout {
+    display: flex;
+    margin-bottom: 20px;
+    gap: 20px;
+}
+
+.left-column {
+    flex: 3; /* Займає 3/4 доступного простору */
+}
+
+.right-column {
+    flex: 1; /* Займає 1/4 доступного простору */
+}
+
+/* Скролінг для списку фрагментів */
+.fragments-container {
+    max-height: 500px;
+    overflow-y: auto;
+    border-radius: 4px;
+    padding: 10px;
+    background-color: var(--bg-darker);
+}
+
+/* Стилізація скролбара */
+.fragments-container::-webkit-scrollbar {
+    width: 8px;
+}
+
+.fragments-container::-webkit-scrollbar-track {
+    background: var(--bg-darker);
+    border-radius: 4px;
+}
+
+.fragments-container::-webkit-scrollbar-thumb {
+    background: #555;
+    border-radius: 4px;
+}
+
+.fragments-container::-webkit-scrollbar-thumb:hover {
+    background: #666;
+}
+
+/* Кнопка збереження на всю ширину */
+.full-width {
+    width: 100%;
+    margin-top: 20px;
+    padding: 14px;
+    font-size: 16px;
+    background-color: var(--secondary-color);
+    transition: background-color 0.2s;
+}
+
+.full-width:hover {
+    background-color: var(--secondary-hover);
+}
+
+.controls {
+    margin-bottom: 20px;
+    padding: 15px;
+    background-color: var(--card-bg);
+    border-radius: 8px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+/* Статус незавершених фрагментів */
+.unfinished-status {
+    margin: 10px 0 20px;
+    padding: 15px;
+    background-color: var(--card-bg);
+    border-radius: 8px;
+    font-size: 14px;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+.unfinished-status .badge {
+    display: inline-block;
+    padding: 4px 8px;
+    margin-right: 8px;
+    margin-bottom: 5px;
+    border-radius: 4px;
+    color: white;
+    font-size: 13px;
+}
+
+.unfinished-status .badge.motion-det {
+    background-color: #3498db;
+}
+
+.unfinished-status .badge.tracking {
+    background-color: #e67e22;
+}
+
+.unfinished-status .badge.mil-hardware {
+    background-color: #2ecc71;
+}
+
+.unfinished-status .badge.re-id {
+    background-color: #9c27b0;
+}
+
+/* Модальне вікно для вибору проєкту */
+.modal {
+    display: none;
+    position: fixed;
+    z-index: 100;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.7);
+}
+
+.modal-content {
+    background-color: var(--card-bg);
+    margin: 15% auto;
+    padding: 20px;
+    border-radius: 8px;
+    width: 80%;
+    max-width: 500px;
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+}
+
+.modal-close {
+    color: #aaa;
+    float: right;
+    font-size: 28px;
+    font-weight: bold;
+    cursor: pointer;
+}
+
+.modal-close:hover {
+    color: var(--text-light);
+}
+
+.modal-title {
+    margin-top: 0;
+    color: var(--text-light);
+}
+
+.modal-body {
+    margin-bottom: 20px;
+}
+
+.project-option {
+    padding: 12px;
+    margin-bottom: 8px;
+    background-color: var(--bg-darker);
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.project-option:hover {
+    background-color: var(--input-bg);
+}
+
+.project-option.motion-det {
+    border-left: 4px solid #3498db;
+}
+
+.project-option.tracking {
+    border-left: 4px solid #e67e22;
+}
+
+.project-option.mil-hardware {
+    border-left: 4px solid #2ecc71;
+}
+
+.project-option.re-id {
+    border-left: 4px solid #9c27b0;
+}
+
+/* Адаптивність для мобільних пристроїв */
+@media (max-width: 768px) {
+    .main-layout {
+        flex-direction: column;
+    }
+
+    .left-column, .right-column {
+        flex: 1 1 100%;
+    }
+
+    .controls {
+        flex-direction: column;
+    }
+
+    .btn {
+        margin-right: 0;
+        margin-bottom: 8px;
+        width: 100%;
+    }
+
+    .checkbox-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .modal-content {
+        width: 95%;
+        margin: 20% auto;
+    }
+}

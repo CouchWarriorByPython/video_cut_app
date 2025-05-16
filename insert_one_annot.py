@@ -5,7 +5,7 @@ from db_connector import create_repository
 def main():
     # Тестовий документ анотації
     test_annotation = {
-        "source": "test_video_2",
+        "source": "test_video",
         "metadata": {
             "skip": False,
             "uav_type": "",

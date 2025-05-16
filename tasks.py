@@ -9,31 +9,6 @@ app = Celery('tasks')
 # Завантажуємо конфігурацію з файлу
 app.config_from_object('celery_config')
 
-
-@app.task(name="process_task")
-def process_task(param1: str, param2: str) -> Dict[str, Any]:
-    """
-    Проста задача, що приймає два параметри та повертає результат
-
-    Args:
-        param1: Перший параметр
-        param2: Другий параметр
-
-    Returns:
-        Dict з результатом виконання
-    """
-    # Тут буде логіка обробки параметрів
-    result = {
-        "status": "ok",
-        "params": {
-            "param1": param1,
-            "param2": param2
-        }
-    }
-
-    return result
-
-
 @app.task(name="process_video_annotation")
 def process_video_annotation(source: str) -> Dict[str, Any]:
     """

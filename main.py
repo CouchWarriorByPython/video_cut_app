@@ -6,21 +6,22 @@ from typing import Dict, Any
 import os
 import json
 import shutil
+from tasks import process_video_annotation
+from db_connector import create_repository
 
 app = FastAPI()
 
 # Створення необхідних директорій
-UPLOAD_FOLDER = "static/uploads"
+UPLOAD_FOLDER = "source_videos"
 JSON_FOLDER = "json_data"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 os.makedirs(JSON_FOLDER, exist_ok=True)
 
-# Підключення статичних файлів
-app.mount("/static", StaticFiles(directory="static"), name="static")
+# Роздаємо відео з папки source_videos
+app.mount("/videos", StaticFiles(directory=UPLOAD_FOLDER), name="videos")
 
 # Підключення шаблонів для рендерингу
 templates = Jinja2Templates(directory="front")
-
 
 # Маршрут для головної сторінки
 @app.get("/", response_class=HTMLResponse)
@@ -68,7 +69,7 @@ async def upload_file(video: UploadFile = File(...)):
     return {
         "success": True,
         "filename": filename,
-        "path": f"/static/uploads/{filename}"
+        "path": f"/videos/{filename}"  # Змінюємо шлях для доступу до відео
     }
 
 
@@ -83,26 +84,50 @@ async def save_fragments(data: Dict[str, Any]):
     with open(output_file, "w", encoding="utf-8") as f:
         json.dump(json_data, f, indent=2, ensure_ascii=False)
 
-    return {
-        "success": True,
-        "file_path": output_file
-    }
+    try:
+        # Зберігаємо дані в MongoDB
+        repo = create_repository(collection_name="анотації_соурс_відео")
+        # Переконуємося що індекси створено
+        repo.create_indexes()
 
+        # Зберігаємо анотацію
+        result = repo.save_annotation(json_data)
 
-# Завантаження файлів
-@app.get("/download/{filename}")
-async def download_file(filename: str):
-    folder = JSON_FOLDER if filename.endswith(".json") else UPLOAD_FOLDER
-    file_path = os.path.join(folder, filename)
+        # Запускаємо Celery задачу
+        task_result = process_video_annotation.delay(json_data["source"])
 
-    if not os.path.exists(file_path):
-        raise HTTPException(status_code=404, detail="Файл не знайдено")
+        # Виводимо в термінал запис з бази для перевірки
+        print(f"Збережено анотацію для відео '{json_data['source']}':")
+        print(json.dumps(json_data, indent=2, ensure_ascii=False))
 
-    return FileResponse(
-        path=file_path,
-        filename=filename,
-        media_type="application/octet-stream"
-    )
+        return {
+            "success": True,
+            "file_path": output_file,
+            "mongodb_result": result,
+            "task_id": task_result.id
+        }
+    except Exception as e:
+        print(f"Помилка при збереженні в MongoDB: {str(e)}")
+        return {
+            "success": False,
+            "error": str(e),
+            "file_path": output_file
+        }
+    finally:
+        if 'repo' in locals():
+            repo.close()
+
+@app.get("/get_json/{video_name}")
+async def get_json(video_name: str):
+    json_path = os.path.join(JSON_FOLDER, f"{video_name}_data.json")
+
+    if not os.path.exists(json_path):
+        raise HTTPException(status_code=404, detail="JSON файл не знайдено")
+
+    with open(json_path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+
+    return data
 
 
 # Для запуску сервера

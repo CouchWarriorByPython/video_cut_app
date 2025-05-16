@@ -26,6 +26,67 @@ const multipleStreamsCheckbox = document.getElementById('multiple-streams');
 const hasInfantryCheckbox = document.getElementById('has-infantry');
 const hasExplosionsCheckbox = document.getElementById('has-explosions');
 
+
+const viewJsonBtn = document.getElementById('view-json');
+const jsonModal = document.getElementById('json-modal');
+const jsonContent = document.getElementById('json-content');
+const jsonModalClose = document.querySelector('#json-modal .modal-close');
+
+viewJsonBtn.addEventListener('click', function() {
+    // Форматуємо дані для відображення
+    const metadata = {
+        skip: skipVideoCheckbox.checked,
+        uav_type: uavTypeSelect.value,
+        video_content: videoContentSelect.value,
+        is_urban: isUrbanCheckbox.checked,
+        has_osd: hasOsdCheckbox.checked,
+        is_analog: isAnalogCheckbox.checked,
+        night_video: nightVideoCheckbox.checked,
+        multiple_streams: multipleStreamsCheckbox.checked,
+        has_infantry: hasInfantryCheckbox.checked,
+        has_explosions: hasExplosionsCheckbox.checked
+    };
+
+    // Форматуємо дані проєктів для експорту
+    const formattedProjects = {};
+    for (const project in projectFragments) {
+        if (projectFragments[project].length > 0) {
+            formattedProjects[project] = projectFragments[project].map((fragment, index) => ({
+                id: index,
+                start_time: fragment.start_formatted,
+                end_time: fragment.end_formatted
+            }));
+        }
+    }
+
+    // Отримуємо назву відео
+    const videoName = videoFilenameSpan.textContent.split('.')[0];
+
+    // Збираємо JSON
+    const jsonData = {
+        source: videoName,
+        metadata: metadata,
+        clips: formattedProjects
+    };
+
+    // Відображаємо JSON з форматуванням
+    jsonContent.textContent = JSON.stringify(jsonData, null, 2);
+    jsonModal.style.display = 'block';
+});
+
+// Обробник закриття модального вікна
+jsonModalClose.addEventListener('click', function() {
+    jsonModal.style.display = 'none';
+});
+
+// Закриття модального вікна при кліку поза ним
+window.addEventListener('click', function(e) {
+    if (e.target === jsonModal) {
+        jsonModal.style.display = 'none';
+    }
+});
+
+
 // Створюємо модальне вікно для вибору проєкту
 const projectModal = document.createElement('div');
 projectModal.className = 'modal';
@@ -237,7 +298,7 @@ function handleVideoFile(file) {
     .then(response => response.json())
     .then(data => {
         if (data.success) {
-            // Встановлюємо відео
+            // Встановлюємо відео з нового шляху
             videoPlayer.src = data.path;
             videoPlayer.load();
             videoEditor.classList.remove('hidden');

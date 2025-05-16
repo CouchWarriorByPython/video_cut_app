@@ -145,7 +145,20 @@
                 </div>
             </div>
 
-            <button id="save-fragments" class="btn full-width">Почати нарізку</button>
+            <div class="controls-footer">
+                <button id="view-json" class="btn btn-secondary">Перегляд JSON</button>
+                <button id="save-fragments" class="btn full-width">Почати нарізку</button>
+            </div>
+
+            <div id="json-modal" class="modal">
+                <div class="modal-content">
+                    <span class="modal-close">&times;</span>
+                    <h3 class="modal-title">Перегляд JSON</h3>
+                    <div class="modal-body">
+                        <pre id="json-content" class="json-preview"></pre>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 

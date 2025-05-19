@@ -14,14 +14,11 @@ from utils.cvat_cli import get_cvat_task_parameters
 from datetime import datetime
 from utils.azure_downloader import download_video_from_azure
 
-
 app = FastAPI()
 
 # Створення необхідних директорій
 UPLOAD_FOLDER = "source_videos"
-JSON_FOLDER = "json_data"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-os.makedirs(JSON_FOLDER, exist_ok=True)
 
 # Роздаємо відео з папки source_videos
 app.mount("/videos", StaticFiles(directory=UPLOAD_FOLDER), name="videos")
@@ -29,10 +26,17 @@ app.mount("/videos", StaticFiles(directory=UPLOAD_FOLDER), name="videos")
 # Підключення шаблонів для рендерингу
 templates = Jinja2Templates(directory="front")
 
-# Маршрут для головної сторінки
+
+# Маршрут для головної сторінки (тепер це uploader)
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request):
-    return templates.TemplateResponse("index.html", {"request": request})
+    return templates.TemplateResponse("upload.html", {"request": request})
+
+
+# Маршрут для сторінки анотатора
+@app.get("/annotator", response_class=HTMLResponse)
+async def annotator(request: Request):
+    return templates.TemplateResponse("annotator.html", {"request": request})
 
 
 # Маршрут для обслуговування CSS
@@ -41,13 +45,18 @@ async def serve_css():
     return FileResponse("front/styles.css", media_type="text/css")
 
 
-# Маршрут для обслуговування JavaScript
-@app.get("/script.js")
-async def serve_js():
-    return FileResponse("front/script.js", media_type="application/javascript")
+# Маршрут для обслуговування JavaScript файлів
+@app.get("/upload.js")
+async def serve_upload_js():
+    return FileResponse("front/upload.js", media_type="application/javascript")
 
 
-# Завантаження відео
+@app.get("/annotator.js")
+async def serve_annotator_js():
+    return FileResponse("front/annotator.js", media_type="application/javascript")
+
+
+# Завантаження відео через drag-and-drop
 @app.post("/upload")
 async def upload_file(video: UploadFile = File(...)):
     if not video:
@@ -72,17 +81,40 @@ async def upload_file(video: UploadFile = File(...)):
     with open(filepath, "wb") as buffer:
         shutil.copyfileobj(video.file, buffer)
 
+    # Створюємо запис у MongoDB з заглушкою для URL
+    video_name = base_name
+    video_record = {
+        "source": video_name,
+        "azure_path": "local_upload",  # Заглушка для поля посилання
+        "extension": extension,
+        "upload_date": datetime.now(),
+        "status": "not_annotated"
+    }
+
+    try:
+        repo = create_repository(collection_name="анотації_соурс_відео")
+        repo.create_indexes()
+        repo.save_annotation(video_record)
+    except Exception as e:
+        print(f"Помилка при збереженні в MongoDB: {str(e)}")
+    finally:
+        if 'repo' in locals():
+            repo.close()
+
     return {
         "success": True,
         "filename": filename,
-        "path": f"/videos/{filename}"  # Змінюємо шлях для доступу до відео
+        "source": video_name,
+        "path": f"/videos/{filename}"
     }
+
 
 # Схема даних для запиту на завантаження
 class VideoUploadRequest(BaseModel):
     video_url: str
-    location: Optional[str] = None
-    recording_date: Optional[str] = None
+    where: Optional[str] = None
+    when: Optional[str] = None
+
 
 @app.post("/upload_from_azure")
 async def upload_from_azure(data: VideoUploadRequest):
@@ -110,11 +142,11 @@ async def upload_from_azure(data: VideoUploadRequest):
         }
 
         # Додаємо опційні поля
-        if data.location:
-            video_record["location"] = data.location
+        if data.where:
+            video_record["where"] = data.where
 
-        if data.recording_date:
-            video_record["recording_date"] = data.recording_date
+        if data.when:
+            video_record["when"] = data.when
 
         # Зберігаємо в MongoDB
         repo = create_repository(collection_name="анотації_соурс_відео")
@@ -135,7 +167,6 @@ async def upload_from_azure(data: VideoUploadRequest):
     finally:
         if 'repo' in locals():
             repo.close()
-
 
 
 # Збереження фрагментів у JSON
@@ -175,6 +206,38 @@ async def save_fragments(data: Dict[str, Any]):
     finally:
         if 'repo' in locals():
             repo.close()
+
+
+# Отримання списку відео для анотування
+@app.get("/get_videos")
+async def get_videos():
+    try:
+        repo = create_repository(collection_name="анотації_соурс_відео")
+        videos = repo.get_all_annotations()
+
+        video_list = []
+        for video in videos:
+            # Перетворюємо MongoDB документ в Python dict
+            source = video.get("source", "")
+            extension = video.get("extension", ".mp4")
+            video_list.append({
+                "source": source,
+                "filename": f"{source}{extension}"
+            })
+
+        return {
+            "success": True,
+            "videos": video_list
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e)
+        }
+    finally:
+        if 'repo' in locals():
+            repo.close()
+
 
 # Для запуску сервера
 if __name__ == "__main__":

@@ -1,6 +1,7 @@
 // DOM елементи
-const dropArea = document.getElementById('drop-area');
-const fileInput = document.getElementById('file-input');
+const videoSelector = document.getElementById('video-selector');
+const videoSelect = document.getElementById('video-select');
+const loadVideoBtn = document.getElementById('load-video-btn');
 const videoEditor = document.getElementById('video-editor');
 const videoPlayer = document.getElementById('video-player');
 const timeline = document.getElementById('timeline');
@@ -26,12 +27,128 @@ const multipleStreamsCheckbox = document.getElementById('multiple-streams');
 const hasInfantryCheckbox = document.getElementById('has-infantry');
 const hasExplosionsCheckbox = document.getElementById('has-explosions');
 
-
+// JSON Modal
 const viewJsonBtn = document.getElementById('view-json');
 const jsonModal = document.getElementById('json-modal');
 const jsonContent = document.getElementById('json-content');
 const jsonModalClose = document.querySelector('#json-modal .modal-close');
 
+// Project Modal
+const projectModal = document.getElementById('project-modal');
+const projectOptions = document.getElementById('project-options');
+const modalClose = document.querySelectorAll('.modal-close');
+
+// Завантаження списку відео при запуску сторінки
+document.addEventListener('DOMContentLoaded', loadVideoList);
+
+// Змінні стану
+let currentVideoFile = null;
+let projectFragments = {
+    'motion-det': [],
+    'tracking': [],
+    'mil-hardware': [],
+    're-id': []
+};
+let unfinishedFragments = {
+    'motion-det': null,
+    'tracking': null,
+    'mil-hardware': null,
+    're-id': null
+};
+let activeProjects = [];
+
+// Завантаження списку відео
+function loadVideoList() {
+    fetch('/get_videos')
+        .then(response => response.json())
+        .then(data => {
+            if (data.success && data.videos && data.videos.length > 0) {
+                videoSelect.innerHTML = '<option value="">Виберіть відео...</option>';
+
+                data.videos.forEach(video => {
+                    const option = document.createElement('option');
+                    option.value = video.source;
+                    option.textContent = video.filename;
+                    videoSelect.appendChild(option);
+                });
+            } else {
+                videoSelect.innerHTML = '<option value="">Немає доступних відео</option>';
+            }
+        })
+        .catch(error => {
+            console.error('Error loading videos:', error);
+            videoSelect.innerHTML = '<option value="">Помилка завантаження відео</option>';
+        });
+}
+
+// Обробник кнопки завантаження відео
+loadVideoBtn.addEventListener('click', function() {
+    const selectedVideo = videoSelect.value;
+    if (!selectedVideo) {
+        alert('Будь ласка, виберіть відео');
+        return;
+    }
+
+    // Отримуємо назву файлу з тексту вибраної опції
+    const selectedOption = videoSelect.options[videoSelect.selectedIndex];
+    const filename = selectedOption.textContent;
+
+    // Показуємо редактор і завантажуємо відео
+    videoSelector.style.display = 'none';
+    videoEditor.classList.remove('hidden');
+
+    // Встановлюємо відео
+    videoPlayer.src = `/videos/${filename}`;
+    videoPlayer.load();
+
+    // Відображаємо назву файлу
+    videoFilenameSpan.textContent = filename;
+
+    // Очищаємо попередні дані
+    currentVideoFile = filename;
+    projectFragments = {
+        'motion-det': [],
+        'tracking': [],
+        'mil-hardware': [],
+        're-id': []
+    };
+    unfinishedFragments = {
+        'motion-det': null,
+        'tracking': null,
+        'mil-hardware': null,
+        're-id': null
+    };
+
+    updateFragmentsList();
+    clearAllMarkers();
+    updateUnfinishedFragmentsUI();
+    syncActiveProjects();
+});
+
+// Синхронізуємо активні проєкти з чекбоксами
+function syncActiveProjects() {
+    activeProjects = [];
+    projectCheckboxes.forEach(checkbox => {
+        if (checkbox.checked) {
+            activeProjects.push(checkbox.value);
+        }
+    });
+    updateButtonStates();
+}
+
+// Функція оновлення стану кнопок
+function updateButtonStates() {
+    const noProjectsSelected = activeProjects.length === 0;
+    // Не вимикаємо кнопку "Встановити початок фрагменту", щоб показувати алерт
+    // startFragmentBtn.disabled = noProjectsSelected;
+
+    const hasUnfinishedFragments = Object.values(unfinishedFragments).some(frag => frag !== null);
+    // Кнопки "Завершити" і "Скасувати" будуть активні лише якщо є незавершені фрагменти
+    endFragmentBtn.disabled = !hasUnfinishedFragments;
+    cancelFragmentBtn.disabled = !hasUnfinishedFragments;
+}
+
+// JSON модальне вікно
 viewJsonBtn.addEventListener('click', function() {
     // Форматуємо дані для відображення
     const metadata = {
@@ -74,122 +191,14 @@ viewJsonBtn.addEventListener('click', function() {
     jsonModal.style.display = 'block';
 });
 
-// Обробник закриття модального вікна
-jsonModalClose.addEventListener('click', function() {
-    jsonModal.style.display = 'none';
-});
-
-// Закриття модального вікна при кліку поза ним
-window.addEventListener('click', function(e) {
-    if (e.target === jsonModal) {
-        jsonModal.style.display = 'none';
-    }
-});
-
-
-// Створюємо модальне вікно для вибору проєкту
-const projectModal = document.createElement('div');
-projectModal.className = 'modal';
-projectModal.innerHTML = `
-    <div class="modal-content">
-        <span class="modal-close">&times;</span>
-        <h3 class="modal-title">Виберіть проєкт</h3>
-        <div class="modal-body" id="project-options"></div>
-    </div>
-`;
-document.body.appendChild(projectModal);
-
-const projectOptions = document.getElementById('project-options');
-const modalClose = document.querySelector('.modal-close');
-
-// Закриття модального вікна
-modalClose.addEventListener('click', function() {
-    projectModal.style.display = 'none';
-});
-
-// Закриття модального вікна при кліку поза ним
-window.addEventListener('click', function(e) {
-    if (e.target === projectModal) {
-        projectModal.style.display = 'none';
-    }
-});
-
-// Змінні стану
-let currentVideoFile = null;
-let projectFragments = {
-    'motion-det': [],
-    'tracking': [],
-    'mil-hardware': [],
-    're-id': []
-};
-let unfinishedFragments = {
-    'motion-det': null,
-    'tracking': null,
-    'mil-hardware': null,
-    're-id': null
-};
-let activeProjects = [];
-
-// Синхронізуємо активні проєкти з чекбоксами при завантаженні
-function syncActiveProjects() {
-    activeProjects = [];
-    projectCheckboxes.forEach(checkbox => {
-        if (checkbox.checked) {
-            activeProjects.push(checkbox.value);
-        }
-    });
-    updateButtonStates();
-}
-
-// Функція оновлення стану кнопок
-function updateButtonStates() {
-    const noProjectsSelected = activeProjects.length === 0;
-    // Не вимикаємо кнопку "Встановити початок фрагменту", щоб показувати алерт
-    // startFragmentBtn.disabled = noProjectsSelected;
-
-    const hasUnfinishedFragments = Object.values(unfinishedFragments).some(frag => frag !== null);
-    // Кнопки "Завершити" і "Скасувати" будуть активні лише якщо є незавершені фрагменти
-    endFragmentBtn.disabled = !hasUnfinishedFragments;
-    cancelFragmentBtn.disabled = !hasUnfinishedFragments;
-}
-
 // Синхронізуємо при завантаженні
 document.addEventListener('DOMContentLoaded', syncActiveProjects);
 
-// Налаштування drag-and-drop
-['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
-    dropArea.addEventListener(eventName, preventDefaults, false);
-});
-
-function preventDefaults(e) {
-    e.preventDefault();
-    e.stopPropagation();
-}
-
-['dragenter', 'dragover'].forEach(eventName => {
-    dropArea.addEventListener(eventName, highlight, false);
-});
-
-['dragleave', 'drop'].forEach(eventName => {
-    dropArea.addEventListener(eventName, unhighlight, false);
-});
-
-function highlight() {
-    dropArea.classList.add('highlight');
-}
-
-function unhighlight() {
-    dropArea.classList.remove('highlight');
-}
-
-// Обробники подій
-dropArea.addEventListener('drop', handleDrop, false);
-dropArea.addEventListener('click', () => fileInput.click());
-fileInput.addEventListener('change', handleFileSelect);
-
+// Обробники подій для відеоплеєра
 videoPlayer.addEventListener('timeupdate', updateTimelineProgress);
 videoPlayer.addEventListener('loadedmetadata', initVideoPlayer);
 
+// Відеоплеєр
 startFragmentBtn.addEventListener('click', function() {
     if (activeProjects.length === 0) {
         alert('Необхідно вибрати хоча б один проєкт');
@@ -218,6 +227,24 @@ saveFragmentsBtn.addEventListener('click', saveFragmentsToJson);
 
 timeline.addEventListener('click', handleTimelineClick);
 
+// Кнопки закриття модальних вікон
+modalClose.forEach(function(closeBtn) {
+    closeBtn.addEventListener('click', function() {
+        jsonModal.style.display = 'none';
+        projectModal.style.display = 'none';
+    });
+});
+
+// Закриття модальних вікон при кліку поза ними
+window.addEventListener('click', function(e) {
+    if (e.target === jsonModal) {
+        jsonModal.style.display = 'none';
+    }
+    if (e.target === projectModal) {
+        projectModal.style.display = 'none';
+    }
+});
+
 // Додаємо обробник зміни проєктів (чекбокси)
 projectCheckboxes.forEach(checkbox => {
     checkbox.addEventListener('change', function() {
@@ -230,8 +257,6 @@ projectCheckboxes.forEach(checkbox => {
         } else {
             // Видаляємо проєкт з активних
             activeProjects = activeProjects.filter(p => p !== this.value);
-
-            // Більше не видаляємо незавершені фрагменти при знятті вибору з проєкту
         }
 
         // Оновлюємо стан кнопок
@@ -246,75 +271,6 @@ skipVideoCheckbox.addEventListener('change', function() {
         field.disabled = this.checked;
     });
 });
-
-// Функція обробки drag-and-drop
-function handleDrop(e) {
-    const dt = e.dataTransfer;
-    const files = dt.files;
-
-    if (files.length === 1 && files[0].type.startsWith('video/')) {
-        handleVideoFile(files[0]);
-    }
-}
-
-// Функція вибору файлу через input
-function handleFileSelect(e) {
-    const file = e.target.files[0];
-    if (file && file.type.startsWith('video/')) {
-        handleVideoFile(file);
-    }
-}
-
-// Обробка відео файлу
-function handleVideoFile(file) {
-    // Очищаємо попередні дані
-    currentVideoFile = file;
-    projectFragments = {
-        'motion-det': [],
-        'tracking': [],
-        'mil-hardware': [],
-        're-id': []
-    };
-    unfinishedFragments = {
-        'motion-det': null,
-        'tracking': null,
-        'mil-hardware': null,
-        're-id': null
-    };
-
-    updateFragmentsList();
-    clearAllMarkers();
-    updateUnfinishedFragmentsUI();
-    syncActiveProjects();
-
-    // Завантажуємо файл на сервер
-    const formData = new FormData();
-    formData.append('video', file);
-
-    fetch('/upload', {
-        method: 'POST',
-        body: formData
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            // Встановлюємо відео з нового шляху
-            videoPlayer.src = data.path;
-            videoPlayer.load();
-            videoEditor.classList.remove('hidden');
-            dropArea.classList.add('hidden');
-
-            // Відображаємо назву файлу
-            videoFilenameSpan.textContent = data.filename;
-        } else {
-            alert(`Помилка: ${data.error}`);
-        }
-    })
-    .catch(error => {
-        console.error('Error:', error);
-        alert('Помилка завантаження відео');
-    });
-}
 
 // Ініціалізація відео плеєра
 function initVideoPlayer() {
@@ -735,7 +691,7 @@ function saveFragmentsToJson() {
     });
 }
 
-// Оновлена функція форматування часу
+// Форматування часу
 function formatTime(seconds) {
     const h = Math.floor(seconds / 3600);
     const m = Math.floor((seconds % 3600) / 60);

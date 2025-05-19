@@ -10,13 +10,20 @@
     <div class="container">
         <h1>Розмітка відео</h1>
 
-        <div id="drop-area" class="drop-area">
-            <p>Перетягніть відео сюди або натисніть для вибору файлу</p>
-            <input type="file" id="file-input" accept="video/*" class="hidden">
+        <div id="video-selector" class="video-selector">
+            <h2>Оберіть відео для розмітки</h2>
+            <select id="video-select" class="form-control">
+                <option value="">Виберіть відео...</option>
+            </select>
+            <button id="load-video-btn" class="btn">Завантажити вибране відео</button>
+
+            <div class="navigation-buttons">
+                <a href="/" class="btn btn-secondary">Повернутися до завантаження</a>
+            </div>
         </div>
 
         <div id="video-editor" class="hidden">
-            <!-- Інформація про відео - видалено поле перейменування -->
+            <!-- Інформація про відео -->
             <div class="video-info">
                 <h3>Інформація про відео</h3>
                 <p id="video-filename">Назва файлу: <span></span></p>
@@ -104,7 +111,7 @@
                                 <option value="bombing">Скид боєприпасу</option>
                                 <option value="kamikaze">Ураження</option>
                                 <option value="panoramic">Коротке відео з панорамним оглядом</option>
-                                <option value="panoramic">Інше</option>
+                                <option value="other">Інше</option>
                             </select>
                         </div>
 
@@ -162,6 +169,14 @@
         </div>
     </div>
 
-    <script src="/script.js"></script>
+    <div id="project-modal" class="modal">
+        <div class="modal-content">
+            <span class="modal-close">&times;</span>
+            <h3 class="modal-title">Виберіть проєкт</h3>
+            <div class="modal-body" id="project-options"></div>
+        </div>
+    </div>
+
+    <script src="/annotator.js"></script>
 </body>
 </html>

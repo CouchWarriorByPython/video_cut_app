@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Завантаження відео</title>
+    <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+    <div class="container">
+        <h1>Завантаження відео</h1>
+
+        <div class="upload-form">
+            <form id="video-upload-form" method="POST" action="/upload_from_azure">
+                <div class="form-group">
+                    <label for="video-url">Посилання на відео (Azure):</label>
+                    <input type="text" id="video-url" name="video_url" class="form-control" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="location">Локація (опційно):</label>
+                    <input type="text" id="location" name="location" class="form-control"
+                           pattern="[A-Za-z\s\-_]+" title="Тільки англійські літери">
+                </div>
+
+                <div class="form-group">
+                    <label for="recording-date">Дата зйомки (опційно):</label>
+                    <input type="text" id="recording-date" name="recording_date" class="form-control"
+                           pattern="[0-9]{8}" title="Формат: РРРРММДД (наприклад, 20250508)"
+                           placeholder="РРРРММДД">
+                </div>
+
+                <button type="submit" class="btn">Завантажити відео</button>
+            </form>
+        </div>
+
+        <div id="result" class="hidden"></div>
+    </div>
+
+    <script>
+        document.getElementById('video-upload-form').addEventListener('submit', function(e) {
+            e.preventDefault();
+
+            const formData = new FormData(this);
+            const resultDiv = document.getElementById('result');
+
+            fetch('/upload_from_azure', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(Object.fromEntries(formData)),
+            })
+            .then(response => response.json())
+            .then(data => {
+                resultDiv.innerHTML = `
+                    <div class="${data.success ? 'success-message' : 'error-message'}">
+                        <h3>${data.success ? 'Успішно!' : 'Помилка!'}</h3>
+                        <p>${data.message}</p>
+                        ${data.source ? `<p>ID відео: ${data.source}</p>` : ''}
+                    </div>
+                `;
+                resultDiv.classList.remove('hidden');
+            })
+            .catch(error => {
+                resultDiv.innerHTML = `
+                    <div class="error-message">
+                        <h3>Помилка!</h3>
+                        <p>Сталася помилка під час обробки запиту.</p>
+                    </div>
+                `;
+                resultDiv.classList.remove('hidden');
+                console.error('Error:', error);
+            });
+        });
+    </script>
+</body>
+</html>

@@ -27,6 +27,11 @@ app.mount("/videos", StaticFiles(directory=UPLOAD_FOLDER), name="videos")
 templates = Jinja2Templates(directory="front")
 
 
+def format_date_for_human(date_obj: datetime) -> str:
+    """Форматує дату у зручний для читання вигляд"""
+    return date_obj.strftime("%d.%m.%Y %H:%M")
+
+
 # Маршрут для головної сторінки (тепер це uploader)
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request):
@@ -87,7 +92,7 @@ async def upload_file(video: UploadFile = File(...)):
         "source": video_name,
         "azure_path": "local_upload",  # Заглушка для поля посилання
         "extension": extension,
-        "upload_date": datetime.now(),
+        "upload_date": format_date_for_human(datetime.now()),
         "status": "not_annotated"
     }
 
@@ -137,7 +142,7 @@ async def upload_from_azure(data: VideoUploadRequest):
             "source": source,
             "azure_path": azure_path,
             "extension": extension,
-            "upload_date": datetime.now(),
+            "upload_date": format_date_for_human(datetime.now()),
             "status": "not_annotated"
         }
 
@@ -220,9 +225,13 @@ async def get_videos():
             # Перетворюємо MongoDB документ в Python dict
             source = video.get("source", "")
             extension = video.get("extension", ".mp4")
+
             video_list.append({
                 "source": source,
-                "filename": f"{source}{extension}"
+                "filename": f"{source}{extension}",
+                "upload_date": video.get("upload_date", ""),
+                "where": video.get("where", ""),
+                "when": video.get("when", "")
             })
 
         return {

@@ -117,8 +117,7 @@ function showResult(data) {
             <div class="success-message">
                 <h3>Успішно!</h3>
                 <p>${data.message}</p>
-                ${data.source ? `<p>ID відео: ${data.source}</p>` : ''}
-                <p><a href="/annotator" class="btn">Перейти до анотування</a></p>
+                ${data.source ? `<p>Назва відео: ${data.source}</p>` : ''}
             </div>
         `;
     } else {

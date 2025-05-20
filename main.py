@@ -93,56 +93,54 @@ async def upload(request: Request):
             with open(filepath, "wb") as buffer:
                 buffer.write(file_content)
 
-            video_name = base_name
-            azure_path = "local_upload"
+            # Формуємо повний URI до файлу
+            server_url = request.base_url
+            azure_link = f"{server_url}videos/{filename}"
 
             # Записуємо в MongoDB
             video_record = {
-                "source": video_name,
-                "azure_path": azure_path,
-                "extension": extension,
-                "upload_date": format_date_for_human(datetime.now()),
-                "status": "not_annotated",
+                "azure_link": azure_link,
+                "extension": extension[1:] if extension.startswith('.') else extension,
+                "created_at": datetime.utcnow(),
+                "updated_at": datetime.utcnow(),
+                "when": when,
                 "where": where,
-                "when": when
+                "status": "not_annotated",
+                "metadata": None,
+                "clips": {},
+                "cvat_params": {}
             }
 
         elif "application/json" in content_type:
             # Обробка завантаження по URL
             data = await request.json()
-            video_url = data.get("video_url")
+            azure_link = data.get("video_url")
             where = data.get("where")
             when = data.get("when")
 
-            if not video_url:
+            if not azure_link:
                 return JSONResponse(
                     status_code=400,
                     content={"success": False, "message": "URL відео не вказано"}
                 )
 
-            # Завантажуємо через функцію download_video_from_azure
-            result = download_video_from_azure(video_url)
-
-            if not result["success"]:
-                return JSONResponse(
-                    status_code=400,
-                    content={"success": False, "message": f"Помилка при завантаженні відео: {result['error']}"}
-                )
-
-            video_name = result["source"]
-            azure_path = result["azure_path"]
-            extension = result["extension"]
-            filename = f"{video_name}{extension}"
+            # Визначаємо розширення з URL
+            extension = os.path.splitext(azure_link)[1]
+            if not extension:
+                extension = ".mp4"  # За замовчуванням
 
             # Записуємо в MongoDB
             video_record = {
-                "source": video_name,
-                "azure_path": azure_path,
-                "extension": extension,
-                "upload_date": format_date_for_human(datetime.now()),
-                "status": "not_annotated",
+                "azure_link": azure_link,
+                "extension": extension[1:] if extension.startswith('.') else extension,
+                "created_at": datetime.utcnow(),
+                "updated_at": datetime.utcnow(),
+                "when": when,
                 "where": where,
-                "when": when
+                "status": "not_annotated",
+                "metadata": None,
+                "clips": {},
+                "cvat_params": {}
             }
 
         else:
@@ -154,15 +152,14 @@ async def upload(request: Request):
         # Зберігаємо запис у MongoDB
         repo = create_repository(collection_name="анотації_соурс_відео")
         repo.create_indexes()
-        repo.save_annotation(video_record)
+        record_id = repo.save_annotation(video_record)
 
         return JSONResponse(
             content={
                 "success": True,
-                "filename": filename,
-                "source": video_name,
-                "message": "Відео успішно завантажено та додано до бази даних",
-                "path": f"/videos/{filename}" if "multipart/form-data" in content_type else None
+                "id": record_id,
+                "azure_link": azure_link,
+                "message": "Відео успішно завантажено та додано до бази даних"
             }
         )
 
@@ -181,26 +178,46 @@ async def upload(request: Request):
 @app.post("/save_fragments")
 async def save_fragments(data: Dict[str, Any]):
     """Збереження фрагментів відео та метаданих"""
-    video_name = data.get("video_name", "unknown")
+    azure_link = data.get("azure_link")
     json_data = data.get("data", {})
 
     try:
-        cvat_params = get_cvat_task_parameters()
-        json_data["cvat_params"] = cvat_params
-
         repo = create_repository(collection_name="анотації_соурс_відео")
         repo.create_indexes()
-        repo.save_annotation(json_data)
 
-        task_result = process_video_annotation.delay(json_data["source"])
+        existing = repo.get_annotation(azure_link)
 
-        print(f"Збережено анотацію для відео '{json_data['source']}':")
-        print(json.dumps(json_data, indent=2, ensure_ascii=False))
+        if existing:
+            # Оновлюємо існуючий запис
+            existing.update({
+                "metadata": json_data.get("metadata"),
+                "clips": json_data.get("clips"),
+                "status": "annotated",
+                "updated_at": datetime.utcnow()
+            })
 
-        return {
-            "success": True,
-            "task_id": task_result.id
-        }
+            # Отримуємо параметри CVAT для кліпів
+            cvat_params = {}
+            all_params = get_cvat_task_parameters()
+            for clip_type in json_data.get("clips", {}).keys():
+                if clip_type in all_params:
+                    cvat_params[clip_type] = all_params[clip_type]
+
+            existing["cvat_params"] = cvat_params
+
+            record_id = repo.save_annotation(existing)
+            task_result = process_video_annotation.delay(azure_link)
+
+            return {
+                "success": True,
+                "id": record_id,
+                "task_id": task_result.id
+            }
+        else:
+            return {
+                "success": False,
+                "error": f"Відео з посиланням {azure_link} не знайдено"
+            }
     except Exception as e:
         print(f"Помилка при збереженні в MongoDB: {str(e)}")
         return {
@@ -221,15 +238,15 @@ async def get_videos():
 
         video_list = []
         for video in videos:
-            source = video.get("source", "")
-            extension = video.get("extension", ".mp4")
-
             video_list.append({
-                "source": source,
-                "filename": f"{source}{extension}",
-                "upload_date": video.get("upload_date", ""),
-                "where": video.get("where", None),
-                "when": video.get("when", None)
+                "id": str(video.get("_id")),
+                "azure_link": video.get("azure_link"),
+                "extension": video.get("extension", "mp4"),
+                "created_at": video.get("created_at", datetime.utcnow()).isoformat(),
+                "updated_at": video.get("updated_at", datetime.utcnow()).isoformat(),
+                "where": video.get("where"),
+                "when": video.get("when"),
+                "status": video.get("status", "not_annotated")
             })
 
         return {

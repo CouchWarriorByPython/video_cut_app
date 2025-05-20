@@ -42,7 +42,8 @@ const modalClose = document.querySelectorAll('.modal-close');
 document.addEventListener('DOMContentLoaded', loadVideoList);
 
 // Змінні стану
-let currentVideoFile = null;
+let currentAzureLink = null;
+let videoFileName = null;
 let projectFragments = {
     'motion-det': [],
     'tracking': [],
@@ -67,8 +68,11 @@ function loadVideoList() {
 
                 data.videos.forEach(video => {
                     const option = document.createElement('option');
-                    option.value = video.source;
-                    option.textContent = video.filename;
+                    option.value = video.azure_link;
+                    // Видобуваємо назву файлу з URL якщо це можливо
+                    const filename = video.azure_link.split('/').pop();
+                    option.textContent = filename || `Відео #${video.id}`;
+                    option.dataset.id = video.id;
                     videoSelect.appendChild(option);
                 });
             } else {
@@ -91,6 +95,7 @@ loadVideoBtn.addEventListener('click', function() {
 
     // Отримуємо назву файлу з тексту вибраної опції
     const selectedOption = videoSelect.options[videoSelect.selectedIndex];
+    const azureLink = selectedOption.value;
     const filename = selectedOption.textContent;
 
     // Показуємо редактор і завантажуємо відео
@@ -98,14 +103,15 @@ loadVideoBtn.addEventListener('click', function() {
     videoEditor.classList.remove('hidden');
 
     // Встановлюємо відео
-    videoPlayer.src = `/videos/${filename}`;
+    videoPlayer.src = azureLink;
     videoPlayer.load();
 
     // Відображаємо назву файлу
     videoFilenameSpan.textContent = filename;
 
     // Очищаємо попередні дані
-    currentVideoFile = filename;
+    currentAzureLink = azureLink;
+    videoFileName = filename;
     projectFragments = {
         'motion-det': [],
         'tracking': [],
@@ -119,11 +125,100 @@ loadVideoBtn.addEventListener('click', function() {
         're-id': null
     };
 
+    // Завантажуємо існуючі анотації якщо вони є
+    loadExistingAnnotations(azureLink);
+
     updateFragmentsList();
     clearAllMarkers();
     updateUnfinishedFragmentsUI();
     syncActiveProjects();
 });
+
+// Завантаження існуючих анотацій
+function loadExistingAnnotations(azureLink) {
+    fetch(`/get_annotation?azure_link=${encodeURIComponent(azureLink)}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.success && data.annotation) {
+                const annotation = data.annotation;
+
+                // Заповнюємо метадані
+                if (annotation.metadata) {
+                    skipVideoCheckbox.checked = annotation.metadata.skip || false;
+                    uavTypeSelect.value = annotation.metadata.uav_type || "";
+                    videoContentSelect.value = annotation.metadata.video_content || "";
+                    isUrbanCheckbox.checked = annotation.metadata.is_urban || false;
+                    hasOsdCheckbox.checked = annotation.metadata.has_osd || false;
+                    isAnalogCheckbox.checked = annotation.metadata.is_analog || false;
+                    nightVideoCheckbox.checked = annotation.metadata.night_video || false;
+                    multipleStreamsCheckbox.checked = annotation.metadata.multiple_streams || false;
+                    hasInfantryCheckbox.checked = annotation.metadata.has_infantry || false;
+                    hasExplosionsCheckbox.checked = annotation.metadata.has_explosions || false;
+                }
+
+                // Заповнюємо фрагменти
+                if (annotation.clips) {
+                    for (const projectType in annotation.clips) {
+                        if (Array.isArray(annotation.clips[projectType])) {
+                            projectFragments[projectType] = annotation.clips[projectType].map(clip => {
+                                // Конвертуємо час у секунди для візуалізації
+                                const startTimeParts = clip.start_time.split(':');
+                                const endTimeParts = clip.end_time.split(':');
+
+                                const startSeconds = parseInt(startTimeParts[0]) * 3600 +
+                                                     parseInt(startTimeParts[1]) * 60 +
+                                                     parseInt(startTimeParts[2]);
+
+                                const endSeconds = parseInt(endTimeParts[0]) * 3600 +
+                                                   parseInt(endTimeParts[1]) * 60 +
+                                                   parseInt(endTimeParts[2]);
+
+                                return {
+                                    id: clip.id,
+                                    start: startSeconds,
+                                    end: endSeconds,
+                                    start_formatted: clip.start_time,
+                                    end_formatted: clip.end_time,
+                                    project: projectType
+                                };
+                            });
+                        }
+                    }
+
+                    // Оновлюємо інтерфейс
+                    updateFragmentsList();
+                    visualizeFragments();
+                }
+            }
+        })
+        .catch(error => {
+            console.error('Error loading annotations:', error);
+        });
+}
+
+// Візуалізація фрагментів на таймлайні
+function visualizeFragments() {
+    clearAllMarkers();
+
+    for (const projectType in projectFragments) {
+        projectFragments[projectType].forEach(fragment => {
+            const fragmentElement = document.createElement('div');
+            fragmentElement.className = `fragment ${projectType}`;
+            fragmentElement.dataset.id = fragment.id;
+            fragmentElement.dataset.project = projectType;
+            fragmentElement.style.left = `${(fragment.start / videoPlayer.duration) * 100}%`;
+            fragmentElement.style.width = `${((fragment.end - fragment.start) / videoPlayer.duration) * 100}%`;
+            fragmentElement.title = `${fragment.start_formatted} - ${fragment.end_formatted} (${getProjectName(projectType)})`;
+
+            fragmentElement.addEventListener('click', function() {
+                videoPlayer.currentTime = fragment.start;
+                videoPlayer.play();
+            });
+
+            timeline.appendChild(fragmentElement);
+        });
+    }
+}
 
 // Синхронізуємо активні проєкти з чекбоксами
 function syncActiveProjects() {
@@ -176,12 +271,9 @@ viewJsonBtn.addEventListener('click', function() {
         }
     }
 
-    // Отримуємо назву відео
-    const videoName = videoFilenameSpan.textContent.split('.')[0];
-
     // Збираємо JSON
     const jsonData = {
-        source: videoName,
+        azure_link: currentAzureLink,
         metadata: metadata,
         clips: formattedProjects
     };
@@ -276,6 +368,7 @@ skipVideoCheckbox.addEventListener('change', function() {
 function initVideoPlayer() {
     updateUnfinishedFragmentsUI();
     updateButtonStates();
+    visualizeFragments();
 }
 
 // Оновлення прогресу на таймлайні
@@ -655,12 +748,8 @@ function saveFragmentsToJson() {
         }
     }
 
-    // Отримуємо назву відео
-    const videoName = videoFilenameSpan.textContent.split('.')[0];
-
     // Готуємо дані для відправки
     const jsonData = {
-        source: videoName,
         metadata: metadata,
         clips: formattedProjects
     };
@@ -672,7 +761,7 @@ function saveFragmentsToJson() {
             'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-            video_name: videoName,
+            azure_link: currentAzureLink,
             data: jsonData
         })
     })
@@ -691,17 +780,15 @@ function saveFragmentsToJson() {
     });
 }
 
-// Форматування часу
+// Форматування часу (без мілісекунд)
 function formatTime(seconds) {
     const h = Math.floor(seconds / 3600);
     const m = Math.floor((seconds % 3600) / 60);
     const s = Math.floor(seconds % 60);
-    const ms = Math.floor((seconds % 1) * 1000);
 
     const hh = h.toString().padStart(2, '0');
     const mm = m.toString().padStart(2, '0');
     const ss = s.toString().padStart(2, '0');
-    const msms = ms.toString().padStart(3, '0');
 
-    return `${hh}:${mm}:${ss}:${msms}`;
+    return `${hh}:${mm}:${ss}`;
 }

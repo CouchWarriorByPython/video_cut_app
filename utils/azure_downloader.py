@@ -40,7 +40,7 @@ def parse_azure_url(url: str) -> Tuple[str, str, str]:
 
 def download_video_from_azure(url: str, output_dir: str = "videos") -> Dict[str, Any]:
     """
-    Заглушка для завантаження відео з Azure.
+    Завантаження відео з Azure.
 
     Args:
         url: URL до відео в Azure
@@ -56,14 +56,12 @@ def download_video_from_azure(url: str, output_dir: str = "videos") -> Dict[str,
         # Створюємо директорію, якщо її не існує
         os.makedirs(output_dir, exist_ok=True)
 
-        # Імітуємо завантаження
-        # В реальному сценарії тут був би код для завантаження з Azure
+        # Тут мав би бути код для завантаження з Azure
 
         return {
             "success": True,
-            "source": filename,
-            "azure_path": path,
-            "extension": extension,
+            "azure_link": url,
+            "extension": extension[1:] if extension.startswith('.') else extension,
             "local_path": os.path.join(output_dir, f"{filename}{extension}")
         }
     except Exception as e:

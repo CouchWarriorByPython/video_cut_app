@@ -94,7 +94,9 @@ async def upload(request: Request):
                 buffer.write(file_content)
 
             # Формуємо повний URI до файлу
-            server_url = request.base_url
+            server_url = str(request.base_url)
+            if not server_url.endswith('/'):
+                server_url += '/'
             azure_link = f"{server_url}videos/{filename}"
 
             # Записуємо в MongoDB
@@ -231,14 +233,15 @@ async def save_fragments(data: Dict[str, Any]):
 
 @app.get("/get_videos")
 async def get_videos():
-    """Отримання списку всіх відео для анотування"""
     try:
         repo = create_repository(collection_name="анотації_соурс_відео")
         videos = repo.get_all_annotations()
 
+        print(f"Знайдено {len(videos)} відео")
+
         video_list = []
         for video in videos:
-            video_list.append({
+            video_data = {
                 "id": str(video.get("_id")),
                 "azure_link": video.get("azure_link"),
                 "extension": video.get("extension", "mp4"),
@@ -247,13 +250,16 @@ async def get_videos():
                 "where": video.get("where"),
                 "when": video.get("when"),
                 "status": video.get("status", "not_annotated")
-            })
+            }
+            video_list.append(video_data)
+            print(f"Додано відео: {video_data['azure_link']}")
 
         return {
             "success": True,
             "videos": video_list
         }
     except Exception as e:
+        print(f"Помилка при отриманні відео: {str(e)}")
         return {
             "success": False,
             "error": str(e)
@@ -261,7 +267,6 @@ async def get_videos():
     finally:
         if 'repo' in locals():
             repo.close()
-
 
 if __name__ == "__main__":
     import uvicorn

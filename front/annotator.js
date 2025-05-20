@@ -60,22 +60,29 @@ let activeProjects = [];
 
 // Завантаження списку відео
 function loadVideoList() {
+    console.log("Запит відео...");
     fetch('/get_videos')
-        .then(response => response.json())
+        .then(response => {
+            console.log("Статус відповіді:", response.status);
+            return response.json();
+        })
         .then(data => {
+            console.log("Отримані дані:", data);
             if (data.success && data.videos && data.videos.length > 0) {
                 videoSelect.innerHTML = '<option value="">Виберіть відео...</option>';
 
                 data.videos.forEach(video => {
+                    console.log("Обробка відео:", video);
                     const option = document.createElement('option');
                     option.value = video.azure_link;
-                    // Видобуваємо назву файлу з URL якщо це можливо
+                    // Видобуваємо назву файлу з URL
                     const filename = video.azure_link.split('/').pop();
                     option.textContent = filename || `Відео #${video.id}`;
                     option.dataset.id = video.id;
                     videoSelect.appendChild(option);
                 });
             } else {
+                console.warn("Немає відео або помилка:", data);
                 videoSelect.innerHTML = '<option value="">Немає доступних відео</option>';
             }
         })
@@ -85,6 +92,12 @@ function loadVideoList() {
         });
 }
 
+// Додаємо обробник помилки відтворення відео
+videoPlayer.addEventListener('error', function(event) {
+    console.error("Помилка відтворення відео:", videoPlayer.error);
+    alert(`Помилка відтворення відео: ${videoPlayer.error.message || 'Невідома помилка'}`);
+});
+
 // Обробник кнопки завантаження відео
 loadVideoBtn.addEventListener('click', function() {
     const selectedVideo = videoSelect.value;
@@ -93,10 +106,20 @@ loadVideoBtn.addEventListener('click', function() {
         return;
     }
 
+    console.log("Вибрано відео:", selectedVideo);
+
     // Отримуємо назву файлу з тексту вибраної опції
     const selectedOption = videoSelect.options[videoSelect.selectedIndex];
     const azureLink = selectedOption.value;
     const filename = selectedOption.textContent;
+
+    try {
+        new URL(azureLink);
+    } catch (e) {
+        console.error("Некоректний URL:", azureLink, e);
+        alert(`Некоректний URL відео: ${azureLink}`);
+        return;
+    }
 
     // Показуємо редактор і завантажуємо відео
     videoSelector.style.display = 'none';

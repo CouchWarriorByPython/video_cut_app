@@ -107,16 +107,3 @@ function showError(message) {
     `;
     resultDiv.classList.remove('hidden');
 }
-
-// Додаємо CSS для повідомлення про завантаження
-document.head.insertAdjacentHTML('beforeend', `
-<style>
-.info-message {
-    background-color: rgba(52, 152, 219, 0.2);
-    border-left: 4px solid #3498db;
-    padding: 15px;
-    border-radius: 4px;
-    margin-top: 20px;
-}
-</style>
-`);

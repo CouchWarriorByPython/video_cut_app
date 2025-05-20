@@ -1,9 +1,8 @@
-from typing import Dict, List, Optional, Union, Protocol, ClassVar
+from typing import Dict, List, Optional, Union
 from pymongo import MongoClient
 from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, Field
 from datetime import datetime
-from bson import ObjectId
 
 from configs import Settings
 
@@ -52,178 +51,156 @@ class VideoAnnotation(BaseModel):
     cvat_params: Dict[str, CVATProjectParams] = Field(default_factory=dict)
 
 
-# Базовий протокол (інтерфейс) для спільного API
-class AnnotationRepositoryProtocol(Protocol):
-    """Інтерфейс для роботи з анотаціями відео в MongoDB"""
+class AnnotationBase:
+    """Базовий клас для роботи з анотаціями відео"""
 
-    def create_indexes(self) -> None:
-        """Створення необхідних індексів для колекції"""
-        ...
+    def __init__(self, collection_name: str):
+        """Ініціалізує клас з вказаною колекцією"""
+        self.collection_name = collection_name
 
-    def save_annotation(self, annotation: Union[Dict, VideoAnnotation]) -> str:
-        """
-        Збереження анотації (створення нової або оновлення існуючої)
+    def _prepare_annotation(self, annotation: Union[Dict, BaseModel]) -> Dict:
+        """Підготовка даних анотації до збереження"""
+        if isinstance(annotation, BaseModel):
+            annotation = annotation.model_dump()
 
-        Args:
-            annotation: Дані анотації у форматі dict або VideoAnnotation
+        annotation["updated_at"] = datetime.utcnow()
 
-        Returns:
-            str: ID документа або повідомлення про успішне оновлення
-        """
-        ...
+        if "azure_link" not in annotation:
+            raise ValueError("Анотація повинна містити поле 'azure_link'")
 
-    def get_annotation(self, azure_link: str) -> Optional[Dict]:
-        """
-        Отримання анотації за посиланням на відео
+        return annotation
 
-        Args:
-            azure_link: Посилання на відео в Azure
+    def _normalize_document(self, doc: Optional[Dict]) -> Optional[Dict]:
+        """Перетворює MongoDB документ у звичайний словник з плоскою структурою"""
+        if not doc:
+            return None
 
-        Returns:
-            Optional[Dict]: Документ анотації або None, якщо не знайдено
-        """
-        ...
+        # Перетворення ObjectId в рядок
+        if "_id" in doc:
+            doc["id"] = str(doc["_id"])
+            del doc["_id"]
 
-    def get_all_annotations(self) -> List[Dict]:
-        """
-        Отримання всіх анотацій
+        # Перетворення дат у рядки ISO формату
+        for field in ["created_at", "updated_at"]:
+            if field in doc and isinstance(doc[field], datetime):
+                doc[field] = doc[field].isoformat()
 
-        Returns:
-            List[Dict]: Список документів анотацій
-        """
-        ...
+        return doc
 
-    def delete_annotation(self, azure_link: str) -> bool:
-        """
-        Видалення анотації за посиланням на відео
-
-        Args:
-            azure_link: Посилання на відео в Azure
-
-        Returns:
-            bool: True, якщо видалення виконано успішно
-        """
-        ...
-
-    def close(self) -> None:
-        """Закриття з'єднання з MongoDB"""
-        ...
+    def _normalize_documents(self, docs: List[Dict]) -> List[Dict]:
+        """Нормалізує список документів"""
+        return [self._normalize_document(doc) for doc in docs]
 
 
-# Синхронна реалізація для Celery та скриптів
-class SyncVideoAnnotationRepository:
+class SyncVideoAnnotationRepository(AnnotationBase):
     """Синхронний репозиторій для збереження відео-анотацій в MongoDB"""
 
     def __init__(self, collection_name: str = None):
+        """Ініціалізує репозиторій з вказаною колекцією"""
+        super().__init__(collection_name or "анотації")
         self.client = MongoClient(Settings.mongo_uri)
         self.db = self.client[Settings.mongo_db_name]
-        self.collection = self.db[collection_name]
+        self.collection = self.db[self.collection_name]
 
     def create_indexes(self) -> None:
+        """Створює унікальний індекс для azure_link"""
         self.collection.create_index("azure_link", unique=True)
 
     def save_annotation(self, annotation: Union[Dict, VideoAnnotation]) -> str:
-        # Перетворення Pydantic моделі в словник
-        if isinstance(annotation, VideoAnnotation):
-            annotation = annotation.model_dump()
+        """Зберігає або оновлює анотацію"""
+        data = self._prepare_annotation(annotation)
 
-        # Встановлюємо або оновлюємо часові мітки
-        annotation["updated_at"] = datetime.utcnow()
-
-        azure_link = annotation.get("azure_link")
-        if not azure_link:
-            raise ValueError("Анотація повинна містити поле 'azure_link'")
-
-        # Перевіряємо, чи існує документ з таким azure_link
+        azure_link = data.get("azure_link")
         existing = self.collection.find_one({"azure_link": azure_link})
 
         if existing:
-            # Оновлюємо документ
-            self.collection.replace_one({"_id": existing["_id"]}, annotation)
+            self.collection.replace_one({"_id": existing["_id"]}, data)
             return str(existing["_id"])
         else:
-            # Створюємо новий документ
-            annotation["created_at"] = datetime.utcnow()
-            result = self.collection.insert_one(annotation)
+            data["created_at"] = datetime.utcnow()
+            result = self.collection.insert_one(data)
             return str(result.inserted_id)
 
     def get_annotation(self, azure_link: str) -> Optional[Dict]:
-        return self.collection.find_one({"azure_link": azure_link})
+        """Отримує анотацію за URL"""
+        doc = self.collection.find_one({"azure_link": azure_link})
+        return self._normalize_document(doc)
 
     def get_all_annotations(self) -> List[Dict]:
-        return list(self.collection.find())
+        """Отримує всі анотації"""
+        docs = list(self.collection.find())
+        return self._normalize_documents(docs)
 
     def delete_annotation(self, azure_link: str) -> bool:
+        """Видаляє анотацію за URL"""
         result = self.collection.delete_one({"azure_link": azure_link})
         return result.deleted_count > 0
 
     def close(self) -> None:
+        """Закриває з'єднання з MongoDB"""
         self.client.close()
 
 
-# Асинхронна реалізація для FastAPI
-class AsyncVideoAnnotationRepository:
+class AsyncVideoAnnotationRepository(AnnotationBase):
     """Асинхронний репозиторій для збереження відео-анотацій в MongoDB"""
 
     def __init__(self, collection_name: str):
+        """Ініціалізує репозиторій з вказаною колекцією"""
+        super().__init__(collection_name)
         self.client = AsyncIOMotorClient(Settings.mongo_uri)
         self.db = self.client[Settings.mongo_db_name]
-        self.collection = self.db[collection_name]
+        self.collection = self.db[self.collection_name]
 
     async def create_indexes(self) -> None:
+        """Створює унікальний індекс для azure_link"""
         await self.collection.create_index("azure_link", unique=True)
 
     async def save_annotation(self, annotation: Union[Dict, VideoAnnotation]) -> str:
-        # Перетворення Pydantic моделі в словник
-        if isinstance(annotation, VideoAnnotation):
-            annotation = annotation.model_dump()
+        """Зберігає або оновлює анотацію"""
+        data = self._prepare_annotation(annotation)
 
-        # Встановлюємо або оновлюємо часові мітки
-        annotation["updated_at"] = datetime.utcnow()
-
-        azure_link = annotation.get("azure_link")
-        if not azure_link:
-            raise ValueError("Анотація повинна містити поле 'azure_link'")
-
-        # Перевіряємо, чи існує документ з таким azure_link
+        azure_link = data.get("azure_link")
         existing = await self.collection.find_one({"azure_link": azure_link})
 
         if existing:
-            # Оновлюємо документ
-            await self.collection.replace_one({"_id": existing["_id"]}, annotation)
+            await self.collection.replace_one({"_id": existing["_id"]}, data)
             return str(existing["_id"])
         else:
-            # Створюємо новий документ
-            annotation["created_at"] = datetime.utcnow()
-            result = await self.collection.insert_one(annotation)
+            data["created_at"] = datetime.utcnow()
+            result = await self.collection.insert_one(data)
             return str(result.inserted_id)
 
     async def get_annotation(self, azure_link: str) -> Optional[Dict]:
-        return await self.collection.find_one({"azure_link": azure_link})
+        """Отримує анотацію за URL"""
+        doc = await self.collection.find_one({"azure_link": azure_link})
+        return self._normalize_document(doc)
 
     async def get_all_annotations(self) -> List[Dict]:
+        """Отримує всі анотації"""
         cursor = self.collection.find()
-        return await cursor.to_list(length=None)
+        docs = await cursor.to_list(length=None)
+        return self._normalize_documents(docs)
 
     async def delete_annotation(self, azure_link: str) -> bool:
+        """Видаляє анотацію за URL"""
         result = await self.collection.delete_one({"azure_link": azure_link})
         return result.deleted_count > 0
 
     def close(self) -> None:
+        """Закриває з'єднання з MongoDB"""
         self.client.close()
 
 
-# Фабрика для створення потрібної реалізації
 def create_repository(collection_name: str, async_mode: bool = False):
     """
-    Створення репозиторію для роботи з MongoDB
+    Створює репозиторій для роботи з MongoDB
 
     Args:
-        collection_name: Назва колекції в MongoDB
-        async_mode: Використовувати асинхронну реалізацію (True) або синхронну (False)
+        collection_name: Назва колекції
+        async_mode: Використовувати асинхронну реалізацію
 
     Returns:
-        Об'єкт репозиторію для роботи з анотаціями відео
+        Репозиторій для роботи з анотаціями відео
     """
     if async_mode:
         return AsyncVideoAnnotationRepository(collection_name=collection_name)

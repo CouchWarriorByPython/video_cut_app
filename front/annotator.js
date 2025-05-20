@@ -833,8 +833,10 @@ function saveFragmentsToJson() {
     .then(response => response.json())
     .then(data => {
         if (data.success) {
-            alert('Дані успішно збережено в MongoDB. Запущено задачу обробки.');
-            console.log('Task ID:', data.task_id);
+            alert(data.message || 'Дані успішно збережено в MongoDB.');
+            if (data.task_id) {
+                console.log('Task ID:', data.task_id);
+            }
         } else {
             alert('Помилка: ' + data.error);
         }

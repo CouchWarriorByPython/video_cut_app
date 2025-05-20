@@ -103,10 +103,28 @@ function loadVideoList() {
         });
 }
 
-// Додаємо обробник помилки відтворення відео
-videoPlayer.addEventListener('error', function(event) {
-    console.error("Помилка відтворення відео:", videoPlayer.error);
-    alert(`Помилка відтворення відео: ${videoPlayer.error.message || 'Невідома помилка'}`);
+// Обробник помилок відео
+videoPlayer.addEventListener('error', function() {
+    console.error('Помилка завантаження відео:', videoPlayer.error);
+
+    // Показати повідомлення про помилку
+    alert(`Помилка відтворення відео: ${videoPlayer.error ? videoPlayer.error.message : 'Невідома помилка'}`);
+
+    // Альтернативне рішення - показати кнопку для повторної спроби
+    const videoContainer = document.querySelector('.video-container');
+    const errorMessage = document.createElement('div');
+    errorMessage.className = 'video-error';
+    errorMessage.innerHTML = `
+        <p>Не вдалося завантажити відео. ${videoPlayer.error ? videoPlayer.error.message : ''}</p>
+        <button class="btn" id="retry-video">Спробувати ще раз</button>
+    `;
+
+    videoContainer.appendChild(errorMessage);
+
+    document.getElementById('retry-video').addEventListener('click', function() {
+        videoPlayer.load();
+        errorMessage.remove();
+    });
 });
 
 // Обробник кнопки завантаження відео
@@ -137,8 +155,16 @@ loadVideoBtn.addEventListener('click', function() {
     videoSelector.style.display = 'none';
     videoEditor.classList.remove('hidden');
 
-    // Встановлюємо відео
-    videoPlayer.src = localPath || azureLink;
+    // Встановлюємо відео - використовуємо локальний шлях, якщо є
+    if (localPath) {
+        videoPlayer.src = localPath;
+    } else {
+        // Якщо немає локального шляху, спробуємо завантажити відео з Azure
+        // Альтернативно, можна показати повідомлення про помилку
+        alert('Відео не було завантажене локально. Спроба отримати відео напряму може не працювати.');
+        videoPlayer.src = azureLink;
+    }
+
     console.log(`Встановлено відео: ${videoPlayer.src}`);
     videoPlayer.load();
 

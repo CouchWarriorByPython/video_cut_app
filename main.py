@@ -103,9 +103,6 @@ async def upload(data: VideoUploadRequest):
         filename = download_result["filename"]
         extension = download_result["extension"]
 
-        # Формуємо локальний URL для доступу до відео
-        local_path = f"/videos/{filename}"
-
         # Записуємо в MongoDB
         video_record = {
             "azure_link": azure_link,
@@ -128,7 +125,7 @@ async def upload(data: VideoUploadRequest):
                 "success": True,
                 "id": record_id,
                 "azure_link": azure_link,
-                "local_url": local_url,
+                "local_path": local_path,  # Виправлена змінна, було local_url
                 "filename": filename,
                 "message": "Відео успішно завантажено та додано до бази даних"
             }

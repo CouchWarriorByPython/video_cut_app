@@ -60,7 +60,7 @@ let activeProjects = [];
 
 // Завантаження списку відео
 function loadVideoList() {
-    console.log("Запит відео...");
+    console.log("Запит списку відео...");
     fetch('/get_videos')
         .then(response => {
             console.log("Статус відповіді:", response.status);
@@ -72,13 +72,24 @@ function loadVideoList() {
                 videoSelect.innerHTML = '<option value="">Виберіть відео...</option>';
 
                 data.videos.forEach(video => {
-                    console.log("Обробка відео:", video);
+                    console.log("Обробка відео в UI:", video);
                     const option = document.createElement('option');
+
+                    // Використовуємо azure_link як значення для завантаження
                     option.value = video.azure_link;
-                    // Видобуваємо назву файлу з URL
-                    const filename = video.azure_link.split('/').pop();
-                    option.textContent = filename || `Відео #${video.id}`;
+
+                    // Видобуваємо назву файлу з local_path для відображення
+                    let displayName;
+                    if (video.local_path) {
+                        const pathParts = video.local_path.split('/');
+                        displayName = pathParts[pathParts.length - 1];
+                    } else {
+                        displayName = video.azure_link.split('/').pop() || `Відео #${video.id}`;
+                    }
+
+                    option.textContent = displayName;
                     option.dataset.id = video.id;
+                    option.dataset.localPath = video.local_path || '';
                     videoSelect.appendChild(option);
                 });
             } else {
@@ -106,19 +117,20 @@ loadVideoBtn.addEventListener('click', function() {
         return;
     }
 
-    console.log("Вибрано відео:", selectedVideo);
-
     // Отримуємо назву файлу з тексту вибраної опції
     const selectedOption = videoSelect.options[videoSelect.selectedIndex];
     const azureLink = selectedOption.value;
     const filename = selectedOption.textContent;
+    let localPath = selectedOption.dataset.localPath || '';
 
-    try {
-        new URL(azureLink);
-    } catch (e) {
-        console.error("Некоректний URL:", azureLink, e);
-        alert(`Некоректний URL відео: ${azureLink}`);
-        return;
+    // Перевіряємо правильність шляху до відео
+    console.log(`Вибрано відео: azureLink=${azureLink}, localPath=${localPath}`);
+
+    // Якщо шлях починається з source_videos, виправляємо його
+    if (localPath.startsWith('source_videos/')) {
+        const filename = localPath.split('/').pop();
+        localPath = `/videos/${filename}`;
+        console.log(`Виправлено шлях: ${localPath}`);
     }
 
     // Показуємо редактор і завантажуємо відео
@@ -126,21 +138,25 @@ loadVideoBtn.addEventListener('click', function() {
     videoEditor.classList.remove('hidden');
 
     // Встановлюємо відео
-    videoPlayer.src = azureLink;
+    videoPlayer.src = localPath || azureLink;
+    console.log(`Встановлено відео: ${videoPlayer.src}`);
     videoPlayer.load();
 
     // Відображаємо назву файлу
     videoFilenameSpan.textContent = filename;
 
-    // Очищаємо попередні дані
+    // Зберігаємо azure_link для наступних операцій
     currentAzureLink = azureLink;
     videoFileName = filename;
+
+    // Очищаємо попередні дані
     projectFragments = {
         'motion-det': [],
         'tracking': [],
         'mil-hardware': [],
         're-id': []
     };
+
     unfinishedFragments = {
         'motion-det': null,
         'tracking': null,

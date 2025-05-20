@@ -1,112 +1,35 @@
 // DOM елементи
-const dropArea = document.getElementById('drop-area');
-const fileInput = document.getElementById('file-input');
 const videoUrlInput = document.getElementById('video-url');
 const metadataWhereInput = document.getElementById('metadata-where');
 const metadataWhenInput = document.getElementById('metadata-when');
 const uploadBtn = document.getElementById('upload-btn');
 const resultDiv = document.getElementById('result');
 
-// Змінна для зберігання файлу
-let selectedFile = null;
-
-// Налаштування drag-and-drop
-['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
-    dropArea.addEventListener(eventName, preventDefaults, false);
-});
-
-function preventDefaults(e) {
-    e.preventDefault();
-    e.stopPropagation();
-}
-
-['dragenter', 'dragover'].forEach(eventName => {
-    dropArea.addEventListener(eventName, highlight, false);
-});
-
-['dragleave', 'drop'].forEach(eventName => {
-    dropArea.addEventListener(eventName, unhighlight, false);
-});
-
-function highlight() {
-    dropArea.classList.add('highlight');
-}
-
-function unhighlight() {
-    dropArea.classList.remove('highlight');
-}
-
 // Обробники подій
-dropArea.addEventListener('drop', handleDrop, false);
-dropArea.addEventListener('click', () => fileInput.click());
-fileInput.addEventListener('change', handleFileSelect);
 uploadBtn.addEventListener('click', handleUpload);
-
-// Після вибору файлу через drag-and-drop
-function handleDrop(e) {
-    const dt = e.dataTransfer;
-    const files = dt.files;
-
-    if (files.length === 1 && files[0].type.startsWith('video/')) {
-        selectedFile = files[0];
-        dropArea.innerHTML = `<p>Вибрано: ${selectedFile.name}</p>`;
-        videoUrlInput.value = '';  // Очищаємо URL поле
-    }
-}
-
-// Після вибору файлу через input
-function handleFileSelect(e) {
-    const file = e.target.files[0];
-    if (file && file.type.startsWith('video/')) {
-        selectedFile = file;
-        dropArea.innerHTML = `<p>Вибрано: ${selectedFile.name}</p>`;
-        videoUrlInput.value = '';  // Очищаємо URL поле
-    }
-}
 
 // Обробка натискання кнопки "Завантажити"
 function handleUpload() {
     // Отримуємо метадані
+    const url = videoUrlInput.value.trim();
     const where = metadataWhereInput.value;
     const when = metadataWhenInput.value;
 
-    // Перевіряємо, який метод завантаження вибрано
-    if (selectedFile) {
-        // Завантаження через файл
-        const formData = new FormData();
-        formData.append('video', selectedFile);
-        formData.append('where', where || null);
-        formData.append('when', when || null);
-
-        uploadFile(formData);
-    } else if (videoUrlInput.value.trim()) {
-        // Завантаження через Azure URL
-        uploadByUrl(videoUrlInput.value.trim(), where, when);
-    } else {
-        // Немає ні файлу, ні URL
-        showError('Будь ласка, виберіть файл або вкажіть URL для завантаження');
+    if (!url) {
+        showError('Будь ласка, вкажіть URL для завантаження');
+        return;
     }
-}
 
-// Завантаження через файл
-function uploadFile(formData) {
-    fetch('/upload', {
-        method: 'POST',
-        body: formData
-    })
-    .then(response => response.json())
-    .then(data => {
-        handleUploadResponse(data);
-        resetForm();
-    })
-    .catch(error => {
-        showError('Помилка завантаження файлу');
-        console.error('Error:', error);
-    });
-}
+    // Показуємо індикатор завантаження
+    resultDiv.innerHTML = `
+        <div class="info-message">
+            <h3>Завантаження...</h3>
+            <p>Будь ласка, зачекайте. Відео завантажується з URL: ${url}</p>
+        </div>
+    `;
+    resultDiv.classList.remove('hidden');
 
-// Завантаження через URL
-function uploadByUrl(url, where, when) {
+    // Завантаження через URL
     fetch('/upload', {
         method: 'POST',
         headers: {
@@ -118,14 +41,20 @@ function uploadByUrl(url, where, when) {
             when: when || null
         }),
     })
-    .then(response => response.json())
+    .then(response => {
+        if (!response.ok) {
+            throw new Error(`HTTP помилка! Статус: ${response.status}`);
+        }
+        return response.json();
+    })
     .then(data => {
+        console.log("Отримана відповідь:", data);
         handleUploadResponse(data);
         resetForm();
     })
     .catch(error => {
-        showError('Помилка завантаження з URL');
-        console.error('Error:', error);
+        console.error('Помилка:', error);
+        showError(`Помилка завантаження: ${error.message}`);
     });
 }
 
@@ -134,8 +63,9 @@ function handleUploadResponse(data) {
     if (data.success) {
         showResult({
             success: true,
-            message: `Відео ${data.source || data.filename || ""} успішно завантажено`,
-            source: data.source
+            message: `Відео ${data.filename || data.azure_link} успішно завантажено`,
+            source: data.local_url || data.azure_link,
+            id: data.id
         });
     } else {
         showError(`Помилка: ${data.error || data.message || 'Невідома помилка'}`);
@@ -144,9 +74,8 @@ function handleUploadResponse(data) {
 
 // Скидання форми після завантаження
 function resetForm() {
-    selectedFile = null;
-    dropArea.innerHTML = '<p>Перетягніть відео сюди або натисніть для вибору файлу</p>';
-    videoUrlInput.value = '';
+    // Залишаємо URL для зручності повторного завантаження
+    // videoUrlInput.value = '';
     metadataWhereInput.value = '';
     metadataWhenInput.value = '';
 }
@@ -158,7 +87,8 @@ function showResult(data) {
             <div class="success-message">
                 <h3>Успішно!</h3>
                 <p>${data.message}</p>
-                ${data.source ? `<p>Назва відео: ${data.source}</p>` : ''}
+                <p>Джерело: ${data.source}</p>
+                <p><a href="/annotator" class="btn btn-primary">Перейти до анотації</a></p>
             </div>
         `;
     } else {
@@ -177,3 +107,16 @@ function showError(message) {
     `;
     resultDiv.classList.remove('hidden');
 }
+
+// Додаємо CSS для повідомлення про завантаження
+document.head.insertAdjacentHTML('beforeend', `
+<style>
+.info-message {
+    background-color: rgba(52, 152, 219, 0.2);
+    border-left: 4px solid #3498db;
+    padding: 15px;
+    border-radius: 4px;
+    margin-top: 20px;
+}
+</style>
+`);

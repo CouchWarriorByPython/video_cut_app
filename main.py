@@ -16,6 +16,7 @@ from utils.azure_downloader import download_video_from_azure
 
 app = FastAPI()
 
+# Директорії для відео
 UPLOAD_FOLDER = "source_videos"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
@@ -60,96 +61,62 @@ class VideoUploadRequest(BaseModel):
 
 
 @app.post("/upload")
-async def upload(request: Request):
-    """Універсальний ендпоінт для завантаження відео"""
-    content_type = request.headers.get("content-type", "")
-
+async def upload(data: VideoUploadRequest):
+    """Реєстрація відео за URL і його завантаження"""
     try:
-        if "multipart/form-data" in content_type:
-            # Обробка завантаження файлу
-            form = await request.form()
-            video = form.get("video")
-            where = form.get("where")
-            when = form.get("when")
+        azure_link = data.video_url.strip()
 
-            if not video or not hasattr(video, "filename") or video.filename == "":
-                return JSONResponse(
-                    status_code=400,
-                    content={"success": False, "message": "Файл не вибрано"}
-                )
-
-            filename = video.filename
-            filepath = os.path.join(UPLOAD_FOLDER, filename)
-
-            base_name, extension = os.path.splitext(filename)
-            counter = 1
-            while os.path.exists(filepath):
-                filename = f"{base_name}_{counter}{extension}"
-                filepath = os.path.join(UPLOAD_FOLDER, filename)
-                counter += 1
-
-            # Зберігаємо файл
-            file_content = await video.read()
-            with open(filepath, "wb") as buffer:
-                buffer.write(file_content)
-
-            # Формуємо повний URI до файлу
-            server_url = str(request.base_url)
-            if not server_url.endswith('/'):
-                server_url += '/'
-            azure_link = f"{server_url}videos/{filename}"
-
-            # Записуємо в MongoDB
-            video_record = {
-                "azure_link": azure_link,
-                "extension": extension[1:] if extension.startswith('.') else extension,
-                "created_at": datetime.utcnow(),
-                "updated_at": datetime.utcnow(),
-                "when": when,
-                "where": where,
-                "status": "not_annotated",
-                "metadata": None,
-                "clips": {},
-                "cvat_params": {}
-            }
-
-        elif "application/json" in content_type:
-            # Обробка завантаження по URL
-            data = await request.json()
-            azure_link = data.get("video_url")
-            where = data.get("where")
-            when = data.get("when")
-
-            if not azure_link:
-                return JSONResponse(
-                    status_code=400,
-                    content={"success": False, "message": "URL відео не вказано"}
-                )
-
-            # Визначаємо розширення з URL
-            extension = os.path.splitext(azure_link)[1]
-            if not extension:
-                extension = ".mp4"  # За замовчуванням
-
-            # Записуємо в MongoDB
-            video_record = {
-                "azure_link": azure_link,
-                "extension": extension[1:] if extension.startswith('.') else extension,
-                "created_at": datetime.utcnow(),
-                "updated_at": datetime.utcnow(),
-                "when": when,
-                "where": where,
-                "status": "not_annotated",
-                "metadata": None,
-                "clips": {},
-                "cvat_params": {}
-            }
-
-        else:
+        if not azure_link:
             return JSONResponse(
                 status_code=400,
-                content={"success": False, "message": "Непідтримуваний Content-Type"}
+                content={"success": False, "message": "URL відео не вказано"}
             )
+
+        print(f"Запит на завантаження відео: {azure_link}")
+
+        # Перевіряємо чи URL дійсний
+        try:
+            from urllib.parse import urlparse
+            parsed_url = urlparse(azure_link)
+            if not parsed_url.scheme or not parsed_url.netloc:
+                return JSONResponse(
+                    status_code=400,
+                    content={"success": False, "message": f"Недійсний URL: {azure_link}"}
+                )
+        except Exception as e:
+            return JSONResponse(
+                status_code=400,
+                content={"success": False, "message": f"Помилка при парсингу URL: {str(e)}"}
+            )
+
+        # Завантажуємо відео з URL
+        download_result = download_video_from_azure(azure_link, UPLOAD_FOLDER)
+
+        if not download_result["success"]:
+            return JSONResponse(
+                status_code=500,
+                content={"success": False, "message": f"Помилка завантаження відео: {download_result['error']}"}
+            )
+
+        # Отримуємо локальний шлях для доступу до відео
+        local_path = download_result["local_path"]
+        filename = download_result["filename"]
+        extension = download_result["extension"]
+
+        # Формуємо локальний URL для доступу до відео
+        local_path = f"/videos/{filename}"
+
+        # Записуємо в MongoDB
+        video_record = {
+            "azure_link": azure_link,
+            "local_path": local_path,
+            "extension": extension,
+            "created_at": datetime.now(),
+            "updated_at": datetime.now(),
+            "when": data.when,
+            "where": data.where,
+            "status": "not_annotated"
+        }
 
         # Зберігаємо запис у MongoDB
         repo = create_repository(collection_name="анотації_соурс_відео")
@@ -161,17 +128,97 @@ async def upload(request: Request):
                 "success": True,
                 "id": record_id,
                 "azure_link": azure_link,
+                "local_url": local_url,
+                "filename": filename,
                 "message": "Відео успішно завантажено та додано до бази даних"
             }
         )
 
     except Exception as e:
         import traceback
+        print(f"Помилка при обробці запиту: {str(e)}")
         print(traceback.format_exc())
         return JSONResponse(
             status_code=500,
             content={"success": False, "message": f"Помилка при обробці запиту: {str(e)}"}
         )
+    finally:
+        if 'repo' in locals():
+            repo.close()
+
+
+@app.get("/get_videos")
+async def get_videos():
+    """Отримання списку всіх відео для анотування"""
+    try:
+        repo = create_repository(collection_name="анотації_соурс_відео")
+        videos = repo.get_all_annotations()
+
+        print(f"Знайдено {len(videos)} відео в базі даних")
+
+        video_list = []
+        for video in videos:
+            # Логуємо кожен запис для відстеження
+            video_id = str(video.get("_id"))
+            azure_link = video.get("azure_link")
+            local_path = video.get("local_path", video.get("local_url", ""))
+
+            print(f"Обробка відео #{video_id}: {azure_link}, local_path={local_path}")
+
+            video_list.append({
+                "id": video_id,
+                "azure_link": azure_link,
+                "local_path": local_path,
+                "extension": video.get("extension", "mp4"),
+                "created_at": video.get("created_at", datetime.utcnow()).isoformat(),
+                "where": video.get("where"),
+                "when": video.get("when"),
+                "status": video.get("status", "not_annotated")
+            })
+
+        return {
+            "success": True,
+            "videos": video_list
+        }
+    except Exception as e:
+        print(f"Помилка при отриманні списку відео: {str(e)}")
+        import traceback
+        print(traceback.format_exc())
+        return {
+            "success": False,
+            "error": str(e)
+        }
+    finally:
+        if 'repo' in locals():
+            repo.close()
+
+@app.get("/get_annotation")
+async def get_annotation(azure_link: str):
+    """Отримання існуючої анотації для відео"""
+    try:
+        repo = create_repository(collection_name="анотації_соурс_відео")
+        annotation = repo.get_annotation(azure_link)
+
+        if annotation:
+            # Конвертуємо документ MongoDB у JSON
+            # Оскільки деякі типи MongoDB (ObjectId, datetime) не серіалізуються напряму
+            from bson import json_util
+            annotation_json = json.loads(json_util.dumps(annotation))
+
+            return {
+                "success": True,
+                "annotation": annotation_json
+            }
+        else:
+            return {
+                "success": False,
+                "message": f"Анотацію для відео '{azure_link}' не знайдено"
+            }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e)
+        }
     finally:
         if 'repo' in locals():
             repo.close()
@@ -231,44 +278,8 @@ async def save_fragments(data: Dict[str, Any]):
             repo.close()
 
 
-@app.get("/get_videos")
-async def get_videos():
-    try:
-        repo = create_repository(collection_name="анотації_соурс_відео")
-        videos = repo.get_all_annotations()
-
-        print(f"Знайдено {len(videos)} відео")
-
-        video_list = []
-        for video in videos:
-            video_data = {
-                "id": str(video.get("_id")),
-                "azure_link": video.get("azure_link"),
-                "extension": video.get("extension", "mp4"),
-                "created_at": video.get("created_at", datetime.utcnow()).isoformat(),
-                "updated_at": video.get("updated_at", datetime.utcnow()).isoformat(),
-                "where": video.get("where"),
-                "when": video.get("when"),
-                "status": video.get("status", "not_annotated")
-            }
-            video_list.append(video_data)
-            print(f"Додано відео: {video_data['azure_link']}")
-
-        return {
-            "success": True,
-            "videos": video_list
-        }
-    except Exception as e:
-        print(f"Помилка при отриманні відео: {str(e)}")
-        return {
-            "success": False,
-            "error": str(e)
-        }
-    finally:
-        if 'repo' in locals():
-            repo.close()
-
 if __name__ == "__main__":
     import uvicorn
 
+    print(f"Папка для відео: {os.path.abspath(UPLOAD_FOLDER)}")
     uvicorn.run("main:app", host="localhost", port=8000, reload=True)

@@ -10,34 +10,37 @@
     <div class="container">
         <h1>Завантаження відео</h1>
 
-        <div id="drop-area" class="drop-area">
-            <p>Перетягніть відео сюди або натисніть для вибору файлу</p>
-            <input type="file" id="file-input" accept="video/*" class="hidden">
-        </div>
+        <div class="upload-container">
+            <!-- Зона для drag-and-drop -->
+            <div id="drop-area" class="drop-area">
+                <p>Перетягніть відео сюди або натисніть для вибору файлу</p>
+                <input type="file" id="file-input" accept="video/*" class="hidden">
+            </div>
 
-        <div class="upload-form">
-            <h2>Або завантажте з Azure</h2>
-            <form id="video-upload-form" method="POST" action="/upload_from_azure">
-                <div class="form-group">
-                    <label for="video-url">Посилання на відео (Azure):</label>
-                    <input type="text" id="video-url" name="video_url" class="form-control" required>
-                </div>
+            <p class="text-center">АБО</p>
 
-                <div class="form-group">
-                    <label for="where">Локація (опційно):</label>
-                    <input type="text" id="where" name="where" class="form-control"
-                           pattern="[A-Za-z\s\-_]+" title="Тільки англійські літери">
-                </div>
+            <!-- Поле для Azure URL -->
+            <div class="form-group">
+                <label for="video-url">Посилання на відео (Azure):</label>
+                <input type="text" id="video-url" class="form-control">
+            </div>
 
-                <div class="form-group">
-                    <label for="when">Дата зйомки (опційно):</label>
-                    <input type="text" id="when" name="when" class="form-control"
-                           pattern="[0-9]{8}" title="Формат: РРРРММДД (наприклад, 20250508)"
-                           placeholder="РРРРММДД">
-                </div>
+            <!-- Єдині поля для метаданих -->
+            <div class="form-group">
+                <label for="metadata-where">Локація (опційно):</label>
+                <input type="text" id="metadata-where" class="form-control"
+                       pattern="[A-Za-z\s\-_]+" title="Тільки англійські літери">
+            </div>
 
-                <button type="submit" class="btn">Завантажити відео</button>
-            </form>
+            <div class="form-group">
+                <label for="metadata-when">Дата зйомки (опційно):</label>
+                <input type="text" id="metadata-when" class="form-control"
+                       pattern="[0-9]{8}" title="Формат: РРРРММДД (наприклад, 20250508)"
+                       placeholder="РРРРММДД">
+            </div>
+
+            <!-- Єдина кнопка завантаження -->
+            <button id="upload-btn" class="btn full-width">Завантажити відео</button>
         </div>
 
         <div id="result" class="hidden"></div>

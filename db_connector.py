@@ -41,8 +41,8 @@ class VideoAnnotation(BaseModel):
     """Повна модель анотації відео"""
     azure_link: str
     extension: str
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=datetime.now)
+    updated_at: datetime = Field(default_factory=datetime.now)
     when: Optional[str] = None
     where: Optional[str] = None
     status: str = "not_annotated"

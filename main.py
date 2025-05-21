@@ -9,9 +9,9 @@ from pydantic import BaseModel
 from bson import json_util
 from datetime import datetime
 
-from tasks import process_video_annotation
+from tasks import process_video_annotation, monitor_clip_tasks
 from db_connector import create_repository
-from utils.cvat_cli import get_cvat_task_parameters
+from utils.celery_utils import get_cvat_task_parameters
 from utils.azure_downloader import download_video_from_azure
 
 app = FastAPI()
@@ -227,6 +227,40 @@ async def save_fragments(data: Dict[str, Any]):
     finally:
         if repo:
             repo.close()
+
+
+@app.get("/clip_processing_status/{task_id}")
+async def clip_processing_status(task_id: str):
+    """Перевіряє статус обробки кліпів"""
+    try:
+        # Отримуємо статус задачі
+        task = process_video_annotation.AsyncResult(task_id)
+
+        if task.ready():
+            result = task.result
+
+            # Якщо задача успішно завершена і є task_ids, перевіряємо статус підзадач
+            if task.successful() and isinstance(result, dict) and "task_ids" in result:
+                status_task = monitor_clip_tasks.delay(result["task_ids"])
+                status_result = status_task.get(timeout=5)  # Чекаємо не більше 5 секунд
+
+                return json_response({
+                    "success": True,
+                    "main_task_status": task.status,
+                    "main_task_result": result,
+                    "clips_status": status_result
+                })
+
+        return json_response({
+            "success": True,
+            "status": task.status,
+            "result": task.result if task.ready() else None
+        })
+    except Exception as e:
+        return json_response({
+            "success": False,
+            "error": str(e)
+        })
 
 
 if __name__ == "__main__":

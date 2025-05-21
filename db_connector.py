@@ -65,7 +65,8 @@ class AnnotationBase:
 
         annotation["updated_at"] = datetime.utcnow()
 
-        if "azure_link" not in annotation:
+        # Змінюємо логіку перевірки - для колекції video_clips не вимагаємо azure_link
+        if self.collection_name != "video_clips" and "azure_link" not in annotation:
             raise ValueError("Анотація повинна містити поле 'azure_link'")
 
         return annotation

@@ -202,7 +202,10 @@ def process_video_clip(
     try:
         # Створюємо тимчасову директорію для роботи з файлами
         with tempfile.TemporaryDirectory() as temp_dir:
-            # Формуємо ім'я файлу
+            # Отримуємо базову назву вихідного відео (без розширення)
+            video_base_name = os.path.splitext(video_filename)[0]
+
+            # Формуємо ім'я файлу на основі метаданих
             filename_base = format_filename(
                 metadata=metadata,
                 original_filename=video_filename,
@@ -228,15 +231,39 @@ def process_video_clip(
                     "message": f"Не вдалося створити кліп: {clip_path}"
                 }
 
+            # Визначаємо шлях для збереження локальних кліпів без сортування за проєктами
+            local_clips_folder = os.path.join("clips", video_base_name)
+            os.makedirs(local_clips_folder, exist_ok=True)
+
+            # Зберігаємо локальну копію кліпу
+            local_clip_path = os.path.join(local_clips_folder, filename)
+            try:
+                import shutil
+                shutil.copy2(clip_path, local_clip_path)
+                logger.info(f"Кліп збережено локально: {local_clip_path}")
+            except Exception as e:
+                logger.warning(f"Не вдалося зберегти локальну копію кліпу: {str(e)}")
+
             # Формуємо шлях в Azure
-            current_date = datetime.now().strftime("%Y%m%d")
-            azure_path = f"{AZURE_OUTPUT_PREFIX}/{project}/{current_date}/{filename}"
+            azure_link = f"{AZURE_OUTPUT_PREFIX}/{video_base_name}/{filename}"
+
+            # Виводимо параметри CVAT-завдання для дебагу
+            print(f"CVAT параметри для {filename_base}:")
+            print(f"  - Project: {project}")
+            print(f"  - Project ID: {cvat_params.get('project_id')}")
+            print(f"  - Overlap: {cvat_params.get('overlap')}")
+            print(f"  - Segment Size: {cvat_params.get('segment_size')}")
+            print(f"  - Image Quality: {cvat_params.get('image_quality')}")
+            print(f"  - Timecodes: {start_time} - {end_time}")
+            print(f"  - Source Video: {video_filename}")
+            print(f"  - UAV Type: {metadata.get('uav_type', 'unknown')}")
+            print(f"  - Video Content: {metadata.get('video_content', 'unknown')}")
 
             # Завантажуємо на Azure
             upload_result = upload_clip_to_azure(
                 container_client=self.container_client,
                 file_path=clip_path,
-                azure_path=azure_path,
+                azure_path=azure_link,
                 metadata={
                     "project": project,
                     "source_id": source_id,
@@ -268,8 +295,9 @@ def process_video_clip(
                 "cvat_task_id": cvat_task_id,
                 "processing_date": datetime.now(),
                 "status": "not_annotated",
-                "azure_path": f"{AZURE_OUTPUT_PREFIX}/{project}/{current_date}/",
-                "fps": 60  # Заглушка
+                "azure_link": azure_link,
+                "local_path": local_clip_path,
+                "fps": 60
             }
 
             # Зберігаємо в базу даних
@@ -282,7 +310,8 @@ def process_video_clip(
                 "message": "Кліп успішно оброблено",
                 "clip_id": clip_id_db,
                 "cvat_task_id": cvat_task_id,
-                "azure_path": azure_path
+                "azure_link": azure_link,
+                "local_path": local_clip_path
             }
 
     except Exception as e:

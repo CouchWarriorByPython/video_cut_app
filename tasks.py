@@ -276,7 +276,6 @@ def process_video_clip(
                 "filename": filename_base,
                 "extension": ".mp4",
                 "cvat_task_id": cvat_task_id,
-                "processing_date": datetime.now(),
                 "status": "not_annotated",
                 "azure_link": azure_link,
                 "local_path": local_clip_path,

@@ -274,7 +274,7 @@ def process_video_clip(
                 "clip_id": global_clip_id,
                 "project_clip_id": project_clip_id,
                 "filename": filename_base,
-                "extension": ".mp4",
+                "extension": "mp4",
                 "cvat_task_id": cvat_task_id,
                 "status": "not_annotated",
                 "azure_link": azure_link,

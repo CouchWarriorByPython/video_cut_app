@@ -3,6 +3,7 @@ from pymongo import MongoClient
 from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, Field
 from datetime import datetime
+from bson import ObjectId
 
 from configs import Settings
 from utils.logger import get_logger
@@ -39,18 +40,33 @@ class CVATProjectParams(BaseModel):
     image_quality: int
 
 
-class VideoAnnotation(BaseModel):
-    """Повна модель анотації відео"""
+class SourceVideoAnnotation(BaseModel):
+    """Модель анотації соурс відео"""
     azure_link: str
+    local_path: str
     extension: str
-    created_at: datetime = Field(default_factory=datetime.now)
-    updated_at: datetime = Field(default_factory=datetime.now)
+    created_at: str = Field(default_factory=lambda: datetime.now().isoformat(sep=" ", timespec="seconds"))
+    updated_at: str = Field(default_factory=lambda: datetime.now().isoformat(sep=" ", timespec="seconds"))
     when: Optional[str] = None
     where: Optional[str] = None
     status: str = "not_annotated"
     metadata: Optional[VideoMetadata] = None
     clips: Dict[str, List[ClipInfo]] = Field(default_factory=dict)
     cvat_params: Dict[str, CVATProjectParams] = Field(default_factory=dict)
+
+
+class VideoClipRecord(BaseModel):
+    """Модель запису відео кліпу"""
+    source_id: str
+    project: str
+    clip_id: int
+    extension: str = "mp4"
+    cvat_task_id: Optional[str] = None
+    status: str = "not_annotated"
+    azure_link: str
+    fps: int = 60
+    created_at: str = Field(default_factory=lambda: datetime.now().isoformat(sep=" ", timespec="seconds"))
+    updated_at: str = Field(default_factory=lambda: datetime.now().isoformat(sep=" ", timespec="seconds"))
 
 
 class AnnotationBase:
@@ -66,10 +82,18 @@ class AnnotationBase:
         if isinstance(annotation, BaseModel):
             annotation = annotation.model_dump()
 
+        # Завжди оновлюємо updated_at
         annotation["updated_at"] = datetime.now().isoformat(sep=" ", timespec="seconds")
 
-        if self.collection_name != "video_clips" and "azure_link" not in annotation:
-            raise ValueError("Анотація повинна містити поле 'azure_link'")
+        # Перевіряємо обов'язкові поля залежно від колекції
+        if self.collection_name == "source_videos" and "azure_link" not in annotation:
+            raise ValueError("Анотація соурс відео повинна містити поле 'azure_link'")
+
+        if self.collection_name == "video_clips":
+            required_fields = ["source_id", "project", "clip_id", "azure_link"]
+            for field in required_fields:
+                if field not in annotation:
+                    raise ValueError(f"Анотація кліпу повинна містити поле '{field}'")
 
         return annotation
 
@@ -79,13 +103,14 @@ class AnnotationBase:
         if not doc:
             return None
 
+        # Зберігаємо _id як окреме поле для використання
         if "_id" in doc:
-            doc["id"] = str(doc["_id"])
-            del doc["_id"]
+            doc["_id"] = str(doc["_id"])
 
-        for field in ["created_at", "updated_at"]:
-            if field in doc and isinstance(doc[field], datetime):
-                doc[field] = doc[field].isoformat()
+        # Конвертуємо ObjectId поля в строки
+        for key, value in doc.items():
+            if isinstance(value, ObjectId):
+                doc[key] = str(value)
 
         return doc
 
@@ -97,9 +122,9 @@ class AnnotationBase:
 class SyncVideoAnnotationRepository(AnnotationBase):
     """Синхронний репозиторій для збереження відеоанотацій в MongoDB"""
 
-    def __init__(self, collection_name: str = None):
+    def __init__(self, collection_name: str):
         """Ініціалізує репозиторій з вказаною колекцією"""
-        super().__init__(collection_name or "анотації")
+        super().__init__(collection_name)
         try:
             self.client = MongoClient(Settings.mongo_uri)
             self.db = self.client[Settings.mongo_db_name]
@@ -110,81 +135,133 @@ class SyncVideoAnnotationRepository(AnnotationBase):
             raise
 
     def create_indexes(self) -> None:
-        """Створює унікальний індекс для azure_link"""
+        """Створює необхідні індекси"""
         try:
-            if self.collection_name != "video_clips":
+            if self.collection_name == "source_videos":
                 self.collection.create_index("azure_link", unique=True)
-                logger.info(f"Створено індекс для колекції {self.collection_name}")
+                logger.info("Створено унікальний індекс azure_link для source_videos")
+
+            elif self.collection_name == "video_clips":
+                # Композитний унікальний індекс для унікальності кліпів
+                self.collection.create_index([
+                    ("source_id", 1),
+                    ("project", 1),
+                    ("clip_id", 1)
+                ], unique=True)
+                logger.info("Створено композитний унікальний індекс для video_clips")
+
         except Exception as e:
             logger.error(f"Помилка створення індексу: {str(e)}")
 
-    def save_annotation(self, annotation: Union[Dict, VideoAnnotation]) -> str:
+    def save_annotation(self, annotation: Union[Dict, BaseModel]) -> str:
         """Зберігає або оновлює анотацію"""
         try:
             data = self._prepare_annotation(annotation)
 
-            if self.collection_name == "video_clips":
+            # Видаляємо _id з даних для оновлення (MongoDB не дозволяє змінювати _id)
+            data_without_id = {k: v for k, v in data.items() if k != "_id"}
+
+            if self.collection_name == "source_videos":
                 azure_link = data.get("azure_link")
                 existing = self.collection.find_one({"azure_link": azure_link})
 
                 if existing:
-                    self.collection.replace_one({"_id": existing["_id"]}, data)
-                    logger.info(f"Оновлено існуючий кліп: {azure_link}")
+                    # Зберігаємо оригінальну дату створення
+                    data_without_id["created_at"] = existing.get("created_at", data.get("created_at"))
+                    self.collection.replace_one({"_id": existing["_id"]}, data_without_id)
+                    logger.info(f"Оновлено соурс відео: {azure_link}")
                     return str(existing["_id"])
                 else:
-                    data["created_at"] = datetime.now().isoformat(sep=" ", timespec="seconds")
-                    result = self.collection.insert_one(data)
-                    logger.info(f"Збережено новий кліп з ID: {result.inserted_id}")
+                    result = self.collection.insert_one(data_without_id)
+                    logger.info(f"Створено нове соурс відео: {azure_link}")
                     return str(result.inserted_id)
-            else:
-                azure_link = data.get("azure_link")
-                existing = self.collection.find_one({"azure_link": azure_link})
+
+            elif self.collection_name == "video_clips":
+                source_id = data.get("source_id")
+                project = data.get("project")
+                clip_id = data.get("clip_id")
+
+                # Конвертуємо source_id в ObjectId для пошуку
+                source_id_obj = ObjectId(source_id) if isinstance(source_id, str) else source_id
+                data_without_id["source_id"] = source_id_obj
+
+                existing = self.collection.find_one({
+                    "source_id": source_id_obj,
+                    "project": project,
+                    "clip_id": clip_id
+                })
 
                 if existing:
-                    self.collection.replace_one({"_id": existing["_id"]}, data)
-                    logger.info(f"Оновлено анотацію для: {azure_link}")
+                    # Зберігаємо оригінальну дату створення
+                    data_without_id["created_at"] = existing.get("created_at", data.get("created_at"))
+                    self.collection.replace_one({"_id": existing["_id"]}, data_without_id)
+                    logger.info(f"Оновлено кліп: {project} clip_id={clip_id}")
                     return str(existing["_id"])
                 else:
-                    data["created_at"] = datetime.now().isoformat(sep=" ", timespec="seconds")
-                    result = self.collection.insert_one(data)
-                    logger.info(f"Створено нову анотацію для: {azure_link}")
+                    result = self.collection.insert_one(data_without_id)
+                    logger.info(f"Створено новий кліп: {project} clip_id={clip_id}")
                     return str(result.inserted_id)
+
         except Exception as e:
             logger.error(f"Помилка збереження анотації: {str(e)}")
             raise
 
-    def get_annotation(self, azure_link: str) -> Optional[Dict]:
-        """Отримує анотацію за URL"""
+    def get_annotation(self, identifier: str) -> Optional[Dict]:
+        """Отримує анотацію за ідентифікатором"""
         try:
-            doc = self.collection.find_one({"azure_link": azure_link})
-            if doc:
-                logger.info(f"Знайдено анотацію для: {azure_link}")
+            if self.collection_name == "source_videos":
+                doc = self.collection.find_one({"azure_link": identifier})
+                if doc:
+                    logger.info(f"Знайдено соурс відео: {identifier}")
+                else:
+                    logger.warning(f"Соурс відео не знайдено: {identifier}")
             else:
-                logger.warning(f"Анотацію не знайдено для: {azure_link}")
+                # Для кліпів використовуємо ObjectId
+                doc = self.collection.find_one({"_id": ObjectId(identifier)})
+                if doc:
+                    logger.info(f"Знайдено кліп: {identifier}")
+                else:
+                    logger.warning(f"Кліп не знайдено: {identifier}")
+
             return self._normalize_document(doc)
         except Exception as e:
             logger.error(f"Помилка отримання анотації: {str(e)}")
+            raise
+
+    def get_clips_by_source_id(self, source_id: str) -> List[Dict]:
+        """Отримує всі кліпи для вказаного соурс відео"""
+        try:
+            source_id_obj = ObjectId(source_id)
+            docs = list(self.collection.find({"source_id": source_id_obj}))
+            logger.info(f"Знайдено {len(docs)} кліпів для source_id: {source_id}")
+            return self._normalize_documents(docs)
+        except Exception as e:
+            logger.error(f"Помилка отримання кліпів: {str(e)}")
             raise
 
     def get_all_annotations(self) -> List[Dict]:
         """Отримує всі анотації"""
         try:
             docs = list(self.collection.find())
-            logger.info(f"Отримано {len(docs)} анотацій з колекції {self.collection_name}")
+            logger.info(f"Отримано {len(docs)} записів з колекції {self.collection_name}")
             return self._normalize_documents(docs)
         except Exception as e:
             logger.error(f"Помилка отримання всіх анотацій: {str(e)}")
             raise
 
-    def delete_annotation(self, azure_link: str) -> bool:
-        """Видаляє анотацію за URL"""
+    def delete_annotation(self, identifier: str) -> bool:
+        """Видаляє анотацію за ідентифікатором"""
         try:
-            result = self.collection.delete_one({"azure_link": azure_link})
+            if self.collection_name == "source_videos":
+                result = self.collection.delete_one({"azure_link": identifier})
+            else:
+                result = self.collection.delete_one({"_id": ObjectId(identifier)})
+
             success = result.deleted_count > 0
             if success:
-                logger.info(f"Видалено анотацію для: {azure_link}")
+                logger.info(f"Видалено запис: {identifier}")
             else:
-                logger.warning(f"Анотацію для видалення не знайдено: {azure_link}")
+                logger.warning(f"Запис для видалення не знайдено: {identifier}")
             return success
         except Exception as e:
             logger.error(f"Помилка видалення анотації: {str(e)}")
@@ -209,67 +286,103 @@ class AsyncVideoAnnotationRepository(AnnotationBase):
             self.client = AsyncIOMotorClient(Settings.mongo_uri)
             self.db = self.client[Settings.mongo_db_name]
             self.collection = self.db[self.collection_name]
-            logger.info(
-                f"Ініціалізовано асинхронне підключення до MongoDB: {Settings.mongo_db_name}.{self.collection_name}")
+            logger.info(f"Ініціалізовано асинхронне підключення: {Settings.mongo_db_name}.{self.collection_name}")
         except Exception as e:
             logger.error(f"Помилка ініціалізації асинхронного підключення: {str(e)}")
             raise
 
     async def create_indexes(self) -> None:
-        """Створює унікальний індекс для azure_link"""
+        """Створює необхідні індекси"""
         try:
-            if self.collection_name != "video_clips":
+            if self.collection_name == "source_videos":
                 await self.collection.create_index("azure_link", unique=True)
-                logger.info(f"Створено асинхронний індекс для колекції {self.collection_name}")
+                logger.info("Створено асинхронний унікальний індекс azure_link для source_videos")
+
+            elif self.collection_name == "video_clips":
+                await self.collection.create_index([
+                    ("source_id", 1),
+                    ("project", 1),
+                    ("clip_id", 1)
+                ], unique=True)
+                logger.info("Створено асинхронний композитний унікальний індекс для video_clips")
+
         except Exception as e:
             logger.error(f"Помилка створення асинхронного індексу: {str(e)}")
 
-    async def save_annotation(self, annotation: Union[Dict, VideoAnnotation]) -> str:
+    async def save_annotation(self, annotation: Union[Dict, BaseModel]) -> str:
         """Зберігає або оновлює анотацію"""
         try:
             data = self._prepare_annotation(annotation)
 
-            if self.collection_name == "video_clips":
+            # Видаляємо _id з даних для оновлення (MongoDB не дозволяє змінювати _id)
+            data_without_id = {k: v for k, v in data.items() if k != "_id"}
+
+            if self.collection_name == "source_videos":
                 azure_link = data.get("azure_link")
                 existing = await self.collection.find_one({"azure_link": azure_link})
 
                 if existing:
-                    await self.collection.replace_one({"_id": existing["_id"]}, data)
-                    logger.info(f"Асинхронно оновлено існуючий кліп: {azure_link}")
+                    data_without_id["created_at"] = existing.get("created_at", data.get("created_at"))
+                    await self.collection.replace_one({"_id": existing["_id"]}, data_without_id)
+                    logger.info(f"Асинхронно оновлено соурс відео: {azure_link}")
                     return str(existing["_id"])
                 else:
-                    data["created_at"] = datetime.now().isoformat(sep=" ", timespec="seconds")
-                    result = await self.collection.insert_one(data)
-                    logger.info(f"Асинхронно збережено новий кліп з ID: {result.inserted_id}")
+                    result = await self.collection.insert_one(data_without_id)
+                    logger.info(f"Асинхронно створено нове соурс відео: {azure_link}")
                     return str(result.inserted_id)
-            else:
-                azure_link = data.get("azure_link")
-                existing = await self.collection.find_one({"azure_link": azure_link})
+
+            elif self.collection_name == "video_clips":
+                source_id = data.get("source_id")
+                project = data.get("project")
+                clip_id = data.get("clip_id")
+
+                # Конвертуємо source_id в ObjectId для пошуку
+                source_id_obj = ObjectId(source_id) if isinstance(source_id, str) else source_id
+                data_without_id["source_id"] = source_id_obj
+
+                existing = await self.collection.find_one({
+                    "source_id": source_id_obj,
+                    "project": project,
+                    "clip_id": clip_id
+                })
 
                 if existing:
-                    await self.collection.replace_one({"_id": existing["_id"]}, data)
-                    logger.info(f"Асинхронно оновлено анотацію для: {azure_link}")
+                    data_without_id["created_at"] = existing.get("created_at", data.get("created_at"))
+                    await self.collection.replace_one({"_id": existing["_id"]}, data_without_id)
+                    logger.info(f"Асинхронно оновлено кліп: {project} clip_id={clip_id}")
                     return str(existing["_id"])
                 else:
-                    data["created_at"] = datetime.now().isoformat(sep=" ", timespec="seconds")
-                    result = await self.collection.insert_one(data)
-                    logger.info(f"Асинхронно створено нову анотацію для: {azure_link}")
+                    result = await self.collection.insert_one(data_without_id)
+                    logger.info(f"Асинхронно створено новий кліп: {project} clip_id={clip_id}")
                     return str(result.inserted_id)
+
         except Exception as e:
             logger.error(f"Помилка асинхронного збереження анотації: {str(e)}")
             raise
 
-    async def get_annotation(self, azure_link: str) -> Optional[Dict]:
-        """Отримує анотацію за URL"""
+    async def get_annotation(self, identifier: str) -> Optional[Dict]:
+        """Отримує анотацію за ідентифікатором"""
         try:
-            doc = await self.collection.find_one({"azure_link": azure_link})
-            if doc:
-                logger.info(f"Асинхронно знайдено анотацію для: {azure_link}")
+            if self.collection_name == "source_videos":
+                doc = await self.collection.find_one({"azure_link": identifier})
             else:
-                logger.warning(f"Асинхронно не знайдено анотацію для: {azure_link}")
+                doc = await self.collection.find_one({"_id": ObjectId(identifier)})
+
             return self._normalize_document(doc)
         except Exception as e:
             logger.error(f"Помилка асинхронного отримання анотації: {str(e)}")
+            raise
+
+    async def get_clips_by_source_id(self, source_id: str) -> List[Dict]:
+        """Отримує всі кліпи для вказаного соурс відео"""
+        try:
+            source_id_obj = ObjectId(source_id)
+            cursor = self.collection.find({"source_id": source_id_obj})
+            docs = await cursor.to_list(length=None)
+            logger.info(f"Асинхронно знайдено {len(docs)} кліпів для source_id: {source_id}")
+            return self._normalize_documents(docs)
+        except Exception as e:
+            logger.error(f"Помилка асинхронного отримання кліпів: {str(e)}")
             raise
 
     async def get_all_annotations(self) -> List[Dict]:
@@ -277,21 +390,25 @@ class AsyncVideoAnnotationRepository(AnnotationBase):
         try:
             cursor = self.collection.find()
             docs = await cursor.to_list(length=None)
-            logger.info(f"Асинхронно отримано {len(docs)} анотацій з колекції {self.collection_name}")
+            logger.info(f"Асинхронно отримано {len(docs)} записів з колекції {self.collection_name}")
             return self._normalize_documents(docs)
         except Exception as e:
             logger.error(f"Помилка асинхронного отримання всіх анотацій: {str(e)}")
             raise
 
-    async def delete_annotation(self, azure_link: str) -> bool:
-        """Видаляє анотацію за URL"""
+    async def delete_annotation(self, identifier: str) -> bool:
+        """Видаляє анотацію за ідентифікатором"""
         try:
-            result = await self.collection.delete_one({"azure_link": azure_link})
+            if self.collection_name == "source_videos":
+                result = await self.collection.delete_one({"azure_link": identifier})
+            else:
+                result = await self.collection.delete_one({"_id": ObjectId(identifier)})
+
             success = result.deleted_count > 0
             if success:
-                logger.info(f"Асинхронно видалено анотацію для: {azure_link}")
+                logger.info(f"Асинхронно видалено запис: {identifier}")
             else:
-                logger.warning(f"Асинхронно не знайдено анотацію для видалення: {azure_link}")
+                logger.warning(f"Асинхронно не знайдено запис для видалення: {identifier}")
             return success
         except Exception as e:
             logger.error(f"Помилка асинхронного видалення анотації: {str(e)}")

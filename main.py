@@ -97,15 +97,15 @@ async def upload(data: VideoUploadRequest) -> JSONResponse:
             "azure_link": azure_link,
             "local_path": download_result["local_path"],
             "extension": download_result["extension"],
-            "created_at": datetime.now(),
-            "updated_at": datetime.now(),
+            "created_at": datetime.now().isoformat(sep=" ", timespec="seconds"),
+            "updated_at": datetime.now().isoformat(sep=" ", timespec="seconds"),
             "when": data.when,
             "where": data.where,
             "status": "not_annotated"
         }
 
         # Зберігаємо запис у MongoDB
-        repo = create_repository(collection_name="анотації_соурс_відео")
+        repo = create_repository(collection_name="source_videos")
         repo.create_indexes()
         record_id = repo.save_annotation(video_record)
 
@@ -133,7 +133,7 @@ async def get_videos() -> JSONResponse:
     """Отримання списку всіх відео для анотування"""
     repo = None
     try:
-        repo = create_repository(collection_name="анотації_соурс_відео")
+        repo = create_repository(collection_name="source_videos")
         videos = repo.get_all_annotations()
 
         return json_response({
@@ -153,7 +153,7 @@ async def get_annotation(azure_link: str) -> JSONResponse:
     """Отримання існуючої анотації для відео"""
     repo = None
     try:
-        repo = create_repository(collection_name="анотації_соурс_відео")
+        repo = create_repository(collection_name="source_videos")
         annotation = repo.get_annotation(azure_link)
 
         if annotation:
@@ -179,7 +179,7 @@ async def set_cvat_params(data: CVATParametersRequest) -> JSONResponse:
     """Налаштування CVAT параметрів для відео"""
     repo = None
     try:
-        repo = create_repository(collection_name="анотації_соурс_відео")
+        repo = create_repository(collection_name="source_videos")
 
         existing = repo.get_annotation(data.azure_link)
         if not existing:
@@ -190,7 +190,7 @@ async def set_cvat_params(data: CVATParametersRequest) -> JSONResponse:
 
         # Оновлюємо CVAT параметри
         existing["cvat_params"] = data.cvat_params
-        existing["updated_at"] = datetime.utcnow()
+        existing["updated_at"] = datetime.now().isoformat(sep=" ", timespec="seconds")
 
         record_id = repo.save_annotation(existing)
 
@@ -215,7 +215,7 @@ async def get_cvat_params(azure_link: str) -> JSONResponse:
     """Отримання CVAT параметрів для відео"""
     repo = None
     try:
-        repo = create_repository(collection_name="анотації_соурс_відео")
+        repo = create_repository(collection_name="source_videos")
         annotation = repo.get_annotation(azure_link)
 
         if not annotation:
@@ -256,7 +256,7 @@ async def save_fragments(data: Dict[str, Any]) -> JSONResponse:
 
     repo = None
     try:
-        repo = create_repository(collection_name="анотації_соурс_відео")
+        repo = create_repository(collection_name="source_videos")
         repo.create_indexes()
 
         existing = repo.get_annotation(azure_link)
@@ -271,7 +271,7 @@ async def save_fragments(data: Dict[str, Any]) -> JSONResponse:
             "metadata": json_data.get("metadata"),
             "clips": json_data.get("clips"),
             "status": "annotated",
-            "updated_at": datetime.utcnow()
+            "updated_at": datetime.now().isoformat(sep=" ", timespec="seconds")
         })
 
         # Якщо CVAT параметри не встановлені, використовуємо дефолтні

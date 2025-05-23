@@ -107,7 +107,7 @@ def execute_cvat_command(cli_command: str) -> subprocess.CompletedProcess:
 
 
 def get_default_cvat_project_params(project_name: str) -> Dict[str, Any]:
-    """Заглушка для отримання дефолтних CVAT параметрів проєкту"""
+    """Отримання дефолтних CVAT параметрів проєкту"""
     default_projects = {
         "motion-det": {
             "project_id": 22,
@@ -144,36 +144,13 @@ def get_default_cvat_project_params(project_name: str) -> Dict[str, Any]:
 
 
 def get_cvat_task_parameters() -> Dict[str, Dict[str, Any]]:
-    """Заглушка для отримання всіх CVAT параметрів"""
+    """Отримання всіх CVAT параметрів"""
     return {
         "motion-det": get_default_cvat_project_params("motion-det"),
         "tracking": get_default_cvat_project_params("tracking"),
         "mil-hardware": get_default_cvat_project_params("mil-hardware"),
         "re-id": get_default_cvat_project_params("re-id")
     }
-
-
-def format_filename(
-        metadata: Dict[str, Any],
-        original_filename: str,
-        clip_id: int,
-        where: str = "",
-        when: str = ""
-) -> str:
-    """Форматує ім'я файлу на основі метаданих та атрибутів відео"""
-    video_base_name = os.path.splitext(os.path.basename(original_filename))[0]
-    uav_type = metadata.get("uav_type", "unknown")
-
-    filename_parts = [uav_type]
-
-    if where:
-        filename_parts.append(where)
-    if when:
-        filename_parts.append(when)
-
-    filename_parts.append(f"{video_base_name}_cut{clip_id}")
-
-    return "_".join(filename_parts)
 
 
 def trim_video_clip(

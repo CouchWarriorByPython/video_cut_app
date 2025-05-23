@@ -1,6 +1,7 @@
 import os
 import subprocess
 import logging
+import re
 from typing import Dict, Any, Optional
 from urllib.parse import urlparse
 from datetime import datetime
@@ -8,119 +9,69 @@ import requests
 
 from azure.storage.blob import BlobServiceClient, ContainerClient
 
-import config
-from config import logger
+from configs import Settings
+from utils.logger import get_logger
 
-# Azure configuration
-AZURE_STORAGE_ACCOUNT_NAME = "test_acc"
-AZURE_STORAGE_CONTAINER_NAME = "test_container"
-AZURE_OUTPUT_PREFIX = "clips"
+logger = get_logger(__name__)
 
-# Reduce Azure HTTP logging
+# Зменшуємо вербальність Azure логів
 AZURE_LOGGER = logging.getLogger("azure.core.pipeline.policies.http_logging_policy")
 AZURE_LOGGER.setLevel(logging.WARNING)
 
 
-def __get_connection_str(credentials_config: dict) -> str:
-    """
-    Azure configuration dictionary that is read from configs/general.yaml file, "azure" section.
-    """
-    url = credentials_config["url_pattern"]
-    url_variables = dict()
-    for variable in credentials_config["url_pattern_variables"]:
-        if variable["type"] == "string":
-            url_variables[variable["name"]] = variable["value"]
-        elif variable["type"] == "environment_variable_name":
-            url_variables[variable["name"]] = os.getenv(variable["value"])
-    return url.format(**url_variables)
+def get_blob_service_client() -> BlobServiceClient:
+    """Отримує BlobServiceClient на основі налаштувань"""
+    if Settings.azure_connection_string:
+        return BlobServiceClient.from_connection_string(Settings.azure_connection_string)
+    else:
+        raise ValueError("Azure connection string не налаштований")
 
 
-def get_blob_service_client(resource_name: str) -> BlobServiceClient:
-    """
-    Отримує BlobServiceClient для вказаного ресурсу Azure
-    """
-    conf = config.AZURE_CONFIG
-    client = None
-
-    for resource in conf['resources']:
-        if resource["resource_name"] == resource_name:
-            if resource["resource_type"] == 'storage_account':
-                client = BlobServiceClient.from_connection_string(
-                    conn_str=__get_connection_str(credentials_config=resource["credentials"])
-                )
-            elif resource["resource_type"] == 'blob_container_sas':
-                client = BlobServiceClient(
-                    account_url=__get_connection_str(credentials_config=resource["credentials"])
-                )
-
-    if client is None:
-        raise ValueError('No such resource_name in the config.')
-
-    return client
+def get_blob_container_client(blob_service_client: BlobServiceClient) -> ContainerClient:
+    """Отримує ContainerClient для налаштованого контейнера"""
+    return blob_service_client.get_container_client(container=Settings.azure_storage_container_name)
 
 
-def get_blob_container_client(blob_service_client: BlobServiceClient, container_name: str) -> ContainerClient:
-    """
-    Отримує ContainerClient для вказаного контейнера
-    """
-    return blob_service_client.get_container_client(container=container_name)
+def download_video_from_azure(url: str, output_dir: Optional[str] = None) -> Dict[str, Any]:
+    """Завантаження відео з URL"""
+    if output_dir is None:
+        output_dir = Settings.upload_folder
 
-
-def download_video_from_azure(url: str, output_dir: str = "source_videos") -> Dict[str, Any]:
-    """
-    Завантаження відео з URL
-    """
     try:
-        # Перевіряємо, чи URL дійсний
         parsed_url = urlparse(url)
         if not parsed_url.scheme or not parsed_url.netloc:
             raise ValueError(f"Недійсний URL: {url}")
 
-        # Отримання імені файлу з URL шляху
         path_parts = parsed_url.path.strip('/').split('/')
         if path_parts:
-            # Перевірка на мок-сервер
             if parsed_url.netloc == 'localhost:8001' and path_parts[-1] == 'video':
                 filename = "20250502-1628-IN_Recording.mp4"
             else:
-                # Обробка для інших URL
                 filename = path_parts[-1]
-                # Додаємо розширення, якщо відсутнє
                 if not os.path.splitext(filename)[1]:
                     filename += ".mp4"
         else:
-            # Якщо не можемо отримати ім'я з URL, створюємо його
-            filename = f"video_{int(datetime.utcnow().timestamp())}.mp4"
+            filename = f"video_{int(datetime.now().timestamp())}.mp4"
 
-        # Отримуємо розширення
         extension = os.path.splitext(filename)[1]
 
-        # Перевіряємо чи файл вже існує
         if os.path.exists(os.path.join(output_dir, filename)):
-            # Додаємо timestamp до імені, щоб уникнути перезапису
             base_name, ext = os.path.splitext(filename)
-            filename = f"{base_name}_{int(datetime.utcnow().timestamp())}{ext}"
+            filename = f"{base_name}_{int(datetime.now().timestamp())}{ext}"
 
-        # Створюємо директорію, якщо її не існує
         os.makedirs(output_dir, exist_ok=True)
-
-        # Шлях для збереження файлу
         file_path = os.path.join(output_dir, filename)
 
-        # Завантажуємо файл
         response = requests.get(url, stream=True, timeout=30)
 
-        # Перевірка успішності запиту
         if response.status_code != 200:
             raise ValueError(f"Помилка отримання відео. Статус: {response.status_code}")
 
-        # Записуємо файл блоками для економії пам'яті
         with open(file_path, 'wb') as f:
             for chunk in response.iter_content(chunk_size=8192):
-                if chunk:  # фільтр порожніх частин
+                if chunk:
                     f.write(chunk)
 
-        # Повертаємо URL для веб-доступу, а не повний системний шлях
         web_path = f"/videos/{filename}"
 
         return {
@@ -129,39 +80,29 @@ def download_video_from_azure(url: str, output_dir: str = "source_videos") -> Di
             "filename": filename,
             "extension": extension[1:] if extension.startswith('.') else extension,
             "local_path": web_path,
-            "file_path": file_path  # Системний шлях для інших операцій якщо потрібно
+            "file_path": file_path
         }
     except Exception as e:
-        import traceback
-        print(f"Помилка завантаження відео: {str(e)}")
-        print(traceback.format_exc())
+        logger.error(f"Помилка завантаження відео: {str(e)}")
         return {
             "success": False,
             "error": str(e)
         }
 
 
-def get_command_auth_str(remote_name: str) -> str:
-    """
-    Формує auth string для CVAT CLI команд
-    """
-    remote_config = config.general_config["remote"][remote_name]
-    host = remote_config["host"]
-    port = remote_config["port"]
-    user = remote_config["cvat_ui_user_var_name"]
-    password = remote_config["cvat_ui_pass_var_name"]
-    cvat_username = os.getenv(user)
-    cvat_password = os.getenv(password)
-    return f"cvat-cli --auth {cvat_username}:{cvat_password} --server-host {host} --server-port {port}"
+def get_command_auth_str() -> str:
+    """Формує auth string для CVAT CLI команд"""
+    if not Settings.validate_cvat_config():
+        raise ValueError("CVAT налаштування не знайдені")
+
+    return f"cvat-cli --auth {Settings.cvat_username}:{Settings.cvat_password} --server-host {Settings.cvat_host} --server-port {Settings.cvat_port}"
 
 
-def execute_cvat_command(remote_name: str, cli_command: str) -> subprocess.CompletedProcess:
-    """
-    Виконує CVAT CLI команду
-    """
-    auth_str = get_command_auth_str(remote_name=remote_name)
+def execute_cvat_command(cli_command: str) -> subprocess.CompletedProcess:
+    """Виконує CVAT CLI команду"""
+    auth_str = get_command_auth_str()
     command = f"{auth_str} {cli_command}"
-    logger.info(f"Command: {command}")
+    logger.info(f"Виконання команди: {command}")
     return subprocess.run(command, shell=True, capture_output=True)
 
 
@@ -172,9 +113,7 @@ def format_filename(
         where: str = "",
         when: str = ""
 ) -> str:
-    """
-    Форматує ім'я файлу на основі метаданих та атрибутів відео
-    """
+    """Форматує ім'я файлу на основі метаданих та атрибутів відео"""
     video_base_name = os.path.splitext(os.path.basename(original_filename))[0]
     uav_type = metadata.get("uav_type", "unknown")
 
@@ -196,9 +135,7 @@ def trim_video_clip(
         start_time: str,
         end_time: str
 ) -> bool:
-    """
-    Нарізає відео фрагмент за допомогою FFmpeg
-    """
+    """Нарізає відео фрагмент за допомогою FFmpeg"""
     try:
         command = [
             "ffmpeg",
@@ -211,7 +148,7 @@ def trim_video_clip(
             source_path,
             "-c",
             "copy",
-            "-loglevel", "error",
+            "-loglevel", Settings.ffmpeg_log_level,
             output_path,
         ]
         command_str = " ".join(command)
@@ -236,9 +173,7 @@ def upload_clip_to_azure(
         azure_path: str,
         metadata: Dict[str, str]
 ) -> Dict[str, Any]:
-    """
-    Завантажує кліп на Azure Blob Storage
-    """
+    """Завантажує кліп на Azure Blob Storage"""
     try:
         logger.info(f"Завантаження файлу {file_path} на Azure")
 
@@ -270,14 +205,10 @@ def upload_clip_to_azure(
 def create_cvat_task(
         filename: str,
         file_path: str,
-        project_params: Dict[str, Any],
-        remote_name: str = "default"
+        project_params: Dict[str, Any]
 ) -> Optional[str]:
-    """
-    Створює задачу в CVAT через CLI
-    """
+    """Створює задачу в CVAT через CLI"""
     try:
-        # Формуємо параметри для CVAT CLI
         project_id = project_params.get("project_id")
         overlap = project_params.get("overlap", 5)
         segment_size = project_params.get("segment_size", 400)
@@ -287,7 +218,6 @@ def create_cvat_task(
             logger.error("project_id не вказано в параметрах")
             return None
 
-        # Формуємо команду створення задачі
         cli_command = (
             f"create {filename} "
             f"local {file_path} "
@@ -300,12 +230,10 @@ def create_cvat_task(
 
         logger.info(f"Створення CVAT задачі для {filename}")
 
-        result = execute_cvat_command(remote_name=remote_name, cli_command=cli_command)
+        result = execute_cvat_command(cli_command)
 
         if result.returncode == 0:
-            # Витягуємо task ID з виводу
             output = result.stdout.decode("utf-8")
-            import re
             match = re.search(r"Created task ID: (\d+)", output)
             task_id = match.group(1) if match else None
 
@@ -326,32 +254,5 @@ def create_cvat_task(
 
 
 def get_cvat_task_parameters() -> Dict[str, Dict[str, Any]]:
-    """
-    Повертає параметри завдань CVAT для різних проєктів
-    """
-    return {
-        "motion-det": {
-            "project_id": 22,
-            "overlap": 5,
-            "segment_size": 400,
-            "image_quality": 100
-        },
-        "tracking": {
-            "project_id": 17,
-            "overlap": 5,
-            "segment_size": 400,
-            "image_quality": 100
-        },
-        "mil-hardware": {
-            "project_id": 10,
-            "overlap": 5,
-            "segment_size": 400,
-            "image_quality": 100
-        },
-        "re-id": {
-            "project_id": 17,
-            "overlap": 5,
-            "segment_size": 400,
-            "image_quality": 100
-        }
-    }
+    """Повертає параметри завдань CVAT для різних проєктів"""
+    return Settings.cvat_projects

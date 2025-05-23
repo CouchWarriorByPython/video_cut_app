@@ -11,24 +11,25 @@ from datetime import datetime
 
 from tasks import process_video_annotation, monitor_clip_tasks
 from db_connector import create_repository
-from utils.celery_utils import get_cvat_task_parameters
-from utils.azure_downloader import download_video_from_azure
+from utils.celery_utils import get_cvat_task_parameters, download_video_from_azure
+from configs import Settings
+from utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 app = FastAPI()
 
 # Налаштування json_util для отримання плоского представлення
 JSON_OPTIONS = json_util.JSONOptions(json_mode=json_util.JSONMode.RELAXED)
 
-# Директорії для відео
-UPLOAD_FOLDER = "source_videos"
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+# Створюємо необхідні директорії
+os.makedirs(Settings.upload_folder, exist_ok=True)
 
-app.mount("/videos", StaticFiles(directory=UPLOAD_FOLDER), name="videos")
+app.mount("/videos", StaticFiles(directory=Settings.upload_folder), name="videos")
 templates = Jinja2Templates(directory="front")
 
 
-# Спільний клас для JSON відповідей
-def json_response(content: Any):
+def json_response(content: Any) -> JSONResponse:
     """Створює JSON відповідь з плоским форматуванням MongoDB документів"""
     json_str = json_util.dumps(content, json_options=JSON_OPTIONS)
     return JSONResponse(content=json.loads(json_str))
@@ -60,13 +61,14 @@ async def serve_annotator_js():
 
 
 class VideoUploadRequest(BaseModel):
+    """Модель для запиту завантаження відео"""
     video_url: str
     where: Optional[str] = None
     when: Optional[str] = None
 
 
 @app.post("/upload")
-async def upload(data: VideoUploadRequest):
+async def upload(data: VideoUploadRequest) -> JSONResponse:
     """Реєстрація відео за URL і його завантаження"""
     repo = None
     try:
@@ -76,7 +78,7 @@ async def upload(data: VideoUploadRequest):
             return json_response({"success": False, "message": "URL відео не вказано"})
 
         # Завантажуємо відео з URL
-        download_result = download_video_from_azure(azure_link, UPLOAD_FOLDER)
+        download_result = download_video_from_azure(azure_link, Settings.upload_folder)
 
         if not download_result["success"]:
             return json_response({
@@ -101,6 +103,8 @@ async def upload(data: VideoUploadRequest):
         repo.create_indexes()
         record_id = repo.save_annotation(video_record)
 
+        logger.info(f"Відео успішно завантажено: {azure_link}")
+
         return json_response({
             "success": True,
             "id": record_id,
@@ -111,9 +115,7 @@ async def upload(data: VideoUploadRequest):
         })
 
     except Exception as e:
-        import traceback
-        print(f"Помилка при обробці запиту: {str(e)}")
-        print(traceback.format_exc())
+        logger.error(f"Помилка при обробці запиту: {str(e)}")
         return json_response({"success": False, "message": f"Помилка при обробці запиту: {str(e)}"})
     finally:
         if repo:
@@ -121,7 +123,7 @@ async def upload(data: VideoUploadRequest):
 
 
 @app.get("/get_videos")
-async def get_videos():
+async def get_videos() -> JSONResponse:
     """Отримання списку всіх відео для анотування"""
     repo = None
     try:
@@ -133,9 +135,7 @@ async def get_videos():
             "videos": videos
         })
     except Exception as e:
-        print(f"Помилка при отриманні списку відео: {str(e)}")
-        import traceback
-        print(traceback.format_exc())
+        logger.error(f"Помилка при отриманні списку відео: {str(e)}")
         return json_response({"success": False, "error": str(e)})
     finally:
         if repo:
@@ -143,7 +143,7 @@ async def get_videos():
 
 
 @app.get("/get_annotation")
-async def get_annotation(azure_link: str):
+async def get_annotation(azure_link: str) -> JSONResponse:
     """Отримання існуючої анотації для відео"""
     repo = None
     try:
@@ -161,6 +161,7 @@ async def get_annotation(azure_link: str):
                 "message": f"Анотацію для відео '{azure_link}' не знайдено"
             })
     except Exception as e:
+        logger.error(f"Помилка при отриманні анотації: {str(e)}")
         return json_response({"success": False, "error": str(e)})
     finally:
         if repo:
@@ -168,7 +169,7 @@ async def get_annotation(azure_link: str):
 
 
 @app.post("/save_fragments")
-async def save_fragments(data: Dict[str, Any]):
+async def save_fragments(data: Dict[str, Any]) -> JSONResponse:
     """Збереження фрагментів відео та метаданих"""
     azure_link = data.get("azure_link")
     json_data = data.get("data", {})
@@ -211,8 +212,10 @@ async def save_fragments(data: Dict[str, Any]):
             task_result = process_video_annotation.delay(azure_link)
             task_id = task_result.id
             success_message = "Дані успішно збережено. Запущено задачу обробки."
+            logger.info(f"Запущено обробку для відео: {azure_link}, task_id: {task_id}")
         else:
             success_message = "Дані успішно збережено. Обробку пропущено (skip)."
+            logger.info(f"Відео пропущено (skip): {azure_link}")
 
         return json_response({
             "success": True,
@@ -222,7 +225,7 @@ async def save_fragments(data: Dict[str, Any]):
         })
 
     except Exception as e:
-        print(f"Помилка при збереженні в MongoDB: {str(e)}")
+        logger.error(f"Помилка при збереженні в MongoDB: {str(e)}")
         return json_response({"success": False, "error": str(e)})
     finally:
         if repo:
@@ -230,7 +233,7 @@ async def save_fragments(data: Dict[str, Any]):
 
 
 @app.get("/clip_processing_status/{task_id}")
-async def clip_processing_status(task_id: str):
+async def clip_processing_status(task_id: str) -> JSONResponse:
     """Перевіряє статус обробки кліпів"""
     try:
         # Отримуємо статус задачі
@@ -257,6 +260,7 @@ async def clip_processing_status(task_id: str):
             "result": task.result if task.ready() else None
         })
     except Exception as e:
+        logger.error(f"Помилка при перевірці статусу: {str(e)}")
         return json_response({
             "success": False,
             "error": str(e)
@@ -266,5 +270,7 @@ async def clip_processing_status(task_id: str):
 if __name__ == "__main__":
     import uvicorn
 
-    print(f"Папка для відео: {os.path.abspath(UPLOAD_FOLDER)}")
-    uvicorn.run("main:app", host="localhost", port=8000, reload=True)
+    logger.info(f"Папка для відео: {os.path.abspath(Settings.upload_folder)}")
+    logger.info(f"Запуск сервера на {Settings.host}:{Settings.port}")
+
+    uvicorn.run("main:app", host=Settings.host, port=Settings.port, reload=Settings.reload)

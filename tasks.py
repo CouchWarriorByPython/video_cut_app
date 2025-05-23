@@ -1,7 +1,6 @@
 from typing import Dict, List, Any
 from celery import Celery, Task
 from celery.utils.log import get_task_logger
-from datetime import datetime
 import os
 import json
 import tempfile
@@ -12,9 +11,9 @@ from db_connector import create_repository
 from utils.celery_utils import (
     format_filename, trim_video_clip, upload_clip_to_azure,
     create_cvat_task, get_blob_service_client, get_blob_container_client,
-    get_cvat_task_parameters, AZURE_STORAGE_ACCOUNT_NAME,
-    AZURE_STORAGE_CONTAINER_NAME, AZURE_OUTPUT_PREFIX
+    get_cvat_task_parameters
 )
+from configs import Settings
 
 logger = get_task_logger(__name__)
 
@@ -46,15 +45,13 @@ class VideoProcessingTask(Task):
     @property
     def azure_client(self):
         if self._azure_client is None:
-            self._azure_client = get_blob_service_client(AZURE_STORAGE_ACCOUNT_NAME)
+            self._azure_client = get_blob_service_client()
         return self._azure_client
 
     @property
     def container_client(self):
         if self._container_client is None:
-            self._container_client = get_blob_container_client(
-                self.azure_client, AZURE_STORAGE_CONTAINER_NAME
-            )
+            self._container_client = get_blob_container_client(self.azure_client)
         return self._container_client
 
 
@@ -97,7 +94,7 @@ def process_video_annotation(self, azure_link: str) -> Dict[str, Any]:
             }
 
         video_filename = os.path.basename(local_path)
-        absolute_path = os.path.join("source_videos", video_filename)
+        absolute_path = os.path.join(Settings.upload_folder, video_filename)
 
         if not os.path.exists(absolute_path):
             logger.error(f"Файл не знайдено: {absolute_path}")
@@ -132,8 +129,8 @@ def process_video_annotation(self, azure_link: str) -> Dict[str, Any]:
                 task = process_video_clip.delay(
                     source_id=source_id,
                     project=project,
-                    project_clip_id=idx,  # Локальний ID у проєкті
-                    global_clip_id=global_clip_id,  # Загальний ID кліпу
+                    project_clip_id=idx,
+                    global_clip_id=global_clip_id,
                     video_filename=video_filename,
                     absolute_path=absolute_path,
                     start_time=clip["start_time"],
@@ -232,7 +229,7 @@ def process_video_clip(
                     "message": f"Не вдалося створити кліп: {clip_path}"
                 }
 
-            local_clips_folder = os.path.join("clips", video_base_name)
+            local_clips_folder = os.path.join(Settings.clips_folder, video_base_name)
             os.makedirs(local_clips_folder, exist_ok=True)
 
             local_clip_path = os.path.join(local_clips_folder, filename)
@@ -242,7 +239,7 @@ def process_video_clip(
             except Exception as e:
                 logger.warning(f"Не вдалося зберегти локальну копію кліпу: {str(e)}")
 
-            azure_link = f"{AZURE_OUTPUT_PREFIX}/{video_base_name}/{filename}"
+            azure_link = f"{Settings.azure_output_prefix}/{video_base_name}/{filename}"
 
             upload_result = upload_clip_to_azure(
                 container_client=self.container_client,
@@ -279,7 +276,7 @@ def process_video_clip(
                 "status": "not_annotated",
                 "azure_link": azure_link,
                 "local_path": local_clip_path,
-                "fps": 60
+                "fps": Settings.default_fps
             }
 
             clip_id_db = self.clips_repo.save_annotation(clip_data)
@@ -302,6 +299,7 @@ def process_video_clip(
             "status": "error",
             "message": str(e)
         }
+
 
 @app.task(name="monitor_clip_tasks")
 def monitor_clip_tasks(task_ids: List[str]) -> Dict[str, Any]:

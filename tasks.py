@@ -11,7 +11,7 @@ from db_connector import create_repository
 from utils.celery_utils import (
     format_filename, trim_video_clip, upload_clip_to_azure,
     create_cvat_task, get_blob_service_client, get_blob_container_client,
-    get_cvat_task_parameters
+    get_default_cvat_project_params
 )
 from configs import Settings
 
@@ -116,14 +116,19 @@ def process_video_annotation(self, azure_link: str) -> Dict[str, Any]:
                 "message": "Не знайдено інформацію про кліпи"
             }
 
+        # Отримуємо CVAT параметри з бази або використовуємо дефолтні
+        stored_cvat_params = annotation.get("cvat_params", {})
+
         # Створюємо загальну нумерацію кліпів
         task_ids = []
         global_clip_id = 0
 
         for project, project_clips in clips.items():
-            cvat_params = annotation.get("cvat_params", {}).get(project, {})
-            if not cvat_params and project in get_cvat_task_parameters():
-                cvat_params = get_cvat_task_parameters()[project]
+            # Використовуємо збережені параметри або дефолтні
+            cvat_params = stored_cvat_params.get(project)
+            if not cvat_params:
+                cvat_params = get_default_cvat_project_params(project)
+                logger.info(f"Використовуємо дефолтні CVAT параметри для проєкту {project}")
 
             for idx, clip in enumerate(project_clips):
                 task = process_video_clip.delay(

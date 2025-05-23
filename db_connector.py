@@ -68,7 +68,6 @@ class AnnotationBase:
 
         annotation["updated_at"] = datetime.now().isoformat(sep=" ", timespec="seconds")
 
-        # Змінюємо логіку перевірки - для колекції video_clips не вимагаємо azure_link
         if self.collection_name != "video_clips" and "azure_link" not in annotation:
             raise ValueError("Анотація повинна містити поле 'azure_link'")
 
@@ -80,12 +79,10 @@ class AnnotationBase:
         if not doc:
             return None
 
-        # Перетворення ObjectId в рядок
         if "_id" in doc:
             doc["id"] = str(doc["_id"])
             del doc["_id"]
 
-        # Перетворення дат у рядки ISO формату
         for field in ["created_at", "updated_at"]:
             if field in doc and isinstance(doc[field], datetime):
                 doc[field] = doc[field].isoformat()
@@ -127,13 +124,19 @@ class SyncVideoAnnotationRepository(AnnotationBase):
             data = self._prepare_annotation(annotation)
 
             if self.collection_name == "video_clips":
-                # Для кліпів просто вставляємо новий запис
-                data["created_at"] = datetime.now().isoformat(sep=" ", timespec="seconds")
-                result = self.collection.insert_one(data)
-                logger.info(f"Збережено новий кліп з ID: {result.inserted_id}")
-                return str(result.inserted_id)
+                azure_link = data.get("azure_link")
+                existing = self.collection.find_one({"azure_link": azure_link})
+
+                if existing:
+                    self.collection.replace_one({"_id": existing["_id"]}, data)
+                    logger.info(f"Оновлено існуючий кліп: {azure_link}")
+                    return str(existing["_id"])
+                else:
+                    data["created_at"] = datetime.now().isoformat(sep=" ", timespec="seconds")
+                    result = self.collection.insert_one(data)
+                    logger.info(f"Збережено новий кліп з ID: {result.inserted_id}")
+                    return str(result.inserted_id)
             else:
-                # Для основних анотацій використовуємо upsert по azure_link
                 azure_link = data.get("azure_link")
                 existing = self.collection.find_one({"azure_link": azure_link})
 
@@ -227,10 +230,18 @@ class AsyncVideoAnnotationRepository(AnnotationBase):
             data = self._prepare_annotation(annotation)
 
             if self.collection_name == "video_clips":
-                data["created_at"] = datetime.now().isoformat(sep=" ", timespec="seconds")
-                result = await self.collection.insert_one(data)
-                logger.info(f"Асинхронно збережено новий кліп з ID: {result.inserted_id}")
-                return str(result.inserted_id)
+                azure_link = data.get("azure_link")
+                existing = await self.collection.find_one({"azure_link": azure_link})
+
+                if existing:
+                    await self.collection.replace_one({"_id": existing["_id"]}, data)
+                    logger.info(f"Асинхронно оновлено існуючий кліп: {azure_link}")
+                    return str(existing["_id"])
+                else:
+                    data["created_at"] = datetime.now().isoformat(sep=" ", timespec="seconds")
+                    result = await self.collection.insert_one(data)
+                    logger.info(f"Асинхронно збережено новий кліп з ID: {result.inserted_id}")
+                    return str(result.inserted_id)
             else:
                 azure_link = data.get("azure_link")
                 existing = await self.collection.find_one({"azure_link": azure_link})

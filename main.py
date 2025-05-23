@@ -11,7 +11,7 @@ from datetime import datetime
 
 from tasks import process_video_annotation, monitor_clip_tasks
 from db_connector import create_repository
-from utils.celery_utils import get_cvat_task_parameters, download_video_from_azure
+from utils.celery_utils import get_default_cvat_project_params, download_video_from_azure
 from configs import Settings
 from utils.logger import get_logger
 
@@ -65,6 +65,12 @@ class VideoUploadRequest(BaseModel):
     video_url: str
     where: Optional[str] = None
     when: Optional[str] = None
+
+
+class CVATParametersRequest(BaseModel):
+    """Модель для налаштування CVAT параметрів"""
+    azure_link: str
+    cvat_params: Dict[str, Dict[str, Any]]
 
 
 @app.post("/upload")
@@ -168,6 +174,79 @@ async def get_annotation(azure_link: str) -> JSONResponse:
             repo.close()
 
 
+@app.post("/set_cvat_params")
+async def set_cvat_params(data: CVATParametersRequest) -> JSONResponse:
+    """Налаштування CVAT параметрів для відео"""
+    repo = None
+    try:
+        repo = create_repository(collection_name="анотації_соурс_відео")
+
+        existing = repo.get_annotation(data.azure_link)
+        if not existing:
+            return json_response({
+                "success": False,
+                "error": f"Відео з посиланням {data.azure_link} не знайдено"
+            })
+
+        # Оновлюємо CVAT параметри
+        existing["cvat_params"] = data.cvat_params
+        existing["updated_at"] = datetime.utcnow()
+
+        record_id = repo.save_annotation(existing)
+
+        logger.info(f"CVAT параметри оновлено для відео: {data.azure_link}")
+
+        return json_response({
+            "success": True,
+            "id": record_id,
+            "message": "CVAT параметри успішно збережено"
+        })
+
+    except Exception as e:
+        logger.error(f"Помилка при збереженні CVAT параметрів: {str(e)}")
+        return json_response({"success": False, "error": str(e)})
+    finally:
+        if repo:
+            repo.close()
+
+
+@app.get("/get_cvat_params")
+async def get_cvat_params(azure_link: str) -> JSONResponse:
+    """Отримання CVAT параметрів для відео"""
+    repo = None
+    try:
+        repo = create_repository(collection_name="анотації_соурс_відео")
+        annotation = repo.get_annotation(azure_link)
+
+        if not annotation:
+            return json_response({
+                "success": False,
+                "error": f"Відео з посиланням {azure_link} не знайдено"
+            })
+
+        # Якщо параметри не встановлені, повертаємо дефолтні
+        cvat_params = annotation.get("cvat_params", {})
+        if not cvat_params:
+            cvat_params = {
+                "motion-det": get_default_cvat_project_params("motion-det"),
+                "tracking": get_default_cvat_project_params("tracking"),
+                "mil-hardware": get_default_cvat_project_params("mil-hardware"),
+                "re-id": get_default_cvat_project_params("re-id")
+            }
+
+        return json_response({
+            "success": True,
+            "cvat_params": cvat_params
+        })
+
+    except Exception as e:
+        logger.error(f"Помилка при отриманні CVAT параметрів: {str(e)}")
+        return json_response({"success": False, "error": str(e)})
+    finally:
+        if repo:
+            repo.close()
+
+
 @app.post("/save_fragments")
 async def save_fragments(data: Dict[str, Any]) -> JSONResponse:
     """Збереження фрагментів відео та метаданих"""
@@ -195,15 +274,13 @@ async def save_fragments(data: Dict[str, Any]) -> JSONResponse:
             "updated_at": datetime.utcnow()
         })
 
-        # Отримуємо параметри CVAT для кліпів
-        all_params = get_cvat_task_parameters()
-        cvat_params = {
-            clip_type: all_params[clip_type]
-            for clip_type in json_data.get("clips", {}).keys()
-            if clip_type in all_params
-        }
+        # Якщо CVAT параметри не встановлені, використовуємо дефолтні
+        if "cvat_params" not in existing or not existing["cvat_params"]:
+            cvat_params = {}
+            for clip_type in json_data.get("clips", {}).keys():
+                cvat_params[clip_type] = get_default_cvat_project_params(clip_type)
+            existing["cvat_params"] = cvat_params
 
-        existing["cvat_params"] = cvat_params
         record_id = repo.save_annotation(existing)
 
         # Запускаємо обробку, тільки якщо відео не помічено як "skip"

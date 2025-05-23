@@ -106,6 +106,53 @@ def execute_cvat_command(cli_command: str) -> subprocess.CompletedProcess:
     return subprocess.run(command, shell=True, capture_output=True)
 
 
+def get_default_cvat_project_params(project_name: str) -> Dict[str, Any]:
+    """Заглушка для отримання дефолтних CVAT параметрів проєкту"""
+    default_projects = {
+        "motion-det": {
+            "project_id": 22,
+            "overlap": 5,
+            "segment_size": 400,
+            "image_quality": 100
+        },
+        "tracking": {
+            "project_id": 17,
+            "overlap": 5,
+            "segment_size": 400,
+            "image_quality": 100
+        },
+        "mil-hardware": {
+            "project_id": 10,
+            "overlap": 5,
+            "segment_size": 400,
+            "image_quality": 100
+        },
+        "re-id": {
+            "project_id": 17,
+            "overlap": 5,
+            "segment_size": 400,
+            "image_quality": 100
+        }
+    }
+
+    return default_projects.get(project_name, {
+        "project_id": 1,
+        "overlap": 5,
+        "segment_size": 400,
+        "image_quality": 100
+    })
+
+
+def get_cvat_task_parameters() -> Dict[str, Dict[str, Any]]:
+    """Заглушка для отримання всіх CVAT параметрів"""
+    return {
+        "motion-det": get_default_cvat_project_params("motion-det"),
+        "tracking": get_default_cvat_project_params("tracking"),
+        "mil-hardware": get_default_cvat_project_params("mil-hardware"),
+        "re-id": get_default_cvat_project_params("re-id")
+    }
+
+
 def format_filename(
         metadata: Dict[str, Any],
         original_filename: str,
@@ -251,8 +298,3 @@ def create_cvat_task(
     except Exception as e:
         logger.error(f"Помилка при створенні CVAT задачі для {filename}: {str(e)}")
         return None
-
-
-def get_cvat_task_parameters() -> Dict[str, Dict[str, Any]]:
-    """Повертає параметри завдань CVAT для різних проєктів"""
-    return Settings.cvat_projects

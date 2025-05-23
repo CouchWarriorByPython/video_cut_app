@@ -1,5 +1,5 @@
 import os
-from typing import Optional, ClassVar, Dict, Any
+from typing import Optional, ClassVar
 from dotenv import load_dotenv
 from pathlib import Path
 
@@ -27,9 +27,6 @@ class Settings:
     cvat_port: ClassVar[int] = 8080
     cvat_username: ClassVar[Optional[str]] = None
     cvat_password: ClassVar[Optional[str]] = None
-
-    # CVAT проєкти
-    cvat_projects: ClassVar[Dict[str, Dict[str, Any]]] = {}
 
     # Шляхи до файлів
     upload_folder: ClassVar[str] = ""
@@ -77,9 +74,6 @@ class Settings:
         cls.cvat_username = os.getenv("CVAT_USERNAME")
         cls.cvat_password = os.getenv("CVAT_PASSWORD")
 
-        # CVAT проєкти - завантажуємо з env або використовуємо defaults
-        cls._load_cvat_projects()
-
         # Шляхи до файлів
         cls.upload_folder = os.getenv("UPLOAD_FOLDER", "source_videos")
         cls.clips_folder = os.getenv("CLIPS_FOLDER", "clips")
@@ -87,7 +81,7 @@ class Settings:
 
         # Логування
         cls.log_level = os.getenv("LOG_LEVEL", "INFO")
-        cls.log_max_bytes = int(os.getenv("LOG_MAX_BYTES", str(10 * 1024 * 1024)))  # 10MB
+        cls.log_max_bytes = int(os.getenv("LOG_MAX_BYTES", str(10 * 1024 * 1024)))
         cls.log_backup_count = int(os.getenv("LOG_BACKUP_COUNT", "5"))
 
         # Відео обробка
@@ -103,61 +97,10 @@ class Settings:
         cls._create_directories()
 
     @classmethod
-    def _load_cvat_projects(cls) -> None:
-        """Завантаження конфігурації CVAT проєктів з environment variables"""
-        # Default конфігурація
-        default_projects = {
-            "motion-det": {
-                "project_id": 22,
-                "overlap": 5,
-                "segment_size": 400,
-                "image_quality": 100
-            },
-            "tracking": {
-                "project_id": 17,
-                "overlap": 5,
-                "segment_size": 400,
-                "image_quality": 100
-            },
-            "mil-hardware": {
-                "project_id": 10,
-                "overlap": 5,
-                "segment_size": 400,
-                "image_quality": 100
-            },
-            "re-id": {
-                "project_id": 17,
-                "overlap": 5,
-                "segment_size": 400,
-                "image_quality": 100
-            }
-        }
-
-        cls.cvat_projects = {}
-
-        for project_name, default_config in default_projects.items():
-            project_key = project_name.upper().replace("-", "_")
-
-            # Завантажуємо конфігурацію кожного проєкту з env
-            cls.cvat_projects[project_name] = {
-                "project_id": int(os.getenv(f"CVAT_{project_key}_PROJECT_ID", str(default_config["project_id"]))),
-                "overlap": int(os.getenv(f"CVAT_{project_key}_OVERLAP", str(default_config["overlap"]))),
-                "segment_size": int(os.getenv(f"CVAT_{project_key}_SEGMENT_SIZE", str(default_config["segment_size"]))),
-                "image_quality": int(
-                    os.getenv(f"CVAT_{project_key}_IMAGE_QUALITY", str(default_config["image_quality"])))
-            }
-            print(f"--->>> {cls.cvat_projects} <<<----")
-
-    @classmethod
     def _create_directories(cls) -> None:
         """Створює необхідні директорії"""
         for folder in [cls.upload_folder, cls.clips_folder, cls.logs_folder]:
             Path(folder).mkdir(exist_ok=True)
-
-    @classmethod
-    def get_cvat_project_params(cls, project_name: str) -> Optional[Dict[str, Any]]:
-        """Повертає параметри проєкту CVAT"""
-        return cls.cvat_projects.get(project_name)
 
     @classmethod
     def validate_cvat_config(cls) -> bool:
@@ -168,27 +111,6 @@ class Settings:
     def validate_azure_config(cls) -> bool:
         """Перевіряє наявність необхідних Azure налаштувань"""
         return cls.azure_connection_string is not None
-
-    @classmethod
-    def get_all_env_vars(cls) -> Dict[str, str]:
-        """Повертає словник всіх поточних налаштувань для діагностики"""
-        return {
-            "mongo_uri": cls.mongo_uri,
-            "mongo_db_name": cls.mongo_db_name,
-            "redis_url": cls.redis_url,
-            "azure_storage_account_name": cls.azure_storage_account_name,
-            "azure_storage_container_name": cls.azure_storage_container_name,
-            "cvat_host": cls.cvat_host,
-            "cvat_port": str(cls.cvat_port),
-            "cvat_username": cls.cvat_username or "NOT_SET",
-            "upload_folder": cls.upload_folder,
-            "clips_folder": cls.clips_folder,
-            "logs_folder": cls.logs_folder,
-            "log_level": cls.log_level,
-            "host": cls.host,
-            "port": str(cls.port),
-            "reload": str(cls.reload)
-        }
 
 
 # Ініціалізація налаштувань при імпорті

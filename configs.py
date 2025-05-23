@@ -108,25 +108,25 @@ class Settings:
         # Default конфігурація
         default_projects = {
             "motion-det": {
-                "project_id": 5,
+                "project_id": 22,
                 "overlap": 5,
                 "segment_size": 400,
                 "image_quality": 100
             },
             "tracking": {
-                "project_id": 6,
+                "project_id": 17,
                 "overlap": 5,
                 "segment_size": 400,
                 "image_quality": 100
             },
             "mil-hardware": {
-                "project_id": 7,
+                "project_id": 10,
                 "overlap": 5,
                 "segment_size": 400,
                 "image_quality": 100
             },
             "re-id": {
-                "project_id": 8,
+                "project_id": 17,
                 "overlap": 5,
                 "segment_size": 400,
                 "image_quality": 100
@@ -146,6 +146,7 @@ class Settings:
                 "image_quality": int(
                     os.getenv(f"CVAT_{project_key}_IMAGE_QUALITY", str(default_config["image_quality"])))
             }
+            print(f"--->>> {cls.cvat_projects} <<<----")
 
     @classmethod
     def _create_directories(cls) -> None:

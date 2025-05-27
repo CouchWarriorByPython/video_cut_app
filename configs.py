@@ -16,17 +16,21 @@ class Settings:
     celery_broker_url: ClassVar[str] = ""
     celery_result_backend: ClassVar[str] = ""
 
-    # Azure Storage
+    # Azure Storage - нові поля для service principal
+    azure_tenant_id: ClassVar[Optional[str]] = None
+    azure_client_id: ClassVar[Optional[str]] = None
+    azure_client_secret: ClassVar[Optional[str]] = None
     azure_storage_account_name: ClassVar[str] = ""
     azure_storage_container_name: ClassVar[str] = ""
-    azure_output_prefix: ClassVar[str] = ""
-    azure_connection_string: ClassVar[Optional[str]] = None
+    azure_folder_path: ClassVar[str] = ""  # замість output_prefix
+    azure_mock_mode: ClassVar[bool] = False
 
     # CVAT налаштування
     cvat_host: ClassVar[str] = ""
     cvat_port: ClassVar[int] = 8080
     cvat_username: ClassVar[Optional[str]] = None
     cvat_password: ClassVar[Optional[str]] = None
+    cvat_mock_mode: ClassVar[bool] = False
 
     # Шляхи до файлів
     upload_folder: ClassVar[str] = ""
@@ -62,17 +66,21 @@ class Settings:
         cls.celery_broker_url = os.getenv("CELERY_BROKER_URL", cls.redis_url)
         cls.celery_result_backend = os.getenv("CELERY_RESULT_BACKEND", cls.redis_url)
 
-        # Azure Storage
-        cls.azure_storage_account_name = os.getenv("AZURE_STORAGE_ACCOUNT_NAME", "test_acc")
-        cls.azure_storage_container_name = os.getenv("AZURE_STORAGE_CONTAINER_NAME", "test_container")
-        cls.azure_output_prefix = os.getenv("AZURE_OUTPUT_PREFIX", "clips")
-        cls.azure_connection_string = os.getenv("AZURE_STORAGE_CONNECTION_STRING")
+        # Azure Storage - service principal credentials
+        cls.azure_tenant_id = os.getenv("AZURE_TENANT_ID")
+        cls.azure_client_id = os.getenv("AZURE_CLIENT_ID")
+        cls.azure_client_secret = os.getenv("AZURE_CLIENT_SECRET")
+        cls.azure_storage_account_name = os.getenv("AZURE_STORAGE_ACCOUNT_NAME", "jettadatashared")
+        cls.azure_storage_container_name = os.getenv("AZURE_STORAGE_CONTAINER_NAME", "ml-data")
+        cls.azure_folder_path = os.getenv("AZURE_FOLDER_PATH", "annotation/my_test_folder/")
+        cls.azure_mock_mode = os.getenv("AZURE_MOCK_MODE", "true").lower() in ("true", "1", "yes")
 
         # CVAT налаштування
         cls.cvat_host = os.getenv("CVAT_HOST", "localhost")
         cls.cvat_port = int(os.getenv("CVAT_PORT", "8080"))
         cls.cvat_username = os.getenv("CVAT_USERNAME")
         cls.cvat_password = os.getenv("CVAT_PASSWORD")
+        cls.cvat_mock_mode = os.getenv("CVAT_MOCK_MODE", "true").lower() in ("true", "1", "yes")
 
         # Шляхи до файлів
         cls.upload_folder = os.getenv("UPLOAD_FOLDER", "source_videos")
@@ -105,12 +113,13 @@ class Settings:
     @classmethod
     def validate_cvat_config(cls) -> bool:
         """Перевіряє наявність необхідних CVAT налаштувань"""
-        return cls.cvat_username is not None and cls.cvat_password is not None
+        return (cls.cvat_username is not None and cls.cvat_password is not None) or cls.cvat_mock_mode
 
     @classmethod
     def validate_azure_config(cls) -> bool:
         """Перевіряє наявність необхідних Azure налаштувань"""
-        return cls.azure_connection_string is not None
+        required_fields = [cls.azure_tenant_id, cls.azure_client_id, cls.azure_client_secret]
+        return all(field is not None for field in required_fields) or cls.azure_mock_mode
 
 
 # Ініціалізація налаштувань при імпорті

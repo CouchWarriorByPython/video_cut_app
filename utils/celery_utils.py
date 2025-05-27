@@ -6,8 +6,12 @@ from typing import Dict, Any, Optional
 from urllib.parse import urlparse
 from datetime import datetime
 import requests
+import time
+import uuid
+import random
 
 from azure.storage.blob import BlobServiceClient, ContainerClient
+from azure.identity import ClientSecretCredential
 
 from configs import Settings
 from utils.logger import get_logger
@@ -19,17 +23,53 @@ AZURE_LOGGER = logging.getLogger("azure.core.pipeline.policies.http_logging_poli
 AZURE_LOGGER.setLevel(logging.WARNING)
 
 
-def get_blob_service_client() -> BlobServiceClient:
-    """Отримує BlobServiceClient на основі налаштувань"""
-    if Settings.azure_connection_string:
-        return BlobServiceClient.from_connection_string(Settings.azure_connection_string)
-    else:
-        raise ValueError("Azure connection string не налаштований")
+def get_blob_service_client() -> Optional[BlobServiceClient]:
+    """Отримує BlobServiceClient на основі service principal credentials"""
+    if Settings.azure_mock_mode:
+        logger.info("Azure mock mode enabled - повертаємо None")
+        return None
+
+    if not Settings.validate_azure_config():
+        raise ValueError("Azure service principal credentials не налаштовані")
+
+    try:
+        # Створюємо credential через service principal
+        credential = ClientSecretCredential(
+            tenant_id=Settings.azure_tenant_id,
+            client_id=Settings.azure_client_id,
+            client_secret=Settings.azure_client_secret
+        )
+
+        # Формуємо URL до storage account
+        account_url = f"https://{Settings.azure_storage_account_name}.blob.core.windows.net"
+
+        return BlobServiceClient(
+            account_url=account_url,
+            credential=credential
+        )
+
+    except Exception as e:
+        logger.error(f"Помилка створення BlobServiceClient: {str(e)}")
+        raise
 
 
-def get_blob_container_client(blob_service_client: BlobServiceClient) -> ContainerClient:
+def get_blob_container_client(blob_service_client: Optional[BlobServiceClient]) -> Optional[ContainerClient]:
     """Отримує ContainerClient для налаштованого контейнера"""
+    if Settings.azure_mock_mode or blob_service_client is None:
+        logger.info("Azure mock mode enabled - повертаємо None для container client")
+        return None
+
     return blob_service_client.get_container_client(container=Settings.azure_storage_container_name)
+
+
+def get_azure_blob_path(filename: str) -> str:
+    """Формує повний шлях до blob в Azure Storage"""
+    # Переконуємося що folder_path закінчується на "/"
+    folder_path = Settings.azure_folder_path
+    if not folder_path.endswith("/"):
+        folder_path += "/"
+
+    return f"{folder_path}{filename}"
 
 
 def download_video_from_azure(url: str, output_dir: Optional[str] = None) -> Dict[str, Any]:
@@ -90,8 +130,68 @@ def download_video_from_azure(url: str, output_dir: Optional[str] = None) -> Dic
         }
 
 
+def upload_clip_to_azure(
+        container_client: Optional[ContainerClient],
+        file_path: str,
+        filename: str,
+        metadata: Dict[str, str]
+) -> Dict[str, Any]:
+    """Завантажує кліп на Azure Blob Storage або імітує завантаження"""
+    try:
+        # Формуємо повний шлях в Azure
+        azure_path = get_azure_blob_path(filename)
+
+        if Settings.azure_mock_mode or container_client is None:
+            logger.info(f"Azure mock mode - імітуємо завантаження файлу {file_path} в {azure_path}")
+
+            # Імітуємо затримку завантаження
+            time.sleep(0.1)
+
+            # Генеруємо фіктивний blob client ID
+            mock_blob_id = str(uuid.uuid4())
+
+            return {
+                "success": True,
+                "azure_link": azure_path,
+                "blob_client": mock_blob_id,
+                "metadata": metadata,
+                "mock": True
+            }
+
+        logger.info(f"Завантаження файлу {file_path} на Azure в {azure_path}")
+
+        with open(file_path, "rb") as data:
+            blob_client = container_client.upload_blob(
+                name=azure_path,
+                data=data,
+                overwrite=True,
+                metadata=metadata
+            )
+
+        logger.info(f"Файл успішно завантажено на Azure: {azure_path}")
+
+        return {
+            "success": True,
+            "azure_link": azure_path,
+            "blob_client": blob_client,
+            "metadata": metadata,
+            "mock": False
+        }
+    except Exception as e:
+        logger.error(f"Помилка завантаження на Azure: {str(e)}")
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+
+# Решта функцій залишається без змін
 def get_command_auth_str() -> str:
     """Формує auth string для CVAT CLI команд"""
+    if Settings.cvat_mock_mode:
+        logger.info("CVAT mock mode enabled")
+        return "echo"  # заглушка
+
     if not Settings.validate_cvat_config():
         raise ValueError("CVAT налаштування не знайдені")
 
@@ -100,6 +200,17 @@ def get_command_auth_str() -> str:
 
 def execute_cvat_command(cli_command: str) -> subprocess.CompletedProcess:
     """Виконує CVAT CLI команду"""
+    if Settings.cvat_mock_mode:
+        logger.info(f"CVAT mock mode - імітуємо виконання команди: {cli_command}")
+        # Імітуємо успішну відповідь
+        mock_output = f"Created task ID: {random.randint(1000, 9999)}"
+        return subprocess.CompletedProcess(
+            args=cli_command,
+            returncode=0,
+            stdout=mock_output.encode(),
+            stderr=b""
+        )
+
     auth_str = get_command_auth_str()
     command = f"{auth_str} {cli_command}"
     logger.info(f"Виконання команди: {command}")
@@ -107,28 +218,28 @@ def execute_cvat_command(cli_command: str) -> subprocess.CompletedProcess:
 
 
 def get_default_cvat_project_params(project_name: str) -> Dict[str, Any]:
-    """Отримання дефолтних CVAT параметрів проєкту"""
+    """Заглушка для отримання дефолтних CVAT параметрів проєкту"""
     default_projects = {
         "motion-det": {
-            "project_id": 22,
+            "project_id": 5,
             "overlap": 5,
             "segment_size": 400,
             "image_quality": 100
         },
         "tracking": {
-            "project_id": 17,
+            "project_id": 6,
             "overlap": 5,
             "segment_size": 400,
             "image_quality": 100
         },
         "mil-hardware": {
-            "project_id": 10,
+            "project_id": 7,
             "overlap": 5,
             "segment_size": 400,
             "image_quality": 100
         },
         "re-id": {
-            "project_id": 17,
+            "project_id": 8,
             "overlap": 5,
             "segment_size": 400,
             "image_quality": 100
@@ -144,13 +255,36 @@ def get_default_cvat_project_params(project_name: str) -> Dict[str, Any]:
 
 
 def get_cvat_task_parameters() -> Dict[str, Dict[str, Any]]:
-    """Отримання всіх CVAT параметрів"""
+    """Заглушка для отримання всіх CVAT параметрів"""
     return {
         "motion-det": get_default_cvat_project_params("motion-det"),
         "tracking": get_default_cvat_project_params("tracking"),
         "mil-hardware": get_default_cvat_project_params("mil-hardware"),
         "re-id": get_default_cvat_project_params("re-id")
     }
+
+
+def format_filename(
+        metadata: Dict[str, Any],
+        original_filename: str,
+        clip_id: int,
+        where: str = "",
+        when: str = ""
+) -> str:
+    """Форматує ім'я файлу на основі метаданих та атрибутів відео"""
+    video_base_name = os.path.splitext(os.path.basename(original_filename))[0]
+    uav_type = metadata.get("uav_type", "unknown")
+
+    filename_parts = [uav_type]
+
+    if where:
+        filename_parts.append(where)
+    if when:
+        filename_parts.append(when)
+
+    filename_parts.append(f"{video_base_name}_cut{clip_id}")
+
+    return "_".join(filename_parts)
 
 
 def trim_video_clip(
@@ -191,48 +325,19 @@ def trim_video_clip(
         return False
 
 
-def upload_clip_to_azure(
-        container_client: ContainerClient,
-        file_path: str,
-        azure_path: str,
-        metadata: Dict[str, str]
-) -> Dict[str, Any]:
-    """Завантажує кліп на Azure Blob Storage"""
-    try:
-        logger.info(f"Завантаження файлу {file_path} на Azure")
-
-        with open(file_path, "rb") as data:
-            blob_client = container_client.upload_blob(
-                name=azure_path,
-                data=data,
-                overwrite=True,
-                metadata=metadata,
-                logger=AZURE_LOGGER
-            )
-
-        logger.info(f"Файл успішно завантажено на Azure: {azure_path}")
-
-        return {
-            "success": True,
-            "azure_link": azure_path,
-            "blob_client": blob_client,
-            "metadata": metadata
-        }
-    except Exception as e:
-        logger.error(f"Помилка завантаження на Azure: {str(e)}")
-        return {
-            "success": False,
-            "error": str(e)
-        }
-
-
 def create_cvat_task(
         filename: str,
         file_path: str,
         project_params: Dict[str, Any]
 ) -> Optional[str]:
-    """Створює задачу в CVAT через CLI"""
+    """Створює задачу в CVAT через CLI або імітує створення"""
     try:
+        if Settings.cvat_mock_mode:
+            import random
+            mock_task_id = str(random.randint(1000, 9999))
+            logger.info(f"CVAT mock mode - імітуємо створення задачі для {filename}, task_id: {mock_task_id}")
+            return mock_task_id
+
         project_id = project_params.get("project_id")
         overlap = project_params.get("overlap", 5)
         segment_size = project_params.get("segment_size", 400)

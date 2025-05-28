@@ -247,6 +247,9 @@ def process_video_clip(
             project_params=cvat_params
         )
 
+        # Формуємо повний Azure URL
+        azure_url = f"{Settings.get_azure_account_url()}/{Settings.azure_storage_container_name}/{azure_clip_path}"
+
         # Підготовка даних для збереження в video_clips
         clip_data = {
             "source_id": source_id,
@@ -254,9 +257,8 @@ def process_video_clip(
             "clip_id": clip_id,
             "extension": "mp4",
             "cvat_task_id": cvat_task_id,
-            "status": "not_annotated",  # Дефолтний статус для анотування в CVAT
-            "azure_link": upload_result["azure_path"],
-            "blob_url": upload_result["blob_url"],
+            "status": "not_annotated",
+            "azure_link": azure_url,
             "fps": Settings.default_fps,
             "created_at": datetime.now().isoformat(sep=" ", timespec="seconds"),
             "updated_at": datetime.now().isoformat(sep=" ", timespec="seconds")
@@ -271,8 +273,7 @@ def process_video_clip(
             "message": "Кліп успішно оброблено",
             "clip_id_db": clip_id_db,
             "cvat_task_id": cvat_task_id,
-            "azure_path": upload_result["azure_path"],
-            "blob_url": upload_result["blob_url"],
+            "azure_link": azure_url,
             "filename": clip_filename
         }
 
@@ -323,6 +324,7 @@ def finalize_video_processing(results: List[Dict], azure_link: str) -> Dict[str,
                     logger.info(f"Видалено локальний source файл: {local_path}")
                 except Exception as e:
                     logger.error(f"Помилка видалення source файлу {local_path}: {str(e)}")
+                    # Якщо не можемо видалити файл - це критична помилка
                     return {
                         "status": "error",
                         "message": f"Помилка видалення source файлу: {str(e)}",
@@ -330,9 +332,12 @@ def finalize_video_processing(results: List[Dict], azure_link: str) -> Dict[str,
                         "failed_clips": failed_clips,
                         "total_clips": total_clips
                     }
+            else:
+                logger.warning(f"Локальний файл не знайдено або вже видалено: {local_path}")
 
-            # Оновлюємо статус source відео на "annotated"
+            # Оновлюємо статус source відео на "annotated" та видаляємо local_path
             annotation["status"] = "annotated"
+            annotation["local_path"] = None
             annotation["updated_at"] = datetime.now().isoformat(sep=" ", timespec="seconds")
             repo.save_annotation(annotation)
 

@@ -128,7 +128,6 @@ def upload_clip_to_azure(
         return {
             "success": True,
             "azure_path": azure_path,
-            "blob_url": f"{Settings.get_azure_account_url()}/{Settings.azure_storage_container_name}/{azure_path}",
             "metadata": metadata
         }
     except Exception as e:

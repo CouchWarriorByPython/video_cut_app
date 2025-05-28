@@ -65,7 +65,6 @@ class VideoClipRecord(BaseModel):
     cvat_task_id: Optional[str] = None
     status: str = "not_annotated"
     azure_link: str
-    blob_url: str
     fps: int = 60
     created_at: str = Field(default_factory=lambda: datetime.now().isoformat(sep=" ", timespec="seconds"))
     updated_at: str = Field(default_factory=lambda: datetime.now().isoformat(sep=" ", timespec="seconds"))
@@ -84,10 +83,8 @@ class AnnotationBase:
         if isinstance(annotation, BaseModel):
             annotation = annotation.model_dump()
 
-        # Завжди оновлюємо updated_at
         annotation["updated_at"] = datetime.now().isoformat(sep=" ", timespec="seconds")
 
-        # Перевіряємо обов'язкові поля залежно від колекції
         if self.collection_name == "source_videos" and "azure_link" not in annotation:
             raise ValueError("Анотація соурс відео повинна містити поле 'azure_link'")
 
@@ -105,11 +102,9 @@ class AnnotationBase:
         if not doc:
             return None
 
-        # Зберігаємо _id як окреме поле для використання
         if "_id" in doc:
             doc["_id"] = str(doc["_id"])
 
-        # Конвертуємо ObjectId поля в строки
         for key, value in doc.items():
             if isinstance(value, ObjectId):
                 doc[key] = str(value)
@@ -137,32 +132,43 @@ class SyncVideoAnnotationRepository(AnnotationBase):
             raise
 
     def create_indexes(self) -> None:
-        """Створює необхідні індекси"""
+        """Створює оптимальні індекси для колекції"""
         try:
+            existing_indexes = self.collection.list_indexes()
+            index_names = [idx["name"] for idx in existing_indexes]
+
             if self.collection_name == "source_videos":
-                self.collection.create_index("azure_link", unique=True)
-                logger.info("Створено унікальний індекс azure_link для source_videos")
+                if not any("azure_link" in name for name in index_names):
+                    self.collection.create_index("azure_link", unique=True)
+                    logger.info("Створено унікальний індекс azure_link для source_videos")
+                else:
+                    logger.info("Індекс azure_link для source_videos вже існує")
 
             elif self.collection_name == "video_clips":
-                # Композитний унікальний індекс для унікальності кліпів
-                self.collection.create_index([
-                    ("source_id", 1),
-                    ("project", 1),
-                    ("clip_id", 1)
-                ], unique=True)
-                # Індекс для швидкого пошуку за azure_link
-                self.collection.create_index("azure_link")
-                logger.info("Створено композитний унікальний індекс та індекс azure_link для video_clips")
+                compound_exists = any("source_id_1_project_1_clip_id_1" in name for name in index_names)
+                if not compound_exists:
+                    self.collection.create_index([
+                        ("source_id", 1),
+                        ("project", 1),
+                        ("clip_id", 1)
+                    ], unique=True)
+                    logger.info("Створено унікальний складний індекс для video_clips")
+                else:
+                    logger.info("Унікальний складний індекс для video_clips вже існує")
+
+                if not any("azure_link" in name for name in index_names):
+                    self.collection.create_index("azure_link", unique=False)
+                    logger.info("Створено індекс azure_link для швидкого пошуку")
+                else:
+                    logger.info("Індекс azure_link для пошуку вже існує")
 
         except Exception as e:
-            logger.error(f"Помилка створення індексу: {str(e)}")
+            logger.error(f"Помилка при роботі з індексами: {str(e)}")
 
     def save_annotation(self, annotation: Union[Dict, BaseModel]) -> str:
-        """Зберігає або оновлює анотацію"""
+        """Зберігає або оновлює анотацію з оптимізованою логікою"""
         try:
             data = self._prepare_annotation(annotation)
-
-            # Видаляємо _id з даних для оновлення (MongoDB не дозволяє змінювати _id)
             data_without_id = {k: v for k, v in data.items() if k != "_id"}
 
             if self.collection_name == "source_videos":
@@ -170,7 +176,6 @@ class SyncVideoAnnotationRepository(AnnotationBase):
                 existing = self.collection.find_one({"azure_link": azure_link})
 
                 if existing:
-                    # Зберігаємо оригінальну дату створення
                     data_without_id["created_at"] = existing.get("created_at", data.get("created_at"))
                     self.collection.replace_one({"_id": existing["_id"]}, data_without_id)
                     logger.info(f"Оновлено соурс відео: {azure_link}")
@@ -185,7 +190,6 @@ class SyncVideoAnnotationRepository(AnnotationBase):
                 project = data.get("project")
                 clip_id = data.get("clip_id")
 
-                # Конвертуємо source_id в ObjectId для пошуку
                 source_id_obj = ObjectId(source_id) if isinstance(source_id, str) else source_id
                 data_without_id["source_id"] = source_id_obj
 
@@ -196,7 +200,6 @@ class SyncVideoAnnotationRepository(AnnotationBase):
                 })
 
                 if existing:
-                    # Зберігаємо оригінальну дату створення
                     data_without_id["created_at"] = existing.get("created_at", data.get("created_at"))
                     self.collection.replace_one({"_id": existing["_id"]}, data_without_id)
                     logger.info(f"Оновлено кліп: {project} clip_id={clip_id}")
@@ -220,7 +223,6 @@ class SyncVideoAnnotationRepository(AnnotationBase):
                 else:
                     logger.warning(f"Соурс відео не знайдено: {identifier}")
             else:
-                # Для кліпів використовуємо ObjectId
                 doc = self.collection.find_one({"_id": ObjectId(identifier)})
                 if doc:
                     logger.info(f"Знайдено кліп: {identifier}")
@@ -246,15 +248,12 @@ class SyncVideoAnnotationRepository(AnnotationBase):
     def get_clips_by_azure_link(self, azure_link: str) -> List[Dict]:
         """Отримує всі кліпи за Azure лінком соурс відео"""
         try:
-            # Спочатку знаходимо соурс відео
             source_doc = self.collection.find_one({"azure_link": azure_link})
             if not source_doc:
                 logger.warning(f"Соурс відео не знайдено: {azure_link}")
                 return []
 
             source_id = source_doc["_id"]
-
-            # Знаходимо всі кліпи для цього соурс відео
             clips_repo = SyncVideoAnnotationRepository("video_clips")
             docs = list(clips_repo.collection.find({"source_id": source_id}))
             logger.info(f"Знайдено {len(docs)} кліпів для azure_link: {azure_link}")
@@ -316,30 +315,46 @@ class AsyncVideoAnnotationRepository(AnnotationBase):
             raise
 
     async def create_indexes(self) -> None:
-        """Створює необхідні індекси"""
+        """Створює оптимальні індекси для колекції"""
         try:
+            existing_indexes = []
+            async for idx in self.collection.list_indexes():
+                existing_indexes.append(idx)
+
+            index_names = [idx["name"] for idx in existing_indexes]
+
             if self.collection_name == "source_videos":
-                await self.collection.create_index("azure_link", unique=True)
-                logger.info("Створено асинхронний унікальний індекс azure_link для source_videos")
+                if not any("azure_link" in name for name in index_names):
+                    await self.collection.create_index("azure_link", unique=True)
+                    logger.info("Створено асинхронний унікальний індекс azure_link для source_videos")
+                else:
+                    logger.info("Асинхронний індекс azure_link для source_videos вже існує")
 
             elif self.collection_name == "video_clips":
-                await self.collection.create_index([
-                    ("source_id", 1),
-                    ("project", 1),
-                    ("clip_id", 1)
-                ], unique=True)
-                await self.collection.create_index("azure_link")
-                logger.info("Створено асинхронний композитний унікальний індекс та індекс azure_link для video_clips")
+                compound_exists = any("source_id_1_project_1_clip_id_1" in name for name in index_names)
+                if not compound_exists:
+                    await self.collection.create_index([
+                        ("source_id", 1),
+                        ("project", 1),
+                        ("clip_id", 1)
+                    ], unique=True)
+                    logger.info("Створено асинхронний унікальний складний індекс для video_clips")
+                else:
+                    logger.info("Асинхронний унікальний складний індекс для video_clips вже існує")
+
+                if not any("azure_link" in name for name in index_names):
+                    await self.collection.create_index("azure_link", unique=False)
+                    logger.info("Створено асинхронний індекс azure_link для швидкого пошуку")
+                else:
+                    logger.info("Асинхронний індекс azure_link для пошуку вже існує")
 
         except Exception as e:
-            logger.error(f"Помилка створення асинхронного індексу: {str(e)}")
+            logger.error(f"Помилка при асинхронній роботі з індексами: {str(e)}")
 
     async def save_annotation(self, annotation: Union[Dict, BaseModel]) -> str:
-        """Зберігає або оновлює анотацію"""
+        """Зберігає або оновлює анотацію з оптимізованою логікою"""
         try:
             data = self._prepare_annotation(annotation)
-
-            # Видаляємо _id з даних для оновлення (MongoDB не дозволяє змінювати _id)
             data_without_id = {k: v for k, v in data.items() if k != "_id"}
 
             if self.collection_name == "source_videos":
@@ -361,7 +376,6 @@ class AsyncVideoAnnotationRepository(AnnotationBase):
                 project = data.get("project")
                 clip_id = data.get("clip_id")
 
-                # Конвертуємо source_id в ObjectId для пошуку
                 source_id_obj = ObjectId(source_id) if isinstance(source_id, str) else source_id
                 data_without_id["source_id"] = source_id_obj
 
@@ -450,7 +464,7 @@ class AsyncVideoAnnotationRepository(AnnotationBase):
 
 def create_repository(collection_name: str, async_mode: bool = False):
     """
-    Створює репозиторій для роботи з MongoDB
+    Створює репозиторій для роботи з MongoDB з оптимізованою логікою індексів
 
     Args:
         collection_name: Назва колекції

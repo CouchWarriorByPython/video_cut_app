@@ -185,15 +185,19 @@ def format_filename(
 ) -> str:
     """Форматує ім'я файлу на основі метаданих та атрибутів відео"""
     video_base_name = os.path.splitext(os.path.basename(original_filename))[0]
-    uav_type = metadata.get("uav_type", "unknown")
+    uav_type = metadata.get("uav_type", "").strip()
 
-    filename_parts = [uav_type]
+    filename_parts = []
 
+    # Додаємо тільки непусті частини
+    if uav_type:
+        filename_parts.append(uav_type)
     if where:
         filename_parts.append(where)
     if when:
         filename_parts.append(when)
 
+    # Базова частина завжди додається
     filename_parts.append(f"{video_base_name}_{project}_{clip_id}")
 
     return "_".join(filename_parts) + ".mp4"

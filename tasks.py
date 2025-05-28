@@ -19,6 +19,12 @@ app = Celery('tasks')
 app.config_from_object('celery_config')
 
 
+def get_local_video_path(filename: str) -> str:
+    """Конструює локальний шлях для відео файлу"""
+    local_videos_dir = os.path.join(Settings.temp_folder, "source_videos")
+    return os.path.join(local_videos_dir, filename)
+
+
 class VideoProcessingTask(Task):
     """Базовий клас задачі для обробки відео з ініціалізацією необхідних клієнтів"""
 
@@ -76,8 +82,6 @@ def process_video_annotation(self, azure_link: str) -> Dict[str, Any]:
             }
 
         filename = annotation.get("filename")
-        local_path = annotation.get("local_path")
-
         if not filename:
             logger.error(f"Назва файлу не знайдена: {azure_link}")
             return {
@@ -85,7 +89,8 @@ def process_video_annotation(self, azure_link: str) -> Dict[str, Any]:
                 "message": "Відсутня назва файлу"
             }
 
-        if not local_path or not os.path.exists(local_path):
+        local_path = get_local_video_path(filename)
+        if not os.path.exists(local_path):
             logger.error(f"Локальний файл не знайдено: {local_path}")
             return {
                 "status": "error",
@@ -182,9 +187,9 @@ def process_video_clip(
             }
 
         source_id = source_annotation.get("_id")
-        local_source_path = source_annotation.get("local_path")
+        local_source_path = get_local_video_path(filename)
 
-        if not local_source_path or not os.path.exists(local_source_path):
+        if not os.path.exists(local_source_path):
             logger.error(f"Локальний файл не знайдено: {local_source_path}")
             return {
                 "status": "error",
@@ -314,30 +319,29 @@ def finalize_video_processing(results: List[Dict], azure_link: str) -> Dict[str,
         logger.info(
             f"Результати обробки {azure_link}: успішно {successful_clips}/{total_clips}, помилок {failed_clips}")
 
-        # КРИТИЧНО: Видаляємо source файл ТІЛЬКИ якщо ВСІ задачі завершились успішно
+        # Видаляємо source файл ТІЛЬКИ якщо ВСІ задачі завершились успішно
         if failed_clips == 0 and successful_clips == total_clips:
-            # Всі задачі успішні - видаляємо source файл та оновлюємо статус
-            local_path = annotation.get("local_path")
-            if local_path and os.path.exists(local_path):
-                try:
-                    cleanup_file(local_path)
-                    logger.info(f"Видалено локальний source файл: {local_path}")
-                except Exception as e:
-                    logger.error(f"Помилка видалення source файлу {local_path}: {str(e)}")
-                    # Якщо не можемо видалити файл - це критична помилка
-                    return {
-                        "status": "error",
-                        "message": f"Помилка видалення source файлу: {str(e)}",
-                        "successful_clips": successful_clips,
-                        "failed_clips": failed_clips,
-                        "total_clips": total_clips
-                    }
-            else:
-                logger.warning(f"Локальний файл не знайдено або вже видалено: {local_path}")
+            filename = annotation.get("filename")
+            if filename:
+                local_path = get_local_video_path(filename)
+                if os.path.exists(local_path):
+                    try:
+                        cleanup_file(local_path)
+                        logger.info(f"Видалено локальний source файл: {local_path}")
+                    except Exception as e:
+                        logger.error(f"Помилка видалення source файлу {local_path}: {str(e)}")
+                        return {
+                            "status": "error",
+                            "message": f"Помилка видалення source файлу: {str(e)}",
+                            "successful_clips": successful_clips,
+                            "failed_clips": failed_clips,
+                            "total_clips": total_clips
+                        }
+                else:
+                    logger.warning(f"Локальний файл не знайдено або вже видалено: {local_path}")
 
-            # Оновлюємо статус source відео на "annotated" та видаляємо local_path
+            # Оновлюємо статус source відео на "annotated"
             annotation["status"] = "annotated"
-            annotation["local_path"] = None
             annotation["updated_at"] = datetime.now().isoformat(sep=" ", timespec="seconds")
             repo.save_annotation(annotation)
 
@@ -356,7 +360,6 @@ def finalize_video_processing(results: List[Dict], azure_link: str) -> Dict[str,
             logger.warning(
                 f"Обробка відео {azure_link} завершена з помилками. Source файл збережено для повторної обробки")
 
-            # Не змінюємо статус - залишаємо можливість повторної обробки
             return {
                 "status": "partial_success",
                 "message": f"Обробка завершена з помилками. Успішно оброблено {successful_clips} з {total_clips} кліпів",

@@ -31,6 +31,12 @@ def json_response(content: Any) -> JSONResponse:
     return JSONResponse(content=json.loads(json_str))
 
 
+def get_local_video_path(filename: str) -> str:
+    """Конструює локальний шлях для відео файлу"""
+    local_videos_dir = os.path.join(Settings.temp_folder, "source_videos")
+    return os.path.join(local_videos_dir, filename)
+
+
 class VideoUploadRequest(BaseModel):
     """Модель для запиту завантаження відео"""
     video_url: str
@@ -116,15 +122,19 @@ async def get_video(azure_link: str):
         if not annotation:
             raise HTTPException(404, detail="Відео не знайдено")
 
-        local_path = annotation.get("local_path")
+        filename = annotation.get("filename")
+        if not filename:
+            raise HTTPException(404, detail="Назва файлу не знайдена")
 
-        if not local_path or not os.path.exists(local_path):
+        local_path = get_local_video_path(filename)
+
+        if not os.path.exists(local_path):
             raise HTTPException(404, detail="Локальний файл не знайдено")
 
         return FileResponse(
             path=local_path,
             media_type="video/mp4",
-            filename=annotation.get("filename"),
+            filename=filename,
             headers={
                 "Accept-Ranges": "bytes",
                 "Cache-Control": "public, max-age=3600"
@@ -158,11 +168,10 @@ async def upload(data: VideoUploadRequest) -> JSONResponse:
             })
 
         filename = validation_result["filename"]
+        local_path = get_local_video_path(filename)
 
-        # Створюємо локальний шлях
-        local_videos_dir = os.path.join(Settings.temp_folder, "source_videos")
-        os.makedirs(local_videos_dir, exist_ok=True)
-        local_path = os.path.join(local_videos_dir, filename)
+        # Створюємо директорію якщо не існує
+        os.makedirs(os.path.dirname(local_path), exist_ok=True)
 
         # Завантажуємо відео локально
         download_result = download_blob_to_local(azure_link, local_path)
@@ -176,7 +185,6 @@ async def upload(data: VideoUploadRequest) -> JSONResponse:
         video_record = {
             "azure_link": azure_link,
             "filename": filename,
-            "local_path": local_path,
             "size": validation_result["size"],
             "content_type": validation_result["content_type"],
             "created_at": datetime.now().isoformat(sep=" ", timespec="seconds"),
@@ -210,11 +218,11 @@ async def upload(data: VideoUploadRequest) -> JSONResponse:
 
 @app.get("/get_videos")
 async def get_videos() -> JSONResponse:
-    """Отримання списку всіх відео для анотування"""
+    """Отримання списку відео які ще не анотовані"""
     repo = None
     try:
         repo = create_repository(collection_name="source_videos")
-        videos = repo.get_all_annotations()
+        videos = repo.get_all_annotations(filter_query={"status": {"$ne": "annotated"}})
 
         return json_response({
             "success": True,

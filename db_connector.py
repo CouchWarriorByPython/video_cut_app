@@ -73,7 +73,7 @@ class VideoClipRecord(BaseModel):
 class AnnotationBase:
     """Базовий клас для роботи з анотаціями відео"""
 
-    def __init__(self, collection_name: str):
+    def __init__(self, collection_name: str) -> None:
         """Ініціалізує клас з вказаною колекцією"""
         self.collection_name = collection_name
         logger.info(f"Ініціалізація репозиторію для колекції: {collection_name}")
@@ -119,7 +119,7 @@ class AnnotationBase:
 class SyncVideoAnnotationRepository(AnnotationBase):
     """Синхронний репозиторій для збереження відеоанотацій в MongoDB"""
 
-    def __init__(self, collection_name: str):
+    def __init__(self, collection_name: str) -> None:
         """Ініціалізує репозиторій з вказаною колекцією"""
         super().__init__(collection_name)
         try:
@@ -262,10 +262,11 @@ class SyncVideoAnnotationRepository(AnnotationBase):
             logger.error(f"Помилка отримання кліпів за azure_link: {str(e)}")
             raise
 
-    def get_all_annotations(self) -> List[Dict]:
-        """Отримує всі анотації"""
+    def get_all_annotations(self, filter_query: Optional[Dict] = None) -> List[Dict]:
+        """Отримує всі анотації з можливістю фільтрації"""
         try:
-            docs = list(self.collection.find())
+            query = filter_query or {}
+            docs = list(self.collection.find(query))
             logger.info(f"Отримано {len(docs)} записів з колекції {self.collection_name}")
             return self._normalize_documents(docs)
         except Exception as e:
@@ -302,7 +303,7 @@ class SyncVideoAnnotationRepository(AnnotationBase):
 class AsyncVideoAnnotationRepository(AnnotationBase):
     """Асинхронний репозиторій для збереження відеоанотацій в MongoDB"""
 
-    def __init__(self, collection_name: str):
+    def __init__(self, collection_name: str) -> None:
         """Ініціалізує репозиторій з вказаною колекцією"""
         super().__init__(collection_name)
         try:
@@ -424,10 +425,11 @@ class AsyncVideoAnnotationRepository(AnnotationBase):
             logger.error(f"Помилка асинхронного отримання кліпів: {str(e)}")
             raise
 
-    async def get_all_annotations(self) -> List[Dict]:
-        """Отримує всі анотації"""
+    async def get_all_annotations(self, filter_query: Optional[Dict] = None) -> List[Dict]:
+        """Отримує всі анотації з можливістю фільтрації"""
         try:
-            cursor = self.collection.find()
+            query = filter_query or {}
+            cursor = self.collection.find(query)
             docs = await cursor.to_list(length=None)
             logger.info(f"Асинхронно отримано {len(docs)} записів з колекції {self.collection_name}")
             return self._normalize_documents(docs)

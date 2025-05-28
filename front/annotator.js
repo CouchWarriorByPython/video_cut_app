@@ -619,6 +619,28 @@ function handleSkipChange() {
     });
 }
 
+function validateRequiredFields() {
+    const errors = [];
+
+    // Валідація UAV типу
+    if (!uavTypeSelect.value.trim()) {
+        errors.push('UAV (тип дрона)');
+        uavTypeSelect.style.borderColor = '#e74c3c';
+    } else {
+        uavTypeSelect.style.borderColor = '';
+    }
+
+    // Валідація контенту відео
+    if (!videoContentSelect.value.trim()) {
+        errors.push('Контент відео');
+        videoContentSelect.style.borderColor = '#e74c3c';
+    } else {
+        videoContentSelect.style.borderColor = '';
+    }
+
+    return errors;
+}
+
 function showJsonModal() {
     const jsonData = prepareJsonData();
     jsonContent.textContent = JSON.stringify(jsonData, null, 2);
@@ -658,6 +680,16 @@ function prepareJsonData() {
 }
 
 function saveFragmentsToJson() {
+    // Валідація обов'язкових полів (тільки якщо не skip)
+    if (!skipVideoCheckbox.checked) {
+        const validationErrors = validateRequiredFields();
+
+        if (validationErrors.length > 0) {
+            alert(`Необхідно заповнити обов'язкові поля:\n• ${validationErrors.join('\n• ')}`);
+            return;
+        }
+    }
+
     let totalFragments = 0;
     for (const project in projectFragments) {
         totalFragments += projectFragments[project].length;

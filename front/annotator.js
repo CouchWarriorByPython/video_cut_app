@@ -75,21 +75,15 @@ function loadVideoList() {
                     console.log("Обробка відео в UI:", video);
                     const option = document.createElement('option');
 
-                    // Використовуємо azure_link як значення для завантаження
+                    // Використовуємо azure_link як значення
                     option.value = video.azure_link;
 
-                    // Видобуваємо назву файлу з local_path для відображення
-                    let displayName;
-                    if (video.local_path) {
-                        const pathParts = video.local_path.split('/');
-                        displayName = pathParts[pathParts.length - 1];
-                    } else {
-                        displayName = video.azure_link.split('/').pop() || `Відео #${video.id}`;
-                    }
+                    // Відображаємо ім'я файлу
+                    const displayName = video.filename || video.azure_link.split('/').pop() || `Відео #${video.id}`;
 
                     option.textContent = displayName;
                     option.dataset.id = video.id;
-                    option.dataset.localPath = video.local_path || '';
+                    option.dataset.filename = video.filename || '';
                     videoSelect.appendChild(option);
                 });
             } else {
@@ -107,15 +101,13 @@ function loadVideoList() {
 videoPlayer.addEventListener('error', function() {
     console.error('Помилка завантаження відео:', videoPlayer.error);
 
-    // Показати повідомлення про помилку
     alert(`Помилка відтворення відео: ${videoPlayer.error ? videoPlayer.error.message : 'Невідома помилка'}`);
 
-    // Альтернативне рішення - показати кнопку для повторної спроби
     const videoContainer = document.querySelector('.video-container');
     const errorMessage = document.createElement('div');
     errorMessage.className = 'video-error';
     errorMessage.innerHTML = `
-        <p>Не вдалося завантажити відео. ${videoPlayer.error ? videoPlayer.error.message : ''}</p>
+        <p>Не вдалося завантажити відео з Azure. ${videoPlayer.error ? videoPlayer.error.message : ''}</p>
         <button class="btn" id="retry-video">Спробувати ще раз</button>
     `;
 
@@ -135,37 +127,20 @@ loadVideoBtn.addEventListener('click', function() {
         return;
     }
 
-    // Отримуємо назву файлу з тексту вибраної опції
+    // Отримуємо дані з вибраної опції
     const selectedOption = videoSelect.options[videoSelect.selectedIndex];
     const azureLink = selectedOption.value;
-    const filename = selectedOption.textContent;
-    let localPath = selectedOption.dataset.localPath || '';
+    const filename = selectedOption.dataset.filename || selectedOption.textContent;
 
-    // Перевіряємо правильність шляху до відео
-    console.log(`Вибрано відео: azureLink=${azureLink}, localPath=${localPath}`);
-
-    // Якщо шлях починається з source_videos, виправляємо його
-    if (localPath.startsWith('source_videos/')) {
-        const filename = localPath.split('/').pop();
-        localPath = `/videos/${filename}`;
-        console.log(`Виправлено шлях: ${localPath}`);
-    }
+    console.log(`Вибрано відео: azureLink=${azureLink}, filename=${filename}`);
 
     // Показуємо редактор і завантажуємо відео
     videoSelector.style.display = 'none';
     videoEditor.classList.remove('hidden');
 
-    // Встановлюємо відео - використовуємо локальний шлях, якщо є
-    if (localPath) {
-        videoPlayer.src = localPath;
-    } else {
-        // Якщо немає локального шляху, спробуємо завантажити відео з Azure
-        // Альтернативно, можна показати повідомлення про помилку
-        alert('Відео не було завантажене локально. Спроба отримати відео напряму може не працювати.');
-        videoPlayer.src = azureLink;
-    }
-
-    console.log(`Встановлено відео: ${videoPlayer.src}`);
+    // Встановлюємо відео напряму з Azure
+    videoPlayer.src = azureLink;
+    console.log(`Встановлено відео з Azure: ${videoPlayer.src}`);
     videoPlayer.load();
 
     // Відображаємо назву файлу
@@ -299,8 +274,6 @@ function syncActiveProjects() {
 // Функція оновлення стану кнопок
 function updateButtonStates() {
     const noProjectsSelected = activeProjects.length === 0;
-    // Не вимикаємо кнопку "Встановити початок фрагменту", щоб показувати алерт
-    // startFragmentBtn.disabled = noProjectsSelected;
 
     const hasUnfinishedFragments = Object.values(unfinishedFragments).some(frag => frag !== null);
     // Кнопки "Завершити" і "Скасувати" будуть активні лише якщо є незавершені фрагменти
@@ -819,7 +792,7 @@ function saveFragmentsToJson() {
         clips: formattedProjects
     };
 
-    // Змінений код для обробки відповіді
+    // Відправляємо дані на сервер
     fetch('/save_fragments', {
         method: 'POST',
         headers: {

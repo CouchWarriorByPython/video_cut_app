@@ -3,36 +3,47 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Завантаження відео</title>
+    <title>Реєстрація відео</title>
     <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
     <div class="container">
-        <h1>Завантаження відео</h1>
+        <h1>Реєстрація відео з Azure Storage</h1>
 
         <div class="upload-container">
             <!-- Поле для Azure URL -->
             <div class="form-group">
-                <label for="video-url">Посилання на відео (Azure):</label>
-                <input type="text" id="video-url" class="form-control">
+                <label for="video-url">Azure Blob URL відео:</label>
+                <input type="text" id="video-url" class="form-control"
+                       placeholder="https://storage-account.blob.core.windows.net/container/path/video.mp4">
+                <small class="form-text">Введіть повне посилання на відео в Azure Blob Storage</small>
             </div>
 
-            <!-- Єдині поля для метаданих -->
+            <!-- Мітки для анотацій -->
             <div class="form-group">
                 <label for="metadata-where">Локація (опційно):</label>
                 <input type="text" id="metadata-where" class="form-control"
-                       pattern="[A-Za-z\s\-_]+" title="Тільки англійські літери">
+                       pattern="[A-Za-z\s\-_]+" title="Тільки англійські літери"
+                       placeholder="Наприклад: Kyiv, Kharkiv">
             </div>
 
             <div class="form-group">
                 <label for="metadata-when">Дата зйомки (опційно):</label>
                 <input type="text" id="metadata-when" class="form-control"
                        pattern="[0-9]{8}" title="Формат: РРРРММДД (наприклад, 20250508)"
-                       placeholder="РРРРММДД">
+                       placeholder="РРРРММДД (наприклад: 20250527)">
             </div>
 
-            <!-- Кнопка завантаження -->
-            <button id="upload-btn" class="btn full-width">Завантажити відео</button>
+            <!-- Інформація про URL -->
+            <div class="info-panel">
+                <h3>Інформація</h3>
+                <p>Система перевірить доступність відео в Azure Storage перед реєстрацією.</p>
+                <p>Підтримувані формати: MP4, AVI, MOV</p>
+                <p>Максимальний розмір: без обмежень (залежить від Azure Storage)</p>
+            </div>
+
+            <!-- Кнопка реєстрації -->
+            <button id="upload-btn" class="btn full-width">Зареєструвати відео</button>
         </div>
 
         <div id="result" class="hidden"></div>

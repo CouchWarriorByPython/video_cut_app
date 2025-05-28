@@ -43,8 +43,9 @@ class CVATProjectParams(BaseModel):
 class SourceVideoAnnotation(BaseModel):
     """Модель анотації соурс відео"""
     azure_link: str
-    local_path: str
-    extension: str
+    filename: str
+    size: int
+    content_type: str = "video/mp4"
     created_at: str = Field(default_factory=lambda: datetime.now().isoformat(sep=" ", timespec="seconds"))
     updated_at: str = Field(default_factory=lambda: datetime.now().isoformat(sep=" ", timespec="seconds"))
     when: Optional[str] = None
@@ -64,6 +65,7 @@ class VideoClipRecord(BaseModel):
     cvat_task_id: Optional[str] = None
     status: str = "not_annotated"
     azure_link: str
+    blob_url: str
     fps: int = 60
     created_at: str = Field(default_factory=lambda: datetime.now().isoformat(sep=" ", timespec="seconds"))
     updated_at: str = Field(default_factory=lambda: datetime.now().isoformat(sep=" ", timespec="seconds"))
@@ -148,7 +150,9 @@ class SyncVideoAnnotationRepository(AnnotationBase):
                     ("project", 1),
                     ("clip_id", 1)
                 ], unique=True)
-                logger.info("Створено композитний унікальний індекс для video_clips")
+                # Індекс для швидкого пошуку за azure_link
+                self.collection.create_index("azure_link")
+                logger.info("Створено композитний унікальний індекс та індекс azure_link для video_clips")
 
         except Exception as e:
             logger.error(f"Помилка створення індексу: {str(e)}")
@@ -239,6 +243,26 @@ class SyncVideoAnnotationRepository(AnnotationBase):
             logger.error(f"Помилка отримання кліпів: {str(e)}")
             raise
 
+    def get_clips_by_azure_link(self, azure_link: str) -> List[Dict]:
+        """Отримує всі кліпи за Azure лінком соурс відео"""
+        try:
+            # Спочатку знаходимо соурс відео
+            source_doc = self.collection.find_one({"azure_link": azure_link})
+            if not source_doc:
+                logger.warning(f"Соурс відео не знайдено: {azure_link}")
+                return []
+
+            source_id = source_doc["_id"]
+
+            # Знаходимо всі кліпи для цього соурс відео
+            clips_repo = SyncVideoAnnotationRepository("video_clips")
+            docs = list(clips_repo.collection.find({"source_id": source_id}))
+            logger.info(f"Знайдено {len(docs)} кліпів для azure_link: {azure_link}")
+            return self._normalize_documents(docs)
+        except Exception as e:
+            logger.error(f"Помилка отримання кліпів за azure_link: {str(e)}")
+            raise
+
     def get_all_annotations(self) -> List[Dict]:
         """Отримує всі анотації"""
         try:
@@ -304,7 +328,8 @@ class AsyncVideoAnnotationRepository(AnnotationBase):
                     ("project", 1),
                     ("clip_id", 1)
                 ], unique=True)
-                logger.info("Створено асинхронний композитний унікальний індекс для video_clips")
+                await self.collection.create_index("azure_link")
+                logger.info("Створено асинхронний композитний унікальний індекс та індекс azure_link для video_clips")
 
         except Exception as e:
             logger.error(f"Помилка створення асинхронного індексу: {str(e)}")

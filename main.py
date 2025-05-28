@@ -1,6 +1,5 @@
 from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
-from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from typing import Dict, Any, Optional
 import os
@@ -11,7 +10,7 @@ from datetime import datetime
 
 from tasks import process_video_annotation, monitor_clip_tasks
 from db_connector import create_repository
-from utils.celery_utils import get_default_cvat_project_params, download_video_from_azure
+from utils.celery_utils import get_default_cvat_project_params, parse_azure_blob_url, get_blob_service_client
 from configs import Settings
 from utils.logger import get_logger
 
@@ -23,9 +22,8 @@ app = FastAPI()
 JSON_OPTIONS = json_util.JSONOptions(json_mode=json_util.JSONMode.RELAXED)
 
 # Створюємо необхідні директорії
-os.makedirs(Settings.upload_folder, exist_ok=True)
+os.makedirs(Settings.temp_folder, exist_ok=True)
 
-app.mount("/videos", StaticFiles(directory=Settings.upload_folder), name="videos")
 templates = Jinja2Templates(directory="front")
 
 
@@ -73,9 +71,55 @@ class CVATParametersRequest(BaseModel):
     cvat_params: Dict[str, Dict[str, Any]]
 
 
+def validate_azure_url(url: str) -> Dict[str, Any]:
+    """Валідує Azure blob URL та перевіряє доступність"""
+    try:
+        # Парсимо URL
+        blob_info = parse_azure_blob_url(url)
+
+        # Перевіряємо чи це наш storage account
+        if blob_info["account_name"] != Settings.azure_storage_account_name:
+            return {
+                "valid": False,
+                "error": f"URL повинен бути з storage account '{Settings.azure_storage_account_name}'"
+            }
+
+        # Перевіряємо існування blob
+        blob_service_client = get_blob_service_client()
+        blob_client = blob_service_client.get_blob_client(
+            container=blob_info["container_name"],
+            blob=blob_info["blob_name"]
+        )
+
+        if not blob_client.exists():
+            return {
+                "valid": False,
+                "error": "Файл не знайдено в Azure Storage"
+            }
+
+        # Отримуємо властивості файлу
+        properties = blob_client.get_blob_properties()
+        filename = os.path.basename(blob_info["blob_name"])
+
+        return {
+            "valid": True,
+            "filename": filename,
+            "size": properties.size,
+            "content_type": properties.content_settings.content_type or "video/mp4",
+            "blob_info": blob_info
+        }
+
+    except Exception as e:
+        logger.error(f"Помилка валідації Azure URL {url}: {str(e)}")
+        return {
+            "valid": False,
+            "error": f"Помилка валідації URL: {str(e)}"
+        }
+
+
 @app.post("/upload")
 async def upload(data: VideoUploadRequest) -> JSONResponse:
-    """Реєстрація відео за URL і його завантаження"""
+    """Реєстрація відео за Azure URL"""
     repo = None
     try:
         azure_link = data.video_url.strip()
@@ -83,20 +127,21 @@ async def upload(data: VideoUploadRequest) -> JSONResponse:
         if not azure_link:
             return json_response({"success": False, "message": "URL відео не вказано"})
 
-        # Завантажуємо відео з URL
-        download_result = download_video_from_azure(azure_link, Settings.upload_folder)
+        # Валідуємо Azure URL
+        validation_result = validate_azure_url(azure_link)
 
-        if not download_result["success"]:
+        if not validation_result["valid"]:
             return json_response({
                 "success": False,
-                "message": f"Помилка завантаження відео: {download_result['error']}"
+                "message": f"Невірний Azure URL: {validation_result['error']}"
             })
 
         # Записуємо в MongoDB
         video_record = {
             "azure_link": azure_link,
-            "local_path": download_result["local_path"],
-            "extension": download_result["extension"],
+            "filename": validation_result["filename"],
+            "size": validation_result["size"],
+            "content_type": validation_result["content_type"],
             "created_at": datetime.now().isoformat(sep=" ", timespec="seconds"),
             "updated_at": datetime.now().isoformat(sep=" ", timespec="seconds"),
             "when": data.when,
@@ -109,15 +154,14 @@ async def upload(data: VideoUploadRequest) -> JSONResponse:
         repo.create_indexes()
         record_id = repo.save_annotation(video_record)
 
-        logger.info(f"Відео успішно завантажено: {azure_link}")
+        logger.info(f"Відео зареєстровано: {azure_link}")
 
         return json_response({
             "success": True,
             "id": record_id,
             "azure_link": azure_link,
-            "local_path": download_result["local_path"],
-            "filename": download_result["filename"],
-            "message": "Відео успішно завантажено та додано до бази даних"
+            "filename": validation_result["filename"],
+            "message": "Відео успішно зареєстровано в системі"
         })
 
     except Exception as e:
@@ -347,7 +391,7 @@ async def clip_processing_status(task_id: str) -> JSONResponse:
 if __name__ == "__main__":
     import uvicorn
 
-    logger.info(f"Папка для відео: {os.path.abspath(Settings.upload_folder)}")
+    logger.info(f"Тимчасова папка: {os.path.abspath(Settings.temp_folder)}")
     logger.info(f"Запуск сервера на {Settings.host}:{Settings.port}")
 
     uvicorn.run("main:app", host=Settings.host, port=Settings.port, reload=Settings.reload)

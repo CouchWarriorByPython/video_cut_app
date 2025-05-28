@@ -2,16 +2,14 @@ import os
 import subprocess
 import logging
 import re
+import tempfile
 from typing import Dict, Any, Optional
 from urllib.parse import urlparse
 from datetime import datetime
-import requests
-import time
-import uuid
-import random
 
-from azure.storage.blob import BlobServiceClient, ContainerClient
+from azure.storage.blob import BlobServiceClient, ContainerClient, BlobClient
 from azure.identity import ClientSecretCredential
+from azure.core.exceptions import ResourceNotFoundError
 
 from configs import Settings
 from utils.logger import get_logger
@@ -23,107 +21,94 @@ AZURE_LOGGER = logging.getLogger("azure.core.pipeline.policies.http_logging_poli
 AZURE_LOGGER.setLevel(logging.WARNING)
 
 
-def get_blob_service_client() -> Optional[BlobServiceClient]:
+def get_blob_service_client() -> BlobServiceClient:
     """Отримує BlobServiceClient на основі service principal credentials"""
-    if Settings.azure_mock_mode:
-        logger.info("Azure mock mode enabled - повертаємо None")
-        return None
-
-    if not Settings.validate_azure_config():
-        raise ValueError("Azure service principal credentials не налаштовані")
-
     try:
-        # Створюємо credential через service principal
         credential = ClientSecretCredential(
             tenant_id=Settings.azure_tenant_id,
             client_id=Settings.azure_client_id,
             client_secret=Settings.azure_client_secret
         )
 
-        # Формуємо URL до storage account
-        account_url = f"https://{Settings.azure_storage_account_name}.blob.core.windows.net"
-
         return BlobServiceClient(
-            account_url=account_url,
+            account_url=Settings.get_azure_account_url(),
             credential=credential
         )
-
     except Exception as e:
         logger.error(f"Помилка створення BlobServiceClient: {str(e)}")
         raise
 
 
-def get_blob_container_client(blob_service_client: Optional[BlobServiceClient]) -> Optional[ContainerClient]:
+def get_blob_container_client(blob_service_client: BlobServiceClient) -> ContainerClient:
     """Отримує ContainerClient для налаштованого контейнера"""
-    if Settings.azure_mock_mode or blob_service_client is None:
-        logger.info("Azure mock mode enabled - повертаємо None для container client")
-        return None
-
     return blob_service_client.get_container_client(container=Settings.azure_storage_container_name)
 
 
-def get_azure_blob_path(filename: str) -> str:
-    """Формує повний шлях до blob в Azure Storage"""
-    # Переконуємося що folder_path закінчується на "/"
-    folder_path = Settings.azure_folder_path
-    if not folder_path.endswith("/"):
-        folder_path += "/"
-
-    return f"{folder_path}{filename}"
-
-
-def download_video_from_azure(url: str, output_dir: Optional[str] = None) -> Dict[str, Any]:
-    """Завантаження відео з URL"""
-    if output_dir is None:
-        output_dir = Settings.upload_folder
-
+def parse_azure_blob_url(azure_url: str) -> Dict[str, str]:
+    """Парсить Azure blob URL та повертає компоненти"""
     try:
-        parsed_url = urlparse(url)
-        if not parsed_url.scheme or not parsed_url.netloc:
-            raise ValueError(f"Недійсний URL: {url}")
+        parsed = urlparse(azure_url)
+        path_parts = parsed.path.strip('/').split('/', 2)
 
-        path_parts = parsed_url.path.strip('/').split('/')
-        if path_parts:
-            if parsed_url.netloc == 'localhost:8001' and path_parts[-1] == 'video':
-                filename = "20250502-1628-IN_Recording.mp4"
-            else:
-                filename = path_parts[-1]
-                if not os.path.splitext(filename)[1]:
-                    filename += ".mp4"
-        else:
-            filename = f"video_{int(datetime.now().timestamp())}.mp4"
+        if len(path_parts) < 2:
+            raise ValueError("Некоректний Azure blob URL")
 
-        extension = os.path.splitext(filename)[1]
+        container_name = path_parts[0]
+        blob_name = '/'.join(path_parts[1:]) if len(path_parts) > 1 else path_parts[1]
 
-        if os.path.exists(os.path.join(output_dir, filename)):
-            base_name, ext = os.path.splitext(filename)
-            filename = f"{base_name}_{int(datetime.now().timestamp())}{ext}"
+        return {
+            "account_name": parsed.netloc.split('.')[0],
+            "container_name": container_name,
+            "blob_name": blob_name
+        }
+    except Exception as e:
+        logger.error(f"Помилка парсингу Azure URL {azure_url}: {str(e)}")
+        raise
 
-        os.makedirs(output_dir, exist_ok=True)
-        file_path = os.path.join(output_dir, filename)
 
-        response = requests.get(url, stream=True, timeout=30)
+def download_blob_to_temp(azure_url: str) -> Dict[str, Any]:
+    """Завантажує blob з Azure в тимчасовий файл"""
+    try:
+        blob_info = parse_azure_blob_url(azure_url)
+        blob_service_client = get_blob_service_client()
 
-        if response.status_code != 200:
-            raise ValueError(f"Помилка отримання відео. Статус: {response.status_code}")
+        blob_client = blob_service_client.get_blob_client(
+            container=blob_info["container_name"],
+            blob=blob_info["blob_name"]
+        )
 
-        with open(file_path, 'wb') as f:
-            for chunk in response.iter_content(chunk_size=8192):
-                if chunk:
-                    f.write(chunk)
+        # Перевіряємо існування blob
+        if not blob_client.exists():
+            raise ResourceNotFoundError(f"Blob не знайдено: {azure_url}")
 
-        web_path = f"/videos/{filename}"
+        # Отримуємо властивості blob
+        blob_properties = blob_client.get_blob_properties()
+        filename = os.path.basename(blob_info["blob_name"])
+
+        # Створюємо тимчасовий файл
+        temp_file = tempfile.NamedTemporaryFile(
+            delete=False,
+            suffix=os.path.splitext(filename)[1],
+            dir=Settings.temp_folder
+        )
+
+        logger.info(f"Завантаження blob {azure_url} в {temp_file.name}")
+
+        # Завантажуємо blob
+        with open(temp_file.name, "wb") as download_file:
+            blob_data = blob_client.download_blob()
+            download_file.write(blob_data.readall())
 
         return {
             "success": True,
-            "azure_link": url,
+            "local_path": temp_file.name,
             "filename": filename,
-            "extension": extension[1:] if extension.startswith('.') else extension,
-            "local_path": web_path,
-            "file_path": file_path
+            "size": blob_properties.size,
+            "content_type": blob_properties.content_settings.content_type or "video/mp4"
         }
+
     except Exception as e:
-        logger.error(f"Помилка завантаження відео: {str(e)}")
+        logger.error(f"Помилка завантаження blob {azure_url}: {str(e)}")
         return {
             "success": False,
             "error": str(e)
@@ -131,33 +116,13 @@ def download_video_from_azure(url: str, output_dir: Optional[str] = None) -> Dic
 
 
 def upload_clip_to_azure(
-        container_client: Optional[ContainerClient],
+        container_client: ContainerClient,
         file_path: str,
-        filename: str,
+        azure_path: str,
         metadata: Dict[str, str]
 ) -> Dict[str, Any]:
-    """Завантажує кліп на Azure Blob Storage або імітує завантаження"""
+    """Завантажує кліп на Azure Blob Storage"""
     try:
-        # Формуємо повний шлях в Azure
-        azure_path = get_azure_blob_path(filename)
-
-        if Settings.azure_mock_mode or container_client is None:
-            logger.info(f"Azure mock mode - імітуємо завантаження файлу {file_path} в {azure_path}")
-
-            # Імітуємо затримку завантаження
-            time.sleep(0.1)
-
-            # Генеруємо фіктивний blob client ID
-            mock_blob_id = str(uuid.uuid4())
-
-            return {
-                "success": True,
-                "azure_link": azure_path,
-                "blob_client": mock_blob_id,
-                "metadata": metadata,
-                "mock": True
-            }
-
         logger.info(f"Завантаження файлу {file_path} на Azure в {azure_path}")
 
         with open(file_path, "rb") as data:
@@ -172,10 +137,9 @@ def upload_clip_to_azure(
 
         return {
             "success": True,
-            "azure_link": azure_path,
-            "blob_client": blob_client,
-            "metadata": metadata,
-            "mock": False
+            "azure_path": azure_path,
+            "blob_url": f"{Settings.get_azure_account_url()}/{Settings.azure_storage_container_name}/{azure_path}",
+            "metadata": metadata
         }
     except Exception as e:
         logger.error(f"Помилка завантаження на Azure: {str(e)}")
@@ -185,32 +149,13 @@ def upload_clip_to_azure(
         }
 
 
-# Решта функцій залишається без змін
 def get_command_auth_str() -> str:
     """Формує auth string для CVAT CLI команд"""
-    if Settings.cvat_mock_mode:
-        logger.info("CVAT mock mode enabled")
-        return "echo"  # заглушка
-
-    if not Settings.validate_cvat_config():
-        raise ValueError("CVAT налаштування не знайдені")
-
     return f"cvat-cli --auth {Settings.cvat_username}:{Settings.cvat_password} --server-host {Settings.cvat_host} --server-port {Settings.cvat_port}"
 
 
 def execute_cvat_command(cli_command: str) -> subprocess.CompletedProcess:
     """Виконує CVAT CLI команду"""
-    if Settings.cvat_mock_mode:
-        logger.info(f"CVAT mock mode - імітуємо виконання команди: {cli_command}")
-        # Імітуємо успішну відповідь
-        mock_output = f"Created task ID: {random.randint(1000, 9999)}"
-        return subprocess.CompletedProcess(
-            args=cli_command,
-            returncode=0,
-            stdout=mock_output.encode(),
-            stderr=b""
-        )
-
     auth_str = get_command_auth_str()
     command = f"{auth_str} {cli_command}"
     logger.info(f"Виконання команди: {command}")
@@ -218,7 +163,7 @@ def execute_cvat_command(cli_command: str) -> subprocess.CompletedProcess:
 
 
 def get_default_cvat_project_params(project_name: str) -> Dict[str, Any]:
-    """Заглушка для отримання дефолтних CVAT параметрів проєкту"""
+    """Отримує дефолтні CVAT параметри проєкту"""
     default_projects = {
         "motion-det": {
             "project_id": 5,
@@ -254,19 +199,10 @@ def get_default_cvat_project_params(project_name: str) -> Dict[str, Any]:
     })
 
 
-def get_cvat_task_parameters() -> Dict[str, Dict[str, Any]]:
-    """Заглушка для отримання всіх CVAT параметрів"""
-    return {
-        "motion-det": get_default_cvat_project_params("motion-det"),
-        "tracking": get_default_cvat_project_params("tracking"),
-        "mil-hardware": get_default_cvat_project_params("mil-hardware"),
-        "re-id": get_default_cvat_project_params("re-id")
-    }
-
-
 def format_filename(
         metadata: Dict[str, Any],
         original_filename: str,
+        project: str,
         clip_id: int,
         where: str = "",
         when: str = ""
@@ -282,9 +218,9 @@ def format_filename(
     if when:
         filename_parts.append(when)
 
-    filename_parts.append(f"{video_base_name}_cut{clip_id}")
+    filename_parts.append(f"{video_base_name}_{project}_{clip_id}")
 
-    return "_".join(filename_parts)
+    return "_".join(filename_parts) + ".mp4"
 
 
 def trim_video_clip(
@@ -330,14 +266,8 @@ def create_cvat_task(
         file_path: str,
         project_params: Dict[str, Any]
 ) -> Optional[str]:
-    """Створює задачу в CVAT через CLI або імітує створення"""
+    """Створює задачу в CVAT через CLI"""
     try:
-        if Settings.cvat_mock_mode:
-            import random
-            mock_task_id = str(random.randint(1000, 9999))
-            logger.info(f"CVAT mock mode - імітуємо створення задачі для {filename}, task_id: {mock_task_id}")
-            return mock_task_id
-
         project_id = project_params.get("project_id")
         overlap = project_params.get("overlap", 5)
         segment_size = project_params.get("segment_size", 400)
@@ -380,3 +310,13 @@ def create_cvat_task(
     except Exception as e:
         logger.error(f"Помилка при створенні CVAT задачі для {filename}: {str(e)}")
         return None
+
+
+def cleanup_temp_file(file_path: str) -> None:
+    """Видаляє тимчасовий файл"""
+    try:
+        if os.path.exists(file_path):
+            os.unlink(file_path)
+            logger.info(f"Видалено тимчасовий файл: {file_path}")
+    except Exception as e:
+        logger.error(f"Помилка видалення тимчасового файлу {file_path}: {str(e)}")

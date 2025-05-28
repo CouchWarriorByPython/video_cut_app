@@ -642,3 +642,76 @@ video {
     border-radius: 4px;
     margin-top: 20px;
 }
+
+.info-message {
+    background-color: rgba(52, 152, 219, 0.2);
+    border-left: 4px solid #3498db;
+    padding: 15px;
+    border-radius: 4px;
+    margin-top: 20px;
+}
+
+/* Стилі для завантаження відео */
+.loading-spinner {
+    border: 3px solid #f3f3f3;
+    border-top: 3px solid #3498db;
+    border-radius: 50%;
+    width: 30px;
+    height: 30px;
+    animation: spin 1s linear infinite;
+    margin: 20px auto;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+.url-display {
+    word-break: break-all;
+    background: var(--input-bg);
+    padding: 8px;
+    border-radius: 4px;
+    font-family: monospace;
+    font-size: 14px;
+    margin: 10px 0;
+}
+
+.video-info {
+    background: var(--bg-darker);
+    padding: 15px;
+    border-radius: 4px;
+    margin: 15px 0;
+}
+
+.action-buttons {
+    display: flex;
+    gap: 10px;
+    margin-top: 20px;
+}
+
+.action-buttons .btn {
+    flex: 1;
+}
+
+.form-text {
+    color: var(--text-muted);
+    font-size: 14px;
+    margin-top: 5px;
+}
+
+.info-panel {
+    background: var(--card-bg);
+    border-radius: 8px;
+    padding: 20px;
+    margin: 20px 0;
+}
+
+.info-panel h3 {
+    margin-top: 0;
+    color: var(--primary-color);
+}
+
+.info-panel p {
+    margin-bottom: 8px;
+}

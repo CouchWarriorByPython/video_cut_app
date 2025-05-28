@@ -7,29 +7,65 @@ const resultDiv = document.getElementById('result');
 
 // Обробники подій
 uploadBtn.addEventListener('click', handleUpload);
+videoUrlInput.addEventListener('input', validateAzureUrl);
 
-// Обробка натискання кнопки "Завантажити"
-function handleUpload() {
-    // Отримуємо метадані
+// Валідація Azure URL в реальному часі
+function validateAzureUrl() {
     const url = videoUrlInput.value.trim();
-    const where = metadataWhereInput.value;
-    const when = metadataWhenInput.value;
 
     if (!url) {
-        showError('Будь ласка, вкажіть URL для завантаження');
+        videoUrlInput.style.borderColor = '';
+        return;
+    }
+
+    const isValid = isValidAzureUrl(url);
+    videoUrlInput.style.borderColor = isValid ? '#2ecc71' : '#e74c3c';
+}
+
+// Перевірка формату Azure URL
+function isValidAzureUrl(url) {
+    try {
+        const urlObj = new URL(url);
+        // Перевіряємо чи це Azure blob URL
+        return urlObj.hostname.includes('.blob.core.windows.net') &&
+               urlObj.pathname.length > 1;
+    } catch {
+        return false;
+    }
+}
+
+// Обробка натискання кнопки "Зареєструвати"
+function handleUpload() {
+    const url = videoUrlInput.value.trim();
+    const where = metadataWhereInput.value.trim();
+    const when = metadataWhenInput.value.trim();
+
+    // Валідація обов'язкових полів
+    if (!url) {
+        showError('Будь ласка, вкажіть Azure Blob URL відео');
+        return;
+    }
+
+    if (!isValidAzureUrl(url)) {
+        showError('Некоректний Azure Blob URL. Використовуйте формат: https://account.blob.core.windows.net/container/path/file.mp4');
+        return;
+    }
+
+    // Валідація опційних полів
+    if (where && !/^[A-Za-z\s\-_]+$/.test(where)) {
+        showError('Локація може містити тільки англійські літери, пробіли, дефіси та підкреслення');
+        return;
+    }
+
+    if (when && !/^\d{8}$/.test(when)) {
+        showError('Дата повинна бути у форматі РРРРММДД (8 цифр)');
         return;
     }
 
     // Показуємо індикатор завантаження
-    resultDiv.innerHTML = `
-        <div class="info-message">
-            <h3>Завантаження...</h3>
-            <p>Будь ласка, зачекайте. Відео завантажується з URL: ${url}</p>
-        </div>
-    `;
-    resultDiv.classList.remove('hidden');
+    showLoading(url);
 
-    // Завантаження через URL
+    // Відправляємо запит на сервер
     fetch('/upload', {
         method: 'POST',
         headers: {
@@ -50,60 +86,93 @@ function handleUpload() {
     .then(data => {
         console.log("Отримана відповідь:", data);
         handleUploadResponse(data);
-        resetForm();
+        if (data.success) {
+            resetForm();
+        }
     })
     .catch(error => {
         console.error('Помилка:', error);
-        showError(`Помилка завантаження: ${error.message}`);
+        showError(`Помилка з'єднання з сервером: ${error.message}`);
     });
 }
 
 // Обробка відповіді від сервера
 function handleUploadResponse(data) {
     if (data.success) {
-        showResult({
-            success: true,
-            message: `Відео ${data.filename || data.azure_link} успішно завантажено`,
-            source: data.local_url || data.azure_link,
+        showSuccess({
+            message: data.message || `Відео ${data.filename} успішно зареєстровано`,
+            azure_link: data.azure_link,
+            filename: data.filename,
             id: data.id
         });
     } else {
-        showError(`Помилка: ${data.error || data.message || 'Невідома помилка'}`);
+        showError(data.message || 'Невідома помилка при реєстрації відео');
     }
 }
 
-// Скидання форми після завантаження
+// Показати індикатор завантаження
+function showLoading(url) {
+    resultDiv.innerHTML = `
+        <div class="info-message">
+            <h3>Перевірка доступності відео...</h3>
+            <p>Перевіряємо доступність відео в Azure Storage:</p>
+            <p class="url-display">${url}</p>
+            <div class="loading-spinner"></div>
+        </div>
+    `;
+    resultDiv.classList.remove('hidden');
+    uploadBtn.disabled = true;
+    uploadBtn.textContent = 'Перевіряємо...';
+}
+
+// Скидання форми після успішної реєстрації
 function resetForm() {
-    // Залишаємо URL для зручності повторного завантаження
-    // videoUrlInput.value = '';
     metadataWhereInput.value = '';
     metadataWhenInput.value = '';
+    uploadBtn.disabled = false;
+    uploadBtn.textContent = 'Зареєструвати відео';
+    videoUrlInput.style.borderColor = '';
 }
 
-// Функція для показу результату
-function showResult(data) {
-    if (data.success) {
-        resultDiv.innerHTML = `
-            <div class="success-message">
-                <h3>Успішно!</h3>
-                <p>${data.message}</p>
-                <p>Джерело: ${data.source}</p>
-                <p><a href="/annotator" class="btn btn-primary">Перейти до анотації</a></p>
+// Функція для показу успішного результату
+function showSuccess(data) {
+    resultDiv.innerHTML = `
+        <div class="success-message">
+            <h3>Успішно зареєстровано!</h3>
+            <p>${data.message}</p>
+            <div class="video-info">
+                <p><strong>Файл:</strong> ${data.filename}</p>
+                <p><strong>ID:</strong> ${data.id}</p>
+                <p><strong>Azure посилання:</strong></p>
+                <p class="url-display">${data.azure_link}</p>
             </div>
-        `;
-    } else {
-        showError(data.message || data.error || 'Помилка при завантаженні відео');
-    }
+            <div class="action-buttons">
+                <a href="/annotator" class="btn btn-primary">Перейти до анотування</a>
+                <button class="btn btn-secondary" onclick="clearResult()">Зареєструвати ще одне відео</button>
+            </div>
+        </div>
+    `;
     resultDiv.classList.remove('hidden');
+    uploadBtn.disabled = false;
+    uploadBtn.textContent = 'Зареєструвати відео';
 }
 
 // Функція для показу помилки
 function showError(message) {
     resultDiv.innerHTML = `
         <div class="error-message">
-            <h3>Помилка!</h3>
+            <h3>Помилка реєстрації</h3>
             <p>${message}</p>
+            <button class="btn btn-secondary" onclick="clearResult()">Спробувати ще раз</button>
         </div>
     `;
     resultDiv.classList.remove('hidden');
+    uploadBtn.disabled = false;
+    uploadBtn.textContent = 'Зареєструвати відео';
+}
+
+// Очистити результат
+function clearResult() {
+    resultDiv.innerHTML = '';
+    resultDiv.classList.add('hidden');
 }

@@ -10,79 +10,74 @@
     <div class="container">
         <h1>Розмітка відео</h1>
 
-        <div id="video-selector" class="video-selector">
+        <div id="video-selector" class="card">
             <h2>Оберіть відео для розмітки</h2>
-            <select id="video-select" class="form-control">
-                <option value="">Виберіть відео...</option>
-            </select>
-            <button id="load-video-btn" class="btn">Завантажити вибране відео</button>
-
-            <div class="navigation-buttons">
-                <a href="/" class="btn btn-secondary">Повернутися до завантаження</a>
+            <div class="form-group">
+                <select id="video-select" class="form-control">
+                    <option value="">Виберіть відео...</option>
+                </select>
+            </div>
+            <button id="load-video-btn" class="btn btn-success full-width">Завантажити вибране відео</button>
+            <div style="margin-top: 20px;">
+                <a href="/" class="btn btn-secondary full-width">Повернутися до завантаження</a>
             </div>
         </div>
 
         <div id="video-editor" class="hidden">
-            <!-- Інформація про відео -->
-            <div class="video-info">
+            <div class="card">
                 <h3>Інформація про відео</h3>
                 <p id="video-filename">Назва файлу: <span></span></p>
             </div>
 
-            <!-- Відео та таймлайн -->
             <div class="video-section">
                 <div class="video-container">
                     <video id="video-player" controls></video>
                     <div id="timeline" class="timeline-container">
                         <div id="timeline-progress" class="timeline-progress"></div>
-                        <!-- Фрагменти додаватимуться сюди -->
                     </div>
                 </div>
             </div>
 
-            <!-- Селектор проєкту -->
-            <div class="project-selector">
+            <div class="card">
                 <h3>Виберіть проєкти для розмітки:</h3>
                 <div class="checkbox-grid">
-                    <label>
+                    <label class="checkbox-label">
                         <input type="checkbox" name="project" value="motion-det" checked> Motion Detection
                     </label>
-                    <label>
+                    <label class="checkbox-label">
                         <input type="checkbox" name="project" value="tracking"> Tracking & Re-identification
                     </label>
-                    <label>
+                    <label class="checkbox-label">
                         <input type="checkbox" name="project" value="mil-hardware"> Mil Hardware Detection
                     </label>
-                    <label>
+                    <label class="checkbox-label">
                         <input type="checkbox" name="project" value="re-id"> Re-ID
                     </label>
                 </div>
             </div>
 
-            <!-- Статус незавершених фрагментів -->
             <div id="unfinished-fragments-status" class="unfinished-status"></div>
 
-            <!-- Новий двоколонковий макет -->
             <div class="main-layout">
-                <!-- Ліва колонка з фрагментами -->
                 <div class="left-column">
-                    <div class="controls">
-                        <button id="start-fragment" class="btn">Встановити початок фрагменту</button>
-                        <button id="end-fragment" class="btn" disabled>Встановити кінець фрагменту</button>
-                        <button id="cancel-fragment" class="btn btn-secondary" disabled>Скасувати</button>
-                    </div>
+                    <div class="card">
+                        <div style="display: flex; gap: 10px; margin-bottom: 20px;">
+                            <button id="start-fragment" class="btn">Встановити початок фрагменту</button>
+                            <button id="end-fragment" class="btn" disabled>Встановити кінець фрагменту</button>
+                            <button id="cancel-fragment" class="btn btn-secondary" disabled>Скасувати</button>
+                        </div>
 
-                    <div class="fragment-list">
-                        <h2>Фрагменти відео</h2>
-                        <div class="fragments-container">
-                            <ul id="fragments-list"></ul>
+                        <div class="fragment-list">
+                            <h2>Фрагменти відео</h2>
+                            <div class="fragments-container">
+                                <ul id="fragments-list"></ul>
+                            </div>
                         </div>
                     </div>
                 </div>
 
-                <!-- Права колонка з метаданими -->
                 <div class="right-column">
-                    <div class="meta-form">
+                    <div class="card meta-form">
                         <h2>Метадані відео</h2>
 
                         <div class="form-group">
@@ -152,9 +147,9 @@
                 </div>
             </div>
 
-            <div class="controls-footer">
+            <div style="display: flex; gap: 10px; margin-top: 20px;">
                 <button id="view-json" class="btn btn-secondary">Перегляд JSON</button>
-                <button id="save-fragments" class="btn full-width">Почати нарізку</button>
+                <button id="save-fragments" class="btn btn-success full-width">Почати нарізку</button>
             </div>
 
             <div id="json-modal" class="modal">

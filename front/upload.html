@@ -10,8 +10,7 @@
     <div class="container">
         <h1>Реєстрація відео з Azure Storage</h1>
 
-        <div class="upload-container">
-            <!-- Поле для Azure URL -->
+        <div class="card">
             <div class="form-group">
                 <label for="video-url">Azure Blob URL відео:</label>
                 <input type="text" id="video-url" class="form-control"
@@ -19,7 +18,6 @@
                 <small class="form-text">Введіть повне посилання на відео в Azure Blob Storage</small>
             </div>
 
-            <!-- Мітки для анотацій -->
             <div class="form-group">
                 <label for="metadata-where">Локація (опційно):</label>
                 <input type="text" id="metadata-where" class="form-control"
@@ -34,22 +32,20 @@
                        placeholder="РРРРММДД (наприклад: 20250527)">
             </div>
 
-            <!-- Інформація про URL -->
-            <div class="info-panel">
-                <h3>Інформація</h3>
-                <p>Система перевірить доступність відео в Azure Storage перед реєстрацією.</p>
-                <p>Підтримувані формати: MP4, AVI, MOV</p>
-                <p>Максимальний розмір: без обмежень (залежить від Azure Storage)</p>
-            </div>
+            <button id="upload-btn" class="btn btn-success full-width">Зареєструвати відео</button>
+        </div>
 
-            <!-- Кнопка реєстрації -->
-            <button id="upload-btn" class="btn full-width">Зареєструвати відео</button>
+        <div class="card">
+            <h3>Інформація</h3>
+            <p>Система перевірить доступність відео в Azure Storage перед реєстрацією.</p>
+            <p>Підтримувані формати: MP4, AVI, MOV</p>
+            <p>Максимальний розмір: без обмежень (залежить від Azure Storage)</p>
         </div>
 
         <div id="result" class="hidden"></div>
 
-        <div class="navigation-buttons">
-            <a href="/annotator" class="btn btn-primary full-width">Перейти до анотацій</a>
+        <div class="action-buttons">
+            <button id="go-to-annotator-btn" class="btn full-width">Перейти до анотацій</button>
         </div>
     </div>
 

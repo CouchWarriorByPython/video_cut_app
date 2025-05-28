@@ -38,9 +38,6 @@ const projectModal = document.getElementById('project-modal');
 const projectOptions = document.getElementById('project-options');
 const modalClose = document.querySelectorAll('.modal-close');
 
-// Завантаження списку відео при запуску сторінки
-document.addEventListener('DOMContentLoaded', loadVideoList);
-
 // Змінні стану
 let currentAzureLink = null;
 let videoFileName = null;
@@ -58,36 +55,59 @@ let unfinishedFragments = {
 };
 let activeProjects = [];
 
-// Завантаження списку відео
+// Константи
+const MIN_CLIP_DURATION = 1; // секунди
+
+// Ініціалізація
+document.addEventListener('DOMContentLoaded', init);
+
+function init() {
+    loadVideoList();
+    setupEventListeners();
+    syncActiveProjects();
+
+    // Перевіряємо параметр video_id в URL
+    const urlParams = new URLSearchParams(window.location.search);
+    const videoId = urlParams.get('video_id');
+    if (videoId) {
+        selectVideoById(videoId);
+    }
+}
+
+function setupEventListeners() {
+    loadVideoBtn.addEventListener('click', handleLoadVideo);
+    startFragmentBtn.addEventListener('click', handleStartFragment);
+    endFragmentBtn.addEventListener('click', handleEndFragment);
+    cancelFragmentBtn.addEventListener('click', handleCancelFragment);
+    saveFragmentsBtn.addEventListener('click', saveFragmentsToJson);
+    viewJsonBtn.addEventListener('click', showJsonModal);
+
+    videoPlayer.addEventListener('timeupdate', updateTimelineProgress);
+    videoPlayer.addEventListener('loadedmetadata', initVideoPlayer);
+    videoPlayer.addEventListener('error', handleVideoError);
+
+    timeline.addEventListener('click', handleTimelineClick);
+
+    projectCheckboxes.forEach(checkbox => {
+        checkbox.addEventListener('change', syncActiveProjects);
+    });
+
+    skipVideoCheckbox.addEventListener('change', handleSkipChange);
+
+    modalClose.forEach(closeBtn => {
+        closeBtn.addEventListener('click', closeModals);
+    });
+
+    window.addEventListener('click', handleWindowClick);
+}
+
 function loadVideoList() {
-    console.log("Запит списку відео...");
     fetch('/get_videos')
-        .then(response => {
-            console.log("Статус відповіді:", response.status);
-            return response.json();
-        })
+        .then(response => response.json())
         .then(data => {
-            console.log("Отримані дані:", data);
             if (data.success && data.videos && data.videos.length > 0) {
-                videoSelect.innerHTML = '<option value="">Виберіть відео...</option>';
-
-                data.videos.forEach(video => {
-                    console.log("Обробка відео в UI:", video);
-                    const option = document.createElement('option');
-
-                    // Використовуємо azure_link як значення
-                    option.value = video.azure_link;
-
-                    // Відображаємо ім'я файлу
-                    const displayName = video.filename || video.azure_link.split('/').pop() || `Відео #${video.id}`;
-
-                    option.textContent = displayName;
-                    option.dataset.id = video.id;
-                    option.dataset.filename = video.filename || '';
-                    videoSelect.appendChild(option);
-                });
+                populateVideoSelect(data.videos);
             } else {
-                console.warn("Немає відео або помилка:", data);
                 videoSelect.innerHTML = '<option value="">Немає доступних відео</option>';
             }
         })
@@ -97,60 +117,63 @@ function loadVideoList() {
         });
 }
 
-// Обробник помилок відео
-videoPlayer.addEventListener('error', function() {
-    console.error('Помилка завантаження відео:', videoPlayer.error);
+function populateVideoSelect(videos) {
+    videoSelect.innerHTML = '<option value="">Виберіть відео...</option>';
 
-    alert(`Помилка відтворення відео: ${videoPlayer.error ? videoPlayer.error.message : 'Невідома помилка'}`);
-
-    const videoContainer = document.querySelector('.video-container');
-    const errorMessage = document.createElement('div');
-    errorMessage.className = 'video-error';
-    errorMessage.innerHTML = `
-        <p>Не вдалося завантажити відео з Azure. ${videoPlayer.error ? videoPlayer.error.message : ''}</p>
-        <button class="btn" id="retry-video">Спробувати ще раз</button>
-    `;
-
-    videoContainer.appendChild(errorMessage);
-
-    document.getElementById('retry-video').addEventListener('click', function() {
-        videoPlayer.load();
-        errorMessage.remove();
+    videos.forEach(video => {
+        const option = document.createElement('option');
+        option.value = video.azure_link;
+        option.textContent = video.filename || video.azure_link.split('/').pop() || `Відео #${video._id}`;
+        option.dataset.videoId = video._id;
+        option.dataset.filename = video.filename || '';
+        option.dataset.azureLink = video.azure_link;
+        videoSelect.appendChild(option);
     });
-});
+}
 
-// Обробник кнопки завантаження відео
-loadVideoBtn.addEventListener('click', function() {
+function selectVideoById(videoId) {
+    const option = videoSelect.querySelector(`option[data-video-id="${videoId}"]`);
+    if (option) {
+        videoSelect.value = option.value;
+        handleLoadVideo();
+    } else {
+        console.warn(`Відео з ID ${videoId} не знайдено в списку`);
+    }
+}
+
+function handleLoadVideo() {
     const selectedVideo = videoSelect.value;
     if (!selectedVideo) {
         alert('Будь ласка, виберіть відео');
         return;
     }
 
-    // Отримуємо дані з вибраної опції
     const selectedOption = videoSelect.options[videoSelect.selectedIndex];
-    const azureLink = selectedOption.value;
+    const azureLink = selectedOption.dataset.azureLink;
     const filename = selectedOption.dataset.filename || selectedOption.textContent;
 
-    console.log(`Вибрано відео: azureLink=${azureLink}, filename=${filename}`);
-
-    // Показуємо редактор і завантажуємо відео
     videoSelector.style.display = 'none';
     videoEditor.classList.remove('hidden');
 
-    // Встановлюємо відео напряму з Azure
-    videoPlayer.src = azureLink;
-    console.log(`Встановлено відео з Azure: ${videoPlayer.src}`);
+    // Використовуємо локальний ендпоінт для отримання відео
+    const videoUrl = `/get_video?azure_link=${encodeURIComponent(azureLink)}`;
+    videoPlayer.src = videoUrl;
     videoPlayer.load();
 
-    // Відображаємо назву файлу
     videoFilenameSpan.textContent = filename;
 
-    // Зберігаємо azure_link для наступних операцій
     currentAzureLink = azureLink;
     videoFileName = filename;
 
-    // Очищаємо попередні дані
+    resetFragments();
+    loadExistingAnnotations(azureLink);
+    updateFragmentsList();
+    clearAllMarkers();
+    updateUnfinishedFragmentsUI();
+    syncActiveProjects();
+}
+
+function resetFragments() {
     projectFragments = {
         'motion-det': [],
         'tracking': [],
@@ -164,103 +187,98 @@ loadVideoBtn.addEventListener('click', function() {
         'mil-hardware': null,
         're-id': null
     };
+}
 
-    // Завантажуємо існуючі анотації якщо вони є
-    loadExistingAnnotations(azureLink);
-
-    updateFragmentsList();
-    clearAllMarkers();
-    updateUnfinishedFragmentsUI();
-    syncActiveProjects();
-});
-
-// Завантаження існуючих анотацій
 function loadExistingAnnotations(azureLink) {
     fetch(`/get_annotation?azure_link=${encodeURIComponent(azureLink)}`)
         .then(response => response.json())
         .then(data => {
             if (data.success && data.annotation) {
-                const annotation = data.annotation;
-
-                // Заповнюємо метадані
-                if (annotation.metadata) {
-                    skipVideoCheckbox.checked = annotation.metadata.skip || false;
-                    uavTypeSelect.value = annotation.metadata.uav_type || "";
-                    videoContentSelect.value = annotation.metadata.video_content || "";
-                    isUrbanCheckbox.checked = annotation.metadata.is_urban || false;
-                    hasOsdCheckbox.checked = annotation.metadata.has_osd || false;
-                    isAnalogCheckbox.checked = annotation.metadata.is_analog || false;
-                    nightVideoCheckbox.checked = annotation.metadata.night_video || false;
-                    multipleStreamsCheckbox.checked = annotation.metadata.multiple_streams || false;
-                    hasInfantryCheckbox.checked = annotation.metadata.has_infantry || false;
-                    hasExplosionsCheckbox.checked = annotation.metadata.has_explosions || false;
-                }
-
-                // Заповнюємо фрагменти
-                if (annotation.clips) {
-                    for (const projectType in annotation.clips) {
-                        if (Array.isArray(annotation.clips[projectType])) {
-                            projectFragments[projectType] = annotation.clips[projectType].map(clip => {
-                                // Конвертуємо час у секунди для візуалізації
-                                const startTimeParts = clip.start_time.split(':');
-                                const endTimeParts = clip.end_time.split(':');
-
-                                const startSeconds = parseInt(startTimeParts[0]) * 3600 +
-                                                     parseInt(startTimeParts[1]) * 60 +
-                                                     parseInt(startTimeParts[2]);
-
-                                const endSeconds = parseInt(endTimeParts[0]) * 3600 +
-                                                   parseInt(endTimeParts[1]) * 60 +
-                                                   parseInt(endTimeParts[2]);
-
-                                return {
-                                    id: clip.id,
-                                    start: startSeconds,
-                                    end: endSeconds,
-                                    start_formatted: clip.start_time,
-                                    end_formatted: clip.end_time,
-                                    project: projectType
-                                };
-                            });
-                        }
-                    }
-
-                    // Оновлюємо інтерфейс
-                    updateFragmentsList();
-                    visualizeFragments();
-                }
+                populateFormFromAnnotation(data.annotation);
+                loadFragmentsFromAnnotation(data.annotation);
             }
         })
-        .catch(error => {
-            console.error('Error loading annotations:', error);
-        });
+        .catch(error => console.error('Error loading annotations:', error));
 }
 
-// Візуалізація фрагментів на таймлайні
-function visualizeFragments() {
-    clearAllMarkers();
-
-    for (const projectType in projectFragments) {
-        projectFragments[projectType].forEach(fragment => {
-            const fragmentElement = document.createElement('div');
-            fragmentElement.className = `fragment ${projectType}`;
-            fragmentElement.dataset.id = fragment.id;
-            fragmentElement.dataset.project = projectType;
-            fragmentElement.style.left = `${(fragment.start / videoPlayer.duration) * 100}%`;
-            fragmentElement.style.width = `${((fragment.end - fragment.start) / videoPlayer.duration) * 100}%`;
-            fragmentElement.title = `${fragment.start_formatted} - ${fragment.end_formatted} (${getProjectName(projectType)})`;
-
-            fragmentElement.addEventListener('click', function() {
-                videoPlayer.currentTime = fragment.start;
-                videoPlayer.play();
-            });
-
-            timeline.appendChild(fragmentElement);
-        });
+function populateFormFromAnnotation(annotation) {
+    if (annotation.metadata) {
+        const metadata = annotation.metadata;
+        skipVideoCheckbox.checked = metadata.skip || false;
+        uavTypeSelect.value = metadata.uav_type || "";
+        videoContentSelect.value = metadata.video_content || "";
+        isUrbanCheckbox.checked = metadata.is_urban || false;
+        hasOsdCheckbox.checked = metadata.has_osd || false;
+        isAnalogCheckbox.checked = metadata.is_analog || false;
+        nightVideoCheckbox.checked = metadata.night_video || false;
+        multipleStreamsCheckbox.checked = metadata.multiple_streams || false;
+        hasInfantryCheckbox.checked = metadata.has_infantry || false;
+        hasExplosionsCheckbox.checked = metadata.has_explosions || false;
     }
 }
 
-// Синхронізуємо активні проєкти з чекбоксами
+function loadFragmentsFromAnnotation(annotation) {
+    if (annotation.clips) {
+        for (const projectType in annotation.clips) {
+            if (Array.isArray(annotation.clips[projectType])) {
+                projectFragments[projectType] = annotation.clips[projectType].map(clip => {
+                    const startSeconds = timeStringToSeconds(clip.start_time);
+                    const endSeconds = timeStringToSeconds(clip.end_time);
+
+                    return {
+                        id: clip.id,
+                        start: startSeconds,
+                        end: endSeconds,
+                        start_formatted: clip.start_time,
+                        end_formatted: clip.end_time,
+                        project: projectType
+                    };
+                });
+            }
+        }
+        updateFragmentsList();
+        visualizeFragments();
+    }
+}
+
+function timeStringToSeconds(timeString) {
+    const parts = timeString.split(':');
+    return parseInt(parts[0]) * 3600 + parseInt(parts[1]) * 60 + parseInt(parts[2]);
+}
+
+function handleVideoError() {
+    const errorMessage = videoPlayer.error ? videoPlayer.error.message : 'Невідома помилка';
+    console.error('Помилка відтворення відео:', errorMessage);
+
+    const videoContainer = document.querySelector('.video-container');
+
+    const existingError = videoContainer.querySelector('.video-error');
+    if (existingError) {
+        existingError.remove();
+    }
+
+    const errorDiv = document.createElement('div');
+    errorDiv.className = 'error-message video-error';
+    errorDiv.innerHTML = `
+        <h3>Помилка відтворення відео</h3>
+        <p>Не вдалося завантажити відео: ${errorMessage}</p>
+        <div style="margin-top: 15px;">
+            <button class="btn btn-secondary" onclick="retryVideoLoad()">Спробувати ще раз</button>
+        </div>
+    `;
+
+    videoContainer.appendChild(errorDiv);
+}
+
+function retryVideoLoad() {
+    const errorDiv = document.querySelector('.video-error');
+    if (errorDiv) {
+        errorDiv.remove();
+    }
+
+    videoPlayer.load();
+}
+
 function syncActiveProjects() {
     activeProjects = [];
     projectCheckboxes.forEach(checkbox => {
@@ -271,185 +289,51 @@ function syncActiveProjects() {
     updateButtonStates();
 }
 
-// Функція оновлення стану кнопок
 function updateButtonStates() {
-    const noProjectsSelected = activeProjects.length === 0;
-
     const hasUnfinishedFragments = Object.values(unfinishedFragments).some(frag => frag !== null);
-    // Кнопки "Завершити" і "Скасувати" будуть активні лише якщо є незавершені фрагменти
     endFragmentBtn.disabled = !hasUnfinishedFragments;
     cancelFragmentBtn.disabled = !hasUnfinishedFragments;
 }
 
-// JSON модальне вікно
-viewJsonBtn.addEventListener('click', function() {
-    // Форматуємо дані для відображення
-    const metadata = {
-        skip: skipVideoCheckbox.checked,
-        uav_type: uavTypeSelect.value,
-        video_content: videoContentSelect.value,
-        is_urban: isUrbanCheckbox.checked,
-        has_osd: hasOsdCheckbox.checked,
-        is_analog: isAnalogCheckbox.checked,
-        night_video: nightVideoCheckbox.checked,
-        multiple_streams: multipleStreamsCheckbox.checked,
-        has_infantry: hasInfantryCheckbox.checked,
-        has_explosions: hasExplosionsCheckbox.checked
-    };
-
-    // Форматуємо дані проєктів для експорту
-    const formattedProjects = {};
-    for (const project in projectFragments) {
-        if (projectFragments[project].length > 0) {
-            formattedProjects[project] = projectFragments[project].map((fragment, index) => ({
-                id: index,
-                start_time: fragment.start_formatted,
-                end_time: fragment.end_formatted
-            }));
-        }
-    }
-
-    // Збираємо JSON
-    const jsonData = {
-        azure_link: currentAzureLink,
-        metadata: metadata,
-        clips: formattedProjects
-    };
-
-    // Відображаємо JSON з форматуванням
-    jsonContent.textContent = JSON.stringify(jsonData, null, 2);
-    jsonModal.style.display = 'block';
-});
-
-// Синхронізуємо при завантаженні
-document.addEventListener('DOMContentLoaded', syncActiveProjects);
-
-// Обробники подій для відеоплеєра
-videoPlayer.addEventListener('timeupdate', updateTimelineProgress);
-videoPlayer.addEventListener('loadedmetadata', initVideoPlayer);
-
-// Відеоплеєр
-startFragmentBtn.addEventListener('click', function() {
+function handleStartFragment() {
     if (activeProjects.length === 0) {
         alert('Необхідно вибрати хоча б один проєкт');
         return;
     }
     setFragmentStart();
-});
+}
 
-endFragmentBtn.addEventListener('click', function() {
+function handleEndFragment() {
     if (activeProjects.length === 0) {
         alert('Необхідно вибрати хоча б один проєкт');
         return;
     }
     showEndFragmentModal();
-});
+}
 
-cancelFragmentBtn.addEventListener('click', function() {
+function handleCancelFragment() {
     if (activeProjects.length === 0) {
         alert('Необхідно вибрати хоча б один проєкт');
         return;
     }
     showCancelFragmentModal();
-});
-
-saveFragmentsBtn.addEventListener('click', saveFragmentsToJson);
-
-timeline.addEventListener('click', handleTimelineClick);
-
-// Кнопки закриття модальних вікон
-modalClose.forEach(function(closeBtn) {
-    closeBtn.addEventListener('click', function() {
-        jsonModal.style.display = 'none';
-        projectModal.style.display = 'none';
-    });
-});
-
-// Закриття модальних вікон при кліку поза ними
-window.addEventListener('click', function(e) {
-    if (e.target === jsonModal) {
-        jsonModal.style.display = 'none';
-    }
-    if (e.target === projectModal) {
-        projectModal.style.display = 'none';
-    }
-});
-
-// Додаємо обробник зміни проєктів (чекбокси)
-projectCheckboxes.forEach(checkbox => {
-    checkbox.addEventListener('change', function() {
-        // Оновлюємо масив активних проєктів
-        if (this.checked) {
-            // Додаємо проєкт до активних, якщо його ще немає
-            if (!activeProjects.includes(this.value)) {
-                activeProjects.push(this.value);
-            }
-        } else {
-            // Видаляємо проєкт з активних
-            activeProjects = activeProjects.filter(p => p !== this.value);
-        }
-
-        // Оновлюємо стан кнопок
-        updateButtonStates();
-    });
-});
-
-// Вимикаємо форму для метаданих, якщо Skip
-skipVideoCheckbox.addEventListener('change', function() {
-    const metaFields = document.querySelectorAll('.meta-form .form-control, .meta-form input[type="checkbox"]:not(#skip-video)');
-    metaFields.forEach(field => {
-        field.disabled = this.checked;
-    });
-});
-
-// Ініціалізація відео плеєра
-function initVideoPlayer() {
-    updateUnfinishedFragmentsUI();
-    updateButtonStates();
-    visualizeFragments();
 }
 
-// Оновлення прогресу на таймлайні
-function updateTimelineProgress() {
-    const progress = (videoPlayer.currentTime / videoPlayer.duration) * 100;
-    timelineProgress.style.width = `${progress}%`;
-}
-
-// Клік на таймлайн
-function handleTimelineClick(e) {
-    const rect = timeline.getBoundingClientRect();
-    const position = (e.clientX - rect.left) / rect.width;
-    const time = position * videoPlayer.duration;
-
-    videoPlayer.currentTime = time;
-}
-
-// Встановлення початку фрагменту для всіх активних проєктів
 function setFragmentStart() {
-    // Перевіряємо, чи вибраний хоча б один проєкт
-    if (activeProjects.length === 0) {
-        alert('Необхідно вибрати хоча б один проєкт');
-        return;
-    }
-
     const startTime = videoPlayer.currentTime;
 
-    // Перевіряємо обрані проєкти
     for (const project of activeProjects) {
-        // Якщо для проєкту вже є незавершений фрагмент, попереджаємо користувача
         if (unfinishedFragments[project]) {
             if (!confirm(`Для проєкту "${getProjectName(project)}" вже встановлена початкова мітка. Замінити її?`)) {
-                continue; // Пропускаємо цей проєкт, якщо користувач не хоче замінювати мітку
+                continue;
             }
 
-            // Видаляємо попередню мітку з таймлайну
             const oldMarker = document.querySelector(`.fragment-marker.start[data-project="${project}"]`);
             if (oldMarker) {
                 timeline.removeChild(oldMarker);
             }
         }
 
-        // Створюємо новий маркер для цього проєкту
         const marker = document.createElement('div');
         marker.className = `fragment-marker start ${project}`;
         marker.dataset.project = project;
@@ -457,27 +341,153 @@ function setFragmentStart() {
         marker.title = `${getProjectName(project)}: ${formatTime(startTime)}`;
         timeline.appendChild(marker);
 
-        // Зберігаємо інформацію про незавершений фрагмент
         unfinishedFragments[project] = {
             start: startTime,
             start_formatted: formatTime(startTime)
         };
     }
 
-    // Оновлюємо інтерфейс
     updateUnfinishedFragmentsUI();
 }
 
-// Оновлення інтерфейсу для незавершених фрагментів
-function updateUnfinishedFragmentsUI() {
-    const unfinishedProjects = Object.keys(unfinishedFragments).filter(project => unfinishedFragments[project] !== null);
+function showEndFragmentModal() {
+    const unfinishedProjects = Object.keys(unfinishedFragments).filter(project =>
+        unfinishedFragments[project] !== null && activeProjects.includes(project)
+    );
 
-    // Активуємо/деактивуємо кнопки залежно від наявності незавершених фрагментів
+    if (unfinishedProjects.length === 0) {
+        alert('Немає незавершених фрагментів');
+        return;
+    }
+
+    if (unfinishedProjects.length === 1) {
+        setFragmentEnd(unfinishedProjects[0]);
+        return;
+    }
+
+    showProjectModal(unfinishedProjects, setFragmentEnd);
+}
+
+function showCancelFragmentModal() {
+    const unfinishedProjects = Object.keys(unfinishedFragments).filter(project =>
+        unfinishedFragments[project] !== null && activeProjects.includes(project)
+    );
+
+    if (unfinishedProjects.length === 0) {
+        alert('Немає незавершених фрагментів');
+        return;
+    }
+
+    if (unfinishedProjects.length === 1) {
+        cancelFragment(unfinishedProjects[0]);
+        return;
+    }
+
+    showProjectModal(unfinishedProjects, cancelFragment);
+}
+
+function showProjectModal(projects, callback) {
+    projectOptions.innerHTML = '';
+    projects.forEach(project => {
+        const option = document.createElement('div');
+        option.className = `project-option ${project}`;
+        option.textContent = `${getProjectName(project)} (початок: ${unfinishedFragments[project].start_formatted})`;
+        option.addEventListener('click', function() {
+            projectModal.style.display = 'none';
+            callback(project);
+        });
+        projectOptions.appendChild(option);
+    });
+
+    projectModal.style.display = 'block';
+}
+
+function setFragmentEnd(project) {
+    const endTime = videoPlayer.currentTime;
+
+    if (!unfinishedFragments[project]) {
+        return;
+    }
+
+    // Валідація мінімальної тривалості
+    const duration = endTime - unfinishedFragments[project].start;
+    if (duration < MIN_CLIP_DURATION) {
+        const adjustedEndTime = unfinishedFragments[project].start + MIN_CLIP_DURATION;
+        if (adjustedEndTime > videoPlayer.duration) {
+            alert(`Неможливо створити кліп мінімальної тривалості ${MIN_CLIP_DURATION} сек. Недостатньо відео.`);
+            return;
+        }
+
+        if (confirm(`Мінімальна тривалість кліпу - ${MIN_CLIP_DURATION} секунда. Автоматично збільшити до ${MIN_CLIP_DURATION} сек?`)) {
+            videoPlayer.currentTime = adjustedEndTime;
+            setFragmentEnd(project);
+            return;
+        } else {
+            return;
+        }
+    }
+
+    const completeFragment = {
+        ...unfinishedFragments[project],
+        end: endTime,
+        end_formatted: formatTime(endTime),
+        id: Date.now() + Math.floor(Math.random() * 1000),
+        project: project
+    };
+
+    projectFragments[project].push(completeFragment);
+
+    createFragmentVisualization(completeFragment);
+    removeStartMarker(project);
+
+    unfinishedFragments[project] = null;
+    updateUnfinishedFragmentsUI();
+    updateFragmentsList();
+}
+
+function createFragmentVisualization(fragment) {
+    const fragmentElement = document.createElement('div');
+    fragmentElement.className = `fragment ${fragment.project}`;
+    fragmentElement.dataset.id = fragment.id;
+    fragmentElement.dataset.project = fragment.project;
+    fragmentElement.style.left = `${(fragment.start / videoPlayer.duration) * 100}%`;
+    fragmentElement.style.width = `${((fragment.end - fragment.start) / videoPlayer.duration) * 100}%`;
+    fragmentElement.title = `${fragment.start_formatted} - ${fragment.end_formatted} (${getProjectName(fragment.project)})`;
+
+    fragmentElement.addEventListener('click', function() {
+        videoPlayer.currentTime = fragment.start;
+        videoPlayer.play();
+    });
+
+    timeline.appendChild(fragmentElement);
+}
+
+function removeStartMarker(project) {
+    const startMarker = document.querySelector(`.fragment-marker.start[data-project="${project}"]`);
+    if (startMarker) {
+        timeline.removeChild(startMarker);
+    }
+}
+
+function cancelFragment(project) {
+    if (!unfinishedFragments[project]) {
+        return;
+    }
+
+    removeStartMarker(project);
+    unfinishedFragments[project] = null;
+    updateUnfinishedFragmentsUI();
+}
+
+function updateUnfinishedFragmentsUI() {
+    const unfinishedProjects = Object.keys(unfinishedFragments).filter(project =>
+        unfinishedFragments[project] !== null
+    );
+
     const hasUnfinished = unfinishedProjects.length > 0;
     endFragmentBtn.disabled = !hasUnfinished || activeProjects.length === 0;
     cancelFragmentBtn.disabled = !hasUnfinished || activeProjects.length === 0;
 
-    // Оновлюємо панель статусу незавершених фрагментів
     if (hasUnfinished) {
         let statusHTML = '<h3>Незавершені фрагменти:</h3>';
         unfinishedProjects.forEach(project => {
@@ -491,179 +501,9 @@ function updateUnfinishedFragmentsUI() {
     }
 }
 
-// Показати модальне вікно для вибору проєкту для завершення фрагменту
-function showEndFragmentModal() {
-    // Перевіряємо, чи вибраний хоча б один проєкт
-    if (activeProjects.length === 0) {
-        alert('Необхідно вибрати хоча б один проєкт');
-        return;
-    }
-
-    const unfinishedProjects = Object.keys(unfinishedFragments).filter(project =>
-        unfinishedFragments[project] !== null && activeProjects.includes(project)
-    );
-
-    if (unfinishedProjects.length === 0) {
-        alert('Немає незавершених фрагментів');
-        return;
-    }
-
-    // Якщо є лише один незавершений фрагмент, використовуємо його без модального вікна
-    if (unfinishedProjects.length === 1) {
-        setFragmentEnd(unfinishedProjects[0]);
-        return;
-    }
-
-    // Заповнюємо модальне вікно
-    projectOptions.innerHTML = '';
-    unfinishedProjects.forEach(project => {
-        const option = document.createElement('div');
-        option.className = `project-option ${project}`;
-        option.textContent = `${getProjectName(project)} (початок: ${unfinishedFragments[project].start_formatted})`;
-        option.addEventListener('click', function() {
-            projectModal.style.display = 'none';
-            setFragmentEnd(project);
-        });
-        projectOptions.appendChild(option);
-    });
-
-    // Показуємо модальне вікно
-    projectModal.style.display = 'block';
-}
-
-// Показати модальне вікно для вибору проєкту для скасування фрагменту
-function showCancelFragmentModal() {
-    // Перевіряємо, чи вибраний хоча б один проєкт
-    if (activeProjects.length === 0) {
-        alert('Необхідно вибрати хоча б один проєкт');
-        return;
-    }
-
-    const unfinishedProjects = Object.keys(unfinishedFragments).filter(project =>
-        unfinishedFragments[project] !== null && activeProjects.includes(project)
-    );
-
-    if (unfinishedProjects.length === 0) {
-        alert('Немає незавершених фрагментів');
-        return;
-    }
-
-    // Якщо є лише один незавершений фрагмент, використовуємо його без модального вікна
-    if (unfinishedProjects.length === 1) {
-        cancelFragment(unfinishedProjects[0]);
-        return;
-    }
-
-    // Заповнюємо модальне вікно
-    projectOptions.innerHTML = '';
-    unfinishedProjects.forEach(project => {
-        const option = document.createElement('div');
-        option.className = `project-option ${project}`;
-        option.textContent = `${getProjectName(project)} (початок: ${unfinishedFragments[project].start_formatted})`;
-        option.addEventListener('click', function() {
-            projectModal.style.display = 'none';
-            cancelFragment(project);
-        });
-        projectOptions.appendChild(option);
-    });
-
-    // Показуємо модальне вікно
-    projectModal.style.display = 'block';
-}
-
-// Встановлення кінця фрагменту для вказаного проєкту
-function setFragmentEnd(project) {
-    const endTime = videoPlayer.currentTime;
-
-    // Перевіряємо наявність незавершеного фрагменту
-    if (!unfinishedFragments[project]) {
-        return;
-    }
-
-    // Перевіряємо, чи кінець після початку
-    if (endTime <= unfinishedFragments[project].start) {
-        alert('Кінець фрагменту має бути після початку');
-        return;
-    }
-
-    // Створюємо повний фрагмент
-    const completeFragment = {
-        ...unfinishedFragments[project],
-        end: endTime,
-        end_formatted: formatTime(endTime),
-        id: Date.now() + Math.floor(Math.random() * 1000),
-        project: project
-    };
-
-    // Додаємо фрагмент до списку відповідного проєкту
-    projectFragments[project].push(completeFragment);
-
-    // Додаємо візуальний фрагмент на таймлайн
-    const fragmentElement = document.createElement('div');
-    fragmentElement.className = `fragment ${project}`;
-    fragmentElement.dataset.id = completeFragment.id;
-    fragmentElement.dataset.project = project;
-    fragmentElement.style.left = `${(completeFragment.start / videoPlayer.duration) * 100}%`;
-    fragmentElement.style.width = `${((completeFragment.end - completeFragment.start) / videoPlayer.duration) * 100}%`;
-    fragmentElement.title = `${completeFragment.start_formatted} - ${completeFragment.end_formatted} (${getProjectName(project)})`;
-
-    fragmentElement.addEventListener('click', function() {
-        videoPlayer.currentTime = completeFragment.start;
-        videoPlayer.play();
-    });
-
-    timeline.appendChild(fragmentElement);
-
-    // Видаляємо початкову мітку для цього проєкту
-    const startMarker = document.querySelector(`.fragment-marker.start[data-project="${project}"]`);
-    if (startMarker) {
-        timeline.removeChild(startMarker);
-    }
-
-    // Очищаємо дані незавершеного фрагменту
-    unfinishedFragments[project] = null;
-
-    // Оновлюємо інтерфейс
-    updateUnfinishedFragmentsUI();
-    updateFragmentsList();
-}
-
-// Скасування фрагменту для вказаного проєкту
-function cancelFragment(project) {
-    // Перевіряємо наявність незавершеного фрагменту
-    if (!unfinishedFragments[project]) {
-        return;
-    }
-
-    // Видаляємо початкову мітку для цього проєкту
-    const startMarker = document.querySelector(`.fragment-marker.start[data-project="${project}"]`);
-    if (startMarker) {
-        timeline.removeChild(startMarker);
-    }
-
-    // Очищаємо дані незавершеного фрагменту
-    unfinishedFragments[project] = null;
-
-    // Оновлюємо інтерфейс
-    updateUnfinishedFragmentsUI();
-}
-
-// Функція для отримання читабельного імені проєкту
-function getProjectName(projectKey) {
-    const projectNames = {
-        'motion-det': 'Motion Detection',
-        'tracking': 'Tracking & Re-identification',
-        'mil-hardware': 'Mil Hardware Detection',
-        're-id': 'Re-ID'
-    };
-    return projectNames[projectKey] || projectKey;
-}
-
-// Оновлення списку фрагментів
 function updateFragmentsList() {
     fragmentsList.innerHTML = '';
 
-    // Групуємо фрагменти за проєктами
     let totalFragments = 0;
     for (const project in projectFragments) {
         if (projectFragments[project].length > 0) {
@@ -672,54 +512,7 @@ function updateFragmentsList() {
             fragmentsList.appendChild(projectHeader);
 
             projectFragments[project].forEach((fragment, index) => {
-                const listItem = document.createElement('li');
-                listItem.className = project;
-
-                const timeInfo = document.createElement('span');
-                timeInfo.textContent = `Фрагмент #${index + 1}: ${fragment.start_formatted} - ${fragment.end_formatted}`;
-
-                const actions = document.createElement('div');
-
-                const playBtn = document.createElement('button');
-                playBtn.textContent = '▶';
-                playBtn.className = 'btn';
-                playBtn.addEventListener('click', function() {
-                    videoPlayer.currentTime = fragment.start;
-                    videoPlayer.play();
-
-                    // Зупиняємо відео після фрагменту
-                    const checkEnd = function() {
-                        if (videoPlayer.currentTime >= fragment.end) {
-                            videoPlayer.pause();
-                            videoPlayer.removeEventListener('timeupdate', checkEnd);
-                        }
-                    };
-
-                    videoPlayer.addEventListener('timeupdate', checkEnd);
-                });
-
-                const deleteBtn = document.createElement('button');
-                deleteBtn.textContent = 'Видалити';
-                deleteBtn.className = 'btn btn-danger';
-                deleteBtn.addEventListener('click', function() {
-                    // Видаляємо фрагмент зі списку
-                    projectFragments[project] = projectFragments[project].filter(f => f.id !== fragment.id);
-
-                    // Видаляємо візуальний фрагмент
-                    const fragmentElement = document.querySelector(`.fragment[data-id="${fragment.id}"][data-project="${project}"]`);
-                    if (fragmentElement) {
-                        timeline.removeChild(fragmentElement);
-                    }
-
-                    // Оновлюємо список
-                    updateFragmentsList();
-                });
-
-                actions.appendChild(playBtn);
-                actions.appendChild(deleteBtn);
-
-                listItem.appendChild(timeInfo);
-                listItem.appendChild(actions);
+                const listItem = createFragmentListItem(fragment, index, project);
                 fragmentsList.appendChild(listItem);
                 totalFragments++;
             });
@@ -733,34 +526,106 @@ function updateFragmentsList() {
     }
 }
 
-// Видалення всіх маркерів
+function createFragmentListItem(fragment, index, project) {
+    const listItem = document.createElement('li');
+    listItem.className = project;
+
+    const timeInfo = document.createElement('span');
+    timeInfo.textContent = `Фрагмент #${index + 1}: ${fragment.start_formatted} - ${fragment.end_formatted}`;
+
+    const actions = document.createElement('div');
+
+    const playBtn = document.createElement('button');
+    playBtn.textContent = '▶';
+    playBtn.className = 'btn';
+    playBtn.addEventListener('click', () => playFragment(fragment));
+
+    const deleteBtn = document.createElement('button');
+    deleteBtn.textContent = 'Видалити';
+    deleteBtn.className = 'btn btn-danger';
+    deleteBtn.addEventListener('click', () => deleteFragment(fragment, project));
+
+    actions.appendChild(playBtn);
+    actions.appendChild(deleteBtn);
+
+    listItem.appendChild(timeInfo);
+    listItem.appendChild(actions);
+
+    return listItem;
+}
+
+function playFragment(fragment) {
+    videoPlayer.currentTime = fragment.start;
+    videoPlayer.play();
+
+    const checkEnd = function() {
+        if (videoPlayer.currentTime >= fragment.end) {
+            videoPlayer.pause();
+            videoPlayer.removeEventListener('timeupdate', checkEnd);
+        }
+    };
+
+    videoPlayer.addEventListener('timeupdate', checkEnd);
+}
+
+function deleteFragment(fragment, project) {
+    projectFragments[project] = projectFragments[project].filter(f => f.id !== fragment.id);
+
+    const fragmentElement = document.querySelector(`.fragment[data-id="${fragment.id}"][data-project="${project}"]`);
+    if (fragmentElement) {
+        timeline.removeChild(fragmentElement);
+    }
+
+    updateFragmentsList();
+}
+
+function visualizeFragments() {
+    clearAllMarkers();
+
+    for (const projectType in projectFragments) {
+        projectFragments[projectType].forEach(fragment => {
+            createFragmentVisualization(fragment);
+        });
+    }
+}
+
 function clearAllMarkers() {
     const markers = timeline.querySelectorAll('.fragment, .fragment-marker');
     markers.forEach(marker => marker.remove());
 }
 
-// Збереження фрагментів у MongoDB
-function saveFragmentsToJson() {
-    // Перевіряємо, чи є фрагменти в будь-якому проєкті
-    let totalFragments = 0;
-    for (const project in projectFragments) {
-        totalFragments += projectFragments[project].length;
-    }
+function initVideoPlayer() {
+    updateUnfinishedFragmentsUI();
+    updateButtonStates();
+    visualizeFragments();
+}
 
-    if (totalFragments === 0 && !skipVideoCheckbox.checked) {
-        alert('Немає фрагментів для збереження і відео не помічено як Skip');
-        return;
-    }
+function updateTimelineProgress() {
+    const progress = (videoPlayer.currentTime / videoPlayer.duration) * 100;
+    timelineProgress.style.width = `${progress}%`;
+}
 
-    // Перевіряємо, чи немає незавершених фрагментів
-    const unfinishedProjects = Object.keys(unfinishedFragments).filter(project => unfinishedFragments[project] !== null);
-    if (unfinishedProjects.length > 0) {
-        if (!confirm('У вас є незавершені фрагменти, які не будуть збережені. Продовжити?')) {
-            return;
-        }
-    }
+function handleTimelineClick(e) {
+    const rect = timeline.getBoundingClientRect();
+    const position = (e.clientX - rect.left) / rect.width;
+    const time = position * videoPlayer.duration;
+    videoPlayer.currentTime = time;
+}
 
-    // Отримуємо метадані
+function handleSkipChange() {
+    const metaFields = document.querySelectorAll('.meta-form .form-control, .meta-form input[type="checkbox"]:not(#skip-video)');
+    metaFields.forEach(field => {
+        field.disabled = this.checked;
+    });
+}
+
+function showJsonModal() {
+    const jsonData = prepareJsonData();
+    jsonContent.textContent = JSON.stringify(jsonData, null, 2);
+    jsonModal.style.display = 'block';
+}
+
+function prepareJsonData() {
     const metadata = {
         skip: skipVideoCheckbox.checked,
         uav_type: uavTypeSelect.value,
@@ -774,7 +639,6 @@ function saveFragmentsToJson() {
         has_explosions: hasExplosionsCheckbox.checked
     };
 
-    // Форматуємо дані проєктів для експорту - спрощена структура
     const formattedProjects = {};
     for (const project in projectFragments) {
         if (projectFragments[project].length > 0) {
@@ -786,13 +650,36 @@ function saveFragmentsToJson() {
         }
     }
 
-    // Готуємо дані для відправки
-    const jsonData = {
+    return {
+        azure_link: currentAzureLink,
         metadata: metadata,
         clips: formattedProjects
     };
+}
 
-    // Відправляємо дані на сервер
+function saveFragmentsToJson() {
+    let totalFragments = 0;
+    for (const project in projectFragments) {
+        totalFragments += projectFragments[project].length;
+    }
+
+    if (totalFragments === 0 && !skipVideoCheckbox.checked) {
+        alert('Немає фрагментів для збереження і відео не помічено як Skip');
+        return;
+    }
+
+    const unfinishedProjects = Object.keys(unfinishedFragments).filter(project =>
+        unfinishedFragments[project] !== null
+    );
+
+    if (unfinishedProjects.length > 0) {
+        if (!confirm('У вас є незавершені фрагменти, які не будуть збережені. Продовжити?')) {
+            return;
+        }
+    }
+
+    const jsonData = prepareJsonData();
+
     fetch('/save_fragments', {
         method: 'POST',
         headers: {
@@ -820,15 +707,31 @@ function saveFragmentsToJson() {
     });
 }
 
-// Форматування часу (без мілісекунд)
+function closeModals() {
+    jsonModal.style.display = 'none';
+    projectModal.style.display = 'none';
+}
+
+function handleWindowClick(e) {
+    if (e.target === jsonModal || e.target === projectModal) {
+        closeModals();
+    }
+}
+
+function getProjectName(projectKey) {
+    const projectNames = {
+        'motion-det': 'Motion Detection',
+        'tracking': 'Tracking & Re-identification',
+        'mil-hardware': 'Mil Hardware Detection',
+        're-id': 'Re-ID'
+    };
+    return projectNames[projectKey] || projectKey;
+}
+
 function formatTime(seconds) {
     const h = Math.floor(seconds / 3600);
     const m = Math.floor((seconds % 3600) / 60);
     const s = Math.floor(seconds % 60);
 
-    const hh = h.toString().padStart(2, '0');
-    const mm = m.toString().padStart(2, '0');
-    const ss = s.toString().padStart(2, '0');
-
-    return `${hh}:${mm}:${ss}`;
+    return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
 }

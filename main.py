@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from typing import Dict, Any, Optional
@@ -8,9 +8,10 @@ from pydantic import BaseModel
 from bson import json_util
 from datetime import datetime
 
-from tasks import process_video_annotation, monitor_clip_tasks
+from tasks import process_video_annotation
 from db_connector import create_repository
-from utils.celery_utils import get_default_cvat_project_params, parse_azure_blob_url, get_blob_service_client
+from utils.celery_utils import get_default_cvat_project_params, parse_azure_blob_url, get_blob_service_client, \
+    download_blob_to_local
 from configs import Settings
 from utils.logger import get_logger
 
@@ -18,10 +19,7 @@ logger = get_logger(__name__)
 
 app = FastAPI()
 
-# Налаштування json_util для отримання плоского представлення
 JSON_OPTIONS = json_util.JSONOptions(json_mode=json_util.JSONMode.RELAXED)
-
-# Створюємо необхідні директорії
 os.makedirs(Settings.temp_folder, exist_ok=True)
 
 templates = Jinja2Templates(directory="front")
@@ -31,6 +29,55 @@ def json_response(content: Any) -> JSONResponse:
     """Створює JSON відповідь з плоским форматуванням MongoDB документів"""
     json_str = json_util.dumps(content, json_options=JSON_OPTIONS)
     return JSONResponse(content=json.loads(json_str))
+
+
+class VideoUploadRequest(BaseModel):
+    """Модель для запиту завантаження відео"""
+    video_url: str
+    where: Optional[str] = None
+    when: Optional[str] = None
+
+
+def validate_azure_url(url: str) -> Dict[str, Any]:
+    """Валідує Azure blob URL та перевіряє доступність"""
+    try:
+        blob_info = parse_azure_blob_url(url)
+
+        if blob_info["account_name"] != Settings.azure_storage_account_name:
+            return {
+                "valid": False,
+                "error": f"URL повинен бути з storage account '{Settings.azure_storage_account_name}'"
+            }
+
+        blob_service_client = get_blob_service_client()
+        blob_client = blob_service_client.get_blob_client(
+            container=blob_info["container_name"],
+            blob=blob_info["blob_name"]
+        )
+
+        if not blob_client.exists():
+            return {
+                "valid": False,
+                "error": "Файл не знайдено в Azure Storage"
+            }
+
+        properties = blob_client.get_blob_properties()
+        filename = os.path.basename(blob_info["blob_name"])
+
+        return {
+            "valid": True,
+            "filename": filename,
+            "size": properties.size,
+            "content_type": properties.content_settings.content_type or "video/mp4",
+            "blob_info": blob_info
+        }
+
+    except Exception as e:
+        logger.error(f"Помилка валідації Azure URL {url}: {str(e)}")
+        return {
+            "valid": False,
+            "error": f"Помилка валідації URL: {str(e)}"
+        }
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -58,68 +105,43 @@ async def serve_annotator_js():
     return FileResponse("front/annotator.js", media_type="application/javascript")
 
 
-class VideoUploadRequest(BaseModel):
-    """Модель для запиту завантаження відео"""
-    video_url: str
-    where: Optional[str] = None
-    when: Optional[str] = None
-
-
-class CVATParametersRequest(BaseModel):
-    """Модель для налаштування CVAT параметрів"""
-    azure_link: str
-    cvat_params: Dict[str, Dict[str, Any]]
-
-
-def validate_azure_url(url: str) -> Dict[str, Any]:
-    """Валідує Azure blob URL та перевіряє доступність"""
+@app.get("/get_video")
+async def get_video(azure_link: str):
+    """Відображає локальне відео для анотування"""
+    repo = None
     try:
-        # Парсимо URL
-        blob_info = parse_azure_blob_url(url)
+        repo = create_repository(collection_name="source_videos")
+        annotation = repo.get_annotation(azure_link)
 
-        # Перевіряємо чи це наш storage account
-        if blob_info["account_name"] != Settings.azure_storage_account_name:
-            return {
-                "valid": False,
-                "error": f"URL повинен бути з storage account '{Settings.azure_storage_account_name}'"
+        if not annotation:
+            raise HTTPException(404, detail="Відео не знайдено")
+
+        local_path = annotation.get("local_path")
+
+        if not local_path or not os.path.exists(local_path):
+            raise HTTPException(404, detail="Локальний файл не знайдено")
+
+        return FileResponse(
+            path=local_path,
+            media_type="video/mp4",
+            filename=annotation.get("filename"),
+            headers={
+                "Accept-Ranges": "bytes",
+                "Cache-Control": "public, max-age=3600"
             }
-
-        # Перевіряємо існування blob
-        blob_service_client = get_blob_service_client()
-        blob_client = blob_service_client.get_blob_client(
-            container=blob_info["container_name"],
-            blob=blob_info["blob_name"]
         )
 
-        if not blob_client.exists():
-            return {
-                "valid": False,
-                "error": "Файл не знайдено в Azure Storage"
-            }
-
-        # Отримуємо властивості файлу
-        properties = blob_client.get_blob_properties()
-        filename = os.path.basename(blob_info["blob_name"])
-
-        return {
-            "valid": True,
-            "filename": filename,
-            "size": properties.size,
-            "content_type": properties.content_settings.content_type or "video/mp4",
-            "blob_info": blob_info
-        }
-
     except Exception as e:
-        logger.error(f"Помилка валідації Azure URL {url}: {str(e)}")
-        return {
-            "valid": False,
-            "error": f"Помилка валідації URL: {str(e)}"
-        }
+        logger.error(f"Помилка відображення відео: {str(e)}")
+        raise HTTPException(500, detail="Помилка відображення відео")
+    finally:
+        if repo:
+            repo.close()
 
 
 @app.post("/upload")
 async def upload(data: VideoUploadRequest) -> JSONResponse:
-    """Реєстрація відео за Azure URL"""
+    """Реєстрація відео за Azure URL з локальним завантаженням"""
     repo = None
     try:
         azure_link = data.video_url.strip()
@@ -127,7 +149,6 @@ async def upload(data: VideoUploadRequest) -> JSONResponse:
         if not azure_link:
             return json_response({"success": False, "message": "URL відео не вказано"})
 
-        # Валідуємо Azure URL
         validation_result = validate_azure_url(azure_link)
 
         if not validation_result["valid"]:
@@ -136,10 +157,26 @@ async def upload(data: VideoUploadRequest) -> JSONResponse:
                 "message": f"Невірний Azure URL: {validation_result['error']}"
             })
 
-        # Записуємо в MongoDB
+        filename = validation_result["filename"]
+
+        # Створюємо локальний шлях
+        local_videos_dir = os.path.join(Settings.temp_folder, "source_videos")
+        os.makedirs(local_videos_dir, exist_ok=True)
+        local_path = os.path.join(local_videos_dir, filename)
+
+        # Завантажуємо відео локально
+        download_result = download_blob_to_local(azure_link, local_path)
+
+        if not download_result["success"]:
+            return json_response({
+                "success": False,
+                "message": f"Помилка завантаження відео: {download_result['error']}"
+            })
+
         video_record = {
             "azure_link": azure_link,
-            "filename": validation_result["filename"],
+            "filename": filename,
+            "local_path": local_path,
             "size": validation_result["size"],
             "content_type": validation_result["content_type"],
             "created_at": datetime.now().isoformat(sep=" ", timespec="seconds"),
@@ -149,19 +186,18 @@ async def upload(data: VideoUploadRequest) -> JSONResponse:
             "status": "not_annotated"
         }
 
-        # Зберігаємо запис у MongoDB
         repo = create_repository(collection_name="source_videos")
         repo.create_indexes()
         record_id = repo.save_annotation(video_record)
 
-        logger.info(f"Відео зареєстровано: {azure_link}")
+        logger.info(f"Відео завантажено локально: {local_path}")
 
         return json_response({
             "success": True,
-            "id": record_id,
+            "_id": record_id,
             "azure_link": azure_link,
-            "filename": validation_result["filename"],
-            "message": "Відео успішно зареєстровано в системі"
+            "filename": filename,
+            "message": "Відео успішно зареєстровано та завантажено локально"
         })
 
     except Exception as e:
@@ -218,79 +254,6 @@ async def get_annotation(azure_link: str) -> JSONResponse:
             repo.close()
 
 
-@app.post("/set_cvat_params")
-async def set_cvat_params(data: CVATParametersRequest) -> JSONResponse:
-    """Налаштування CVAT параметрів для відео"""
-    repo = None
-    try:
-        repo = create_repository(collection_name="source_videos")
-
-        existing = repo.get_annotation(data.azure_link)
-        if not existing:
-            return json_response({
-                "success": False,
-                "error": f"Відео з посиланням {data.azure_link} не знайдено"
-            })
-
-        # Оновлюємо CVAT параметри
-        existing["cvat_params"] = data.cvat_params
-        existing["updated_at"] = datetime.now().isoformat(sep=" ", timespec="seconds")
-
-        record_id = repo.save_annotation(existing)
-
-        logger.info(f"CVAT параметри оновлено для відео: {data.azure_link}")
-
-        return json_response({
-            "success": True,
-            "id": record_id,
-            "message": "CVAT параметри успішно збережено"
-        })
-
-    except Exception as e:
-        logger.error(f"Помилка при збереженні CVAT параметрів: {str(e)}")
-        return json_response({"success": False, "error": str(e)})
-    finally:
-        if repo:
-            repo.close()
-
-
-@app.get("/get_cvat_params")
-async def get_cvat_params(azure_link: str) -> JSONResponse:
-    """Отримання CVAT параметрів для відео"""
-    repo = None
-    try:
-        repo = create_repository(collection_name="source_videos")
-        annotation = repo.get_annotation(azure_link)
-
-        if not annotation:
-            return json_response({
-                "success": False,
-                "error": f"Відео з посиланням {azure_link} не знайдено"
-            })
-
-        # Якщо параметри не встановлені, повертаємо дефолтні
-        cvat_params = annotation.get("cvat_params", {})
-        if not cvat_params:
-            cvat_params = {
-                "motion-det": get_default_cvat_project_params("motion-det"),
-                "tracking": get_default_cvat_project_params("tracking"),
-                "mil-hardware": get_default_cvat_project_params("mil-hardware"),
-                "re-id": get_default_cvat_project_params("re-id")
-            }
-
-        return json_response({
-            "success": True,
-            "cvat_params": cvat_params
-        })
-
-    except Exception as e:
-        logger.error(f"Помилка при отриманні CVAT параметрів: {str(e)}")
-        return json_response({"success": False, "error": str(e)})
-    finally:
-        if repo:
-            repo.close()
-
-
 @app.post("/save_fragments")
 async def save_fragments(data: Dict[str, Any]) -> JSONResponse:
     """Збереження фрагментів відео та метаданих"""
@@ -310,7 +273,22 @@ async def save_fragments(data: Dict[str, Any]) -> JSONResponse:
                 "error": f"Відео з посиланням {azure_link} не знайдено"
             })
 
-        # Оновлюємо існуючий запис
+        # Валідація тривалості кліпів
+        clips = json_data.get("clips", {})
+        for project_type, project_clips in clips.items():
+            for clip in project_clips:
+                start_parts = clip["start_time"].split(":")
+                end_parts = clip["end_time"].split(":")
+
+                start_seconds = int(start_parts[0]) * 3600 + int(start_parts[1]) * 60 + int(start_parts[2])
+                end_seconds = int(end_parts[0]) * 3600 + int(end_parts[1]) * 60 + int(end_parts[2])
+
+                if end_seconds - start_seconds < 1:
+                    return json_response({
+                        "success": False,
+                        "error": f"Мінімальна тривалість кліпу - 1 секунда. Кліп {clip['id']} в проєкті {project_type} занадто короткий."
+                    })
+
         existing.update({
             "metadata": json_data.get("metadata"),
             "clips": json_data.get("clips"),
@@ -318,7 +296,6 @@ async def save_fragments(data: Dict[str, Any]) -> JSONResponse:
             "updated_at": datetime.now().isoformat(sep=" ", timespec="seconds")
         })
 
-        # Якщо CVAT параметри не встановлені, використовуємо дефолтні
         if "cvat_params" not in existing or not existing["cvat_params"]:
             cvat_params = {}
             for clip_type in json_data.get("clips", {}).keys():
@@ -327,7 +304,6 @@ async def save_fragments(data: Dict[str, Any]) -> JSONResponse:
 
         record_id = repo.save_annotation(existing)
 
-        # Запускаємо обробку, тільки якщо відео не помічено як "skip"
         task_id = None
         if not skip_processing:
             task_result = process_video_annotation.delay(azure_link)
@@ -340,7 +316,7 @@ async def save_fragments(data: Dict[str, Any]) -> JSONResponse:
 
         return json_response({
             "success": True,
-            "id": record_id,
+            "_id": record_id,
             "task_id": task_id,
             "message": success_message
         })
@@ -351,41 +327,6 @@ async def save_fragments(data: Dict[str, Any]) -> JSONResponse:
     finally:
         if repo:
             repo.close()
-
-
-@app.get("/clip_processing_status/{task_id}")
-async def clip_processing_status(task_id: str) -> JSONResponse:
-    """Перевіряє статус обробки кліпів"""
-    try:
-        # Отримуємо статус задачі
-        task = process_video_annotation.AsyncResult(task_id)
-
-        if task.ready():
-            result = task.result
-
-            # Якщо задача успішно завершена і є task_ids, перевіряємо статус підзадач
-            if task.successful() and isinstance(result, dict) and "task_ids" in result:
-                status_task = monitor_clip_tasks.delay(result["task_ids"])
-                status_result = status_task.get(timeout=5)  # Чекаємо не більше 5 секунд
-
-                return json_response({
-                    "success": True,
-                    "main_task_status": task.status,
-                    "main_task_result": result,
-                    "clips_status": status_result
-                })
-
-        return json_response({
-            "success": True,
-            "status": task.status,
-            "result": task.result if task.ready() else None
-        })
-    except Exception as e:
-        logger.error(f"Помилка при перевірці статусу: {str(e)}")
-        return json_response({
-            "success": False,
-            "error": str(e)
-        })
 
 
 if __name__ == "__main__":

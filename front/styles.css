@@ -8,7 +8,6 @@
     --danger-color: #e74c3c;
     --danger-hover: #c0392b;
     --text-light: #f5f5f5;
-    --text-dark: #333;
     --text-muted: #888;
     --border-color: #2c2c2c;
     --card-bg: #222;
@@ -36,21 +35,72 @@ h1, h2, h3 {
     color: var(--text-light);
 }
 
-.drop-area {
-    border: 2px dashed var(--border-color);
-    border-radius: 8px;
-    padding: 40px;
+/* Уніфіковані кнопки */
+.btn {
+    background-color: var(--primary-color);
+    color: white;
+    padding: 12px 24px;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    text-decoration: none;
+    display: inline-block;
     text-align: center;
-    margin-bottom: 20px;
-    transition: all 0.3s;
-    background-color: var(--card-bg);
+    font-size: 16px;
+    font-weight: 500;
+    transition: all 0.2s ease;
+    box-sizing: border-box;
 }
 
-.drop-area.highlight {
-    border-color: var(--secondary-color);
-    background-color: rgba(46, 204, 113, 0.1);
+.btn:hover {
+    background-color: var(--primary-hover);
+    transform: translateY(-1px);
 }
 
+.btn:active {
+    transform: translateY(1px);
+}
+
+.btn-secondary {
+    background-color: #6c757d;
+}
+
+.btn-secondary:hover {
+    background-color: #5a6268;
+}
+
+.btn-success {
+    background-color: var(--secondary-color);
+}
+
+.btn-success:hover {
+    background-color: var(--secondary-hover);
+}
+
+.btn-danger {
+    background-color: var(--danger-color);
+}
+
+.btn-danger:hover {
+    background-color: var(--danger-hover);
+}
+
+.btn:disabled {
+    background-color: #555;
+    cursor: not-allowed;
+    transform: none;
+}
+
+.btn:disabled:hover {
+    background-color: #555;
+    transform: none;
+}
+
+.full-width {
+    width: 100%;
+}
+
+/* Відео секції */
 .video-section {
     margin-bottom: 20px;
     background-color: var(--bg-darker);
@@ -71,6 +121,7 @@ video {
     border-radius: 4px;
 }
 
+/* Таймлайн */
 .timeline-container {
     position: relative;
     height: 40px;
@@ -79,6 +130,7 @@ video {
     border-radius: 4px;
     overflow: hidden;
     width: 100%;
+    cursor: pointer;
 }
 
 .timeline-progress {
@@ -102,7 +154,6 @@ video {
     opacity: 0.8;
 }
 
-/* Кольори для кожного проєкту */
 .fragment.motion-det {
     background-color: rgba(52, 152, 219, 0.4);
     border-color: #3498db;
@@ -130,17 +181,6 @@ video {
     top: 0;
 }
 
-.fragment-marker.start {
-    background-color: #f1c40f;
-    cursor: w-resize;
-}
-
-.fragment-marker.end {
-    background-color: #e74c3c;
-    cursor: e-resize;
-}
-
-/* Стилі для міток початку різних проєктів */
 .fragment-marker.start.motion-det {
     background-color: #3498db;
 }
@@ -157,10 +197,7 @@ video {
     background-color: #9c27b0;
 }
 
-.fragment-list {
-    margin-top: 20px;
-}
-
+/* Списки фрагментів */
 .fragment-list ul {
     list-style-type: none;
     padding: 0;
@@ -194,80 +231,7 @@ video {
     border-left: 4px solid #9c27b0;
 }
 
-.hidden {
-    display: none;
-}
-
-.btn {
-    background-color: var(--primary-color);
-    color: white;
-    padding: 10px 16px;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-    margin-right: 8px;
-    transition: background-color 0.2s, transform 0.1s;
-    font-weight: 500;
-}
-
-.btn:hover {
-    background-color: var(--primary-hover);
-    transform: translateY(-1px);
-}
-
-.btn:active {
-    transform: translateY(1px);
-}
-
-.btn-secondary {
-    background-color: #6c757d;
-}
-
-.btn-secondary:hover {
-    background-color: #5a6268;
-}
-
-.btn-danger {
-    background-color: var(--danger-color);
-}
-
-.btn-danger:hover {
-    background-color: var(--danger-hover);
-}
-
-.project-selector {
-    margin-bottom: 20px;
-    padding: 15px;
-    border-radius: 8px;
-    background-color: var(--card-bg);
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
-}
-
-.checkbox-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-    gap: 12px;
-    margin-top: 10px;
-}
-
-.project-selector label {
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-}
-
-.project-selector input[type="checkbox"] {
-    margin-right: 8px;
-}
-
-.meta-form {
-    padding: 20px;
-    border-radius: 8px;
-    background-color: var(--card-bg);
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
-    height: 100%;
-}
-
+/* Форми */
 .form-group {
     margin-bottom: 16px;
 }
@@ -285,11 +249,26 @@ video {
     border-radius: 4px;
     background-color: var(--input-bg);
     color: var(--text-light);
+    box-sizing: border-box;
 }
 
 .form-control:focus {
     outline: none;
     border-color: var(--primary-color);
+}
+
+.form-text {
+    color: var(--text-muted);
+    font-size: 14px;
+    margin-top: 5px;
+}
+
+/* Селектори та чекбокси */
+.checkbox-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 12px;
+    margin-top: 10px;
 }
 
 .checkbox-group {
@@ -308,36 +287,16 @@ video {
     margin-right: 8px;
 }
 
-.video-info {
-    margin-bottom: 20px;
-    padding: 15px;
+/* Карди */
+.card {
     background-color: var(--card-bg);
     border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 20px;
     box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
 }
 
-.edit-filename {
-    display: flex;
-    align-items: center;
-    margin-top: 12px;
-}
-
-.edit-filename input {
-    flex: 1;
-    padding: 10px;
-    margin-right: 8px;
-    border: 1px solid var(--border-color);
-    border-radius: 4px;
-    background-color: var(--input-bg);
-    color: var(--text-light);
-}
-
-.edit-filename input:focus {
-    outline: none;
-    border-color: var(--primary-color);
-}
-
-/* Двоколонковий макет */
+/* Макет */
 .main-layout {
     display: flex;
     margin-bottom: 20px;
@@ -345,14 +304,13 @@ video {
 }
 
 .left-column {
-    flex: 3; /* Займає 3/4 доступного простору */
+    flex: 3;
 }
 
 .right-column {
-    flex: 1; /* Займає 1/4 доступного простору */
+    flex: 1;
 }
 
-/* Скролінг для списку фрагментів */
 .fragments-container {
     max-height: 500px;
     overflow-y: auto;
@@ -361,7 +319,6 @@ video {
     background-color: var(--bg-darker);
 }
 
-/* Стилізація скролбара */
 .fragments-container::-webkit-scrollbar {
     width: 8px;
 }
@@ -380,32 +337,7 @@ video {
     background: #666;
 }
 
-/* Кнопка збереження на всю ширину */
-.full-width {
-    width: 100%;
-    margin-top: 20px;
-    padding: 14px;
-    font-size: 16px;
-    background-color: var(--secondary-color);
-    transition: background-color 0.2s;
-}
-
-.full-width:hover {
-    background-color: var(--secondary-hover);
-}
-
-.controls {
-    margin-bottom: 20px;
-    padding: 15px;
-    background-color: var(--card-bg);
-    border-radius: 8px;
-    display: flex;
-    flex-wrap: wrap;
-    gap: 10px;
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
-}
-
-/* Статус незавершених фрагментів */
+/* Статуси та повідомлення */
 .unfinished-status {
     margin: 10px 0 20px;
     padding: 15px;
@@ -441,7 +373,31 @@ video {
     background-color: #9c27b0;
 }
 
-/* Модальне вікно для вибору проєкту */
+.success-message {
+    background-color: rgba(46, 204, 113, 0.2);
+    border-left: 4px solid var(--secondary-color);
+    padding: 15px;
+    border-radius: 4px;
+    margin-top: 20px;
+}
+
+.error-message {
+    background-color: rgba(231, 76, 60, 0.2);
+    border-left: 4px solid var(--danger-color);
+    padding: 15px;
+    border-radius: 4px;
+    margin-top: 20px;
+}
+
+.info-message {
+    background-color: rgba(52, 152, 219, 0.2);
+    border-left: 4px solid #3498db;
+    padding: 15px;
+    border-radius: 4px;
+    margin-top: 20px;
+}
+
+/* Модальні вікна */
 .modal {
     display: none;
     position: fixed;
@@ -513,50 +469,6 @@ video {
     border-left: 4px solid #9c27b0;
 }
 
-/* Адаптивність для мобільних пристроїв */
-@media (max-width: 768px) {
-    .main-layout {
-        flex-direction: column;
-    }
-
-    .left-column, .right-column {
-        flex: 1 1 100%;
-    }
-
-    .controls {
-        flex-direction: column;
-    }
-
-    .btn {
-        margin-right: 0;
-        margin-bottom: 8px;
-        width: 100%;
-    }
-
-    .checkbox-grid {
-        grid-template-columns: 1fr;
-    }
-
-    .modal-content {
-        width: 95%;
-        margin: 20% auto;
-    }
-}
-
-.controls-footer {
-    display: flex;
-    gap: 10px;
-    margin-top: 20px;
-}
-
-.controls-footer .btn-secondary {
-    flex: 1;
-}
-
-.controls-footer .full-width {
-    flex: 3;
-}
-
 .json-preview {
     white-space: pre-wrap;
     background-color: var(--bg-darker);
@@ -567,91 +479,7 @@ video {
     overflow-y: auto;
 }
 
-/* Стилі для форми завантаження відео */
-.upload-form {
-    background-color: var(--card-bg);
-    border-radius: 8px;
-    padding: 20px;
-    margin-bottom: 20px;
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
-}
-
-.success-message {
-    background-color: rgba(46, 204, 113, 0.2);
-    border-left: 4px solid var(--secondary-color);
-    padding: 15px;
-    border-radius: 4px;
-    margin-top: 20px;
-}
-
-.error-message {
-    background-color: rgba(231, 76, 60, 0.2);
-    border-left: 4px solid var(--danger-color);
-    padding: 15px;
-    border-radius: 4px;
-    margin-top: 20px;
-}
-
-/* Стилі для вибору відео */
-.video-selector {
-    background-color: var(--card-bg);
-    border-radius: 8px;
-    padding: 20px;
-    margin-bottom: 20px;
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
-}
-
-.navigation-buttons {
-    margin-top: 20px;
-    text-align: center;
-}
-
-.navigation-buttons .btn {
-    margin: 10px 5px;
-    padding: 12px 24px;
-    font-size: 16px;
-}
-
-.metadata-form {
-    background-color: var(--card-bg);
-    border-radius: 8px;
-    padding: 20px;
-    margin-top: 20px;
-    margin-bottom: 20px;
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
-}
-
-.metadata-form h3 {
-    margin-bottom: 15px;
-}
-
-.form-actions {
-    display: flex;
-    gap: 10px;
-    margin-top: 20px;
-}
-
-.hidden {
-    display: none;
-}
-
-.info-message {
-    background-color: rgba(52, 152, 219, 0.2);
-    border-left: 4px solid #3498db;
-    padding: 15px;
-    border-radius: 4px;
-    margin-top: 20px;
-}
-
-.info-message {
-    background-color: rgba(52, 152, 219, 0.2);
-    border-left: 4px solid #3498db;
-    padding: 15px;
-    border-radius: 4px;
-    margin-top: 20px;
-}
-
-/* Стилі для завантаження відео */
+/* Спінер завантаження */
 .loading-spinner {
     border: 3px solid #f3f3f3;
     border-top: 3px solid #3498db;
@@ -694,24 +522,30 @@ video {
     flex: 1;
 }
 
-.form-text {
-    color: var(--text-muted);
-    font-size: 14px;
-    margin-top: 5px;
+.hidden {
+    display: none;
 }
 
-.info-panel {
-    background: var(--card-bg);
-    border-radius: 8px;
-    padding: 20px;
-    margin: 20px 0;
-}
+/* Адаптивність */
+@media (max-width: 768px) {
+    .main-layout {
+        flex-direction: column;
+    }
 
-.info-panel h3 {
-    margin-top: 0;
-    color: var(--primary-color);
-}
+    .left-column, .right-column {
+        flex: 1 1 100%;
+    }
 
-.info-panel p {
-    margin-bottom: 8px;
+    .checkbox-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .modal-content {
+        width: 95%;
+        margin: 20% auto;
+    }
+
+    .action-buttons {
+        flex-direction: column;
+    }
 }

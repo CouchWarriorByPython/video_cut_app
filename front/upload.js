@@ -1,15 +1,16 @@
-// DOM елементи
 const videoUrlInput = document.getElementById('video-url');
 const metadataWhereInput = document.getElementById('metadata-where');
 const metadataWhenInput = document.getElementById('metadata-when');
 const uploadBtn = document.getElementById('upload-btn');
+const goToAnnotatorBtn = document.getElementById('go-to-annotator-btn');
 const resultDiv = document.getElementById('result');
 
-// Обробники подій
+let lastUploadedVideoId = null;
+
 uploadBtn.addEventListener('click', handleUpload);
+goToAnnotatorBtn.addEventListener('click', handleGoToAnnotator);
 videoUrlInput.addEventListener('input', validateAzureUrl);
 
-// Валідація Azure URL в реальному часі
 function validateAzureUrl() {
     const url = videoUrlInput.value.trim();
 
@@ -22,11 +23,9 @@ function validateAzureUrl() {
     videoUrlInput.style.borderColor = isValid ? '#2ecc71' : '#e74c3c';
 }
 
-// Перевірка формату Azure URL
 function isValidAzureUrl(url) {
     try {
         const urlObj = new URL(url);
-        // Перевіряємо чи це Azure blob URL
         return urlObj.hostname.includes('.blob.core.windows.net') &&
                urlObj.pathname.length > 1;
     } catch {
@@ -34,13 +33,11 @@ function isValidAzureUrl(url) {
     }
 }
 
-// Обробка натискання кнопки "Зареєструвати"
 function handleUpload() {
     const url = videoUrlInput.value.trim();
     const where = metadataWhereInput.value.trim();
     const when = metadataWhenInput.value.trim();
 
-    // Валідація обов'язкових полів
     if (!url) {
         showError('Будь ласка, вкажіть Azure Blob URL відео');
         return;
@@ -51,7 +48,6 @@ function handleUpload() {
         return;
     }
 
-    // Валідація опційних полів
     if (where && !/^[A-Za-z\s\-_]+$/.test(where)) {
         showError('Локація може містити тільки англійські літери, пробіли, дефіси та підкреслення');
         return;
@@ -62,10 +58,8 @@ function handleUpload() {
         return;
     }
 
-    // Показуємо індикатор завантаження
     showLoading(url);
 
-    // Відправляємо запит на сервер
     fetch('/upload', {
         method: 'POST',
         headers: {
@@ -87,6 +81,7 @@ function handleUpload() {
         console.log("Отримана відповідь:", data);
         handleUploadResponse(data);
         if (data.success) {
+            lastUploadedVideoId = data._id;
             resetForm();
         }
     })
@@ -96,36 +91,41 @@ function handleUpload() {
     });
 }
 
-// Обробка відповіді від сервера
+function handleGoToAnnotator() {
+    if (lastUploadedVideoId) {
+        window.location.href = `/annotator?video_id=${lastUploadedVideoId}`;
+    } else {
+        window.location.href = '/annotator';
+    }
+}
+
 function handleUploadResponse(data) {
     if (data.success) {
         showSuccess({
             message: data.message || `Відео ${data.filename} успішно зареєстровано`,
             azure_link: data.azure_link,
             filename: data.filename,
-            id: data.id
+            _id: data._id
         });
     } else {
         showError(data.message || 'Невідома помилка при реєстрації відео');
     }
 }
 
-// Показати індикатор завантаження
 function showLoading(url) {
     resultDiv.innerHTML = `
         <div class="info-message">
-            <h3>Перевірка доступності відео...</h3>
-            <p>Перевіряємо доступність відео в Azure Storage:</p>
+            <h3>Завантаження відео...</h3>
+            <p>Завантажуємо відео з Azure Storage локально:</p>
             <p class="url-display">${url}</p>
             <div class="loading-spinner"></div>
         </div>
     `;
     resultDiv.classList.remove('hidden');
     uploadBtn.disabled = true;
-    uploadBtn.textContent = 'Перевіряємо...';
+    uploadBtn.textContent = 'Завантажуємо...';
 }
 
-// Скидання форми після успішної реєстрації
 function resetForm() {
     metadataWhereInput.value = '';
     metadataWhenInput.value = '';
@@ -134,7 +134,6 @@ function resetForm() {
     videoUrlInput.style.borderColor = '';
 }
 
-// Функція для показу успішного результату
 function showSuccess(data) {
     resultDiv.innerHTML = `
         <div class="success-message">
@@ -142,12 +141,12 @@ function showSuccess(data) {
             <p>${data.message}</p>
             <div class="video-info">
                 <p><strong>Файл:</strong> ${data.filename}</p>
-                <p><strong>ID:</strong> ${data.id}</p>
+                <p><strong>ID:</strong> ${data._id}</p>
                 <p><strong>Azure посилання:</strong></p>
                 <p class="url-display">${data.azure_link}</p>
             </div>
             <div class="action-buttons">
-                <a href="/annotator" class="btn btn-primary">Перейти до анотування</a>
+                <button class="btn btn-success" onclick="goToAnnotatorWithVideo('${data._id}')">Перейти до анотування</button>
                 <button class="btn btn-secondary" onclick="clearResult()">Зареєструвати ще одне відео</button>
             </div>
         </div>
@@ -157,7 +156,6 @@ function showSuccess(data) {
     uploadBtn.textContent = 'Зареєструвати відео';
 }
 
-// Функція для показу помилки
 function showError(message) {
     resultDiv.innerHTML = `
         <div class="error-message">
@@ -171,7 +169,10 @@ function showError(message) {
     uploadBtn.textContent = 'Зареєструвати відео';
 }
 
-// Очистити результат
+function goToAnnotatorWithVideo(videoId) {
+    window.location.href = `/annotator?video_id=${videoId}`;
+}
+
 function clearResult() {
     resultDiv.innerHTML = '';
     resultDiv.classList.add('hidden');

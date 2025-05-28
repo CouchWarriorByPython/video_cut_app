@@ -5,9 +5,8 @@ import re
 import tempfile
 from typing import Dict, Any, Optional
 from urllib.parse import urlparse
-from datetime import datetime
 
-from azure.storage.blob import BlobServiceClient, ContainerClient, BlobClient
+from azure.storage.blob import BlobServiceClient, ContainerClient
 from azure.identity import ClientSecretCredential
 from azure.core.exceptions import ResourceNotFoundError
 
@@ -66,8 +65,8 @@ def parse_azure_blob_url(azure_url: str) -> Dict[str, str]:
         raise
 
 
-def download_blob_to_temp(azure_url: str) -> Dict[str, Any]:
-    """Завантажує blob з Azure в тимчасовий файл"""
+def download_blob_to_local(azure_url: str, local_path: str) -> Dict[str, Any]:
+    """Завантажує blob з Azure у локальний файл"""
     try:
         blob_info = parse_azure_blob_url(azure_url)
         blob_service_client = get_blob_service_client()
@@ -77,32 +76,23 @@ def download_blob_to_temp(azure_url: str) -> Dict[str, Any]:
             blob=blob_info["blob_name"]
         )
 
-        # Перевіряємо існування blob
         if not blob_client.exists():
             raise ResourceNotFoundError(f"Blob не знайдено: {azure_url}")
 
-        # Отримуємо властивості blob
         blob_properties = blob_client.get_blob_properties()
-        filename = os.path.basename(blob_info["blob_name"])
 
-        # Створюємо тимчасовий файл
-        temp_file = tempfile.NamedTemporaryFile(
-            delete=False,
-            suffix=os.path.splitext(filename)[1],
-            dir=Settings.temp_folder
-        )
+        # Створюємо директорію якщо не існує
+        os.makedirs(os.path.dirname(local_path), exist_ok=True)
 
-        logger.info(f"Завантаження blob {azure_url} в {temp_file.name}")
+        logger.info(f"Завантаження blob {azure_url} в {local_path}")
 
-        # Завантажуємо blob
-        with open(temp_file.name, "wb") as download_file:
+        with open(local_path, "wb") as download_file:
             blob_data = blob_client.download_blob()
             download_file.write(blob_data.readall())
 
         return {
             "success": True,
-            "local_path": temp_file.name,
-            "filename": filename,
+            "local_path": local_path,
             "size": blob_properties.size,
             "content_type": blob_properties.content_settings.content_type or "video/mp4"
         }
@@ -126,7 +116,7 @@ def upload_clip_to_azure(
         logger.info(f"Завантаження файлу {file_path} на Azure в {azure_path}")
 
         with open(file_path, "rb") as data:
-            blob_client = container_client.upload_blob(
+            container_client.upload_blob(
                 name=azure_path,
                 data=data,
                 overwrite=True,
@@ -147,19 +137,6 @@ def upload_clip_to_azure(
             "success": False,
             "error": str(e)
         }
-
-
-def get_command_auth_str() -> str:
-    """Формує auth string для CVAT CLI команд"""
-    return f"cvat-cli --auth {Settings.cvat_username}:{Settings.cvat_password} --server-host {Settings.cvat_host} --server-port {Settings.cvat_port}"
-
-
-def execute_cvat_command(cli_command: str) -> subprocess.CompletedProcess:
-    """Виконує CVAT CLI команду"""
-    auth_str = get_command_auth_str()
-    command = f"{auth_str} {cli_command}"
-    logger.info(f"Виконання команди: {command}")
-    return subprocess.run(command, shell=True, capture_output=True)
 
 
 def get_default_cvat_project_params(project_name: str) -> Dict[str, Any]:
@@ -234,19 +211,15 @@ def trim_video_clip(
         command = [
             "ffmpeg",
             "-y",
-            "-ss",
-            start_time,
-            "-to",
-            end_time,
-            "-i",
-            source_path,
-            "-c",
-            "copy",
+            "-ss", start_time,
+            "-to", end_time,
+            "-i", source_path,
+            "-c", "copy",
             "-loglevel", Settings.ffmpeg_log_level,
             output_path,
         ]
-        command_str = " ".join(command)
-        logger.info(f"Запуск команди: {command_str}")
+
+        logger.info(f"Запуск команди: {' '.join(command)}")
 
         result = subprocess.run(command, capture_output=True, text=True)
 
@@ -277,8 +250,10 @@ def create_cvat_task(
             logger.error("project_id не вказано в параметрах")
             return None
 
+        auth_str = f"cvat-cli --auth {Settings.cvat_username}:{Settings.cvat_password} --server-host {Settings.cvat_host} --server-port {Settings.cvat_port}"
+
         cli_command = (
-            f"create {filename} "
+            f"{auth_str} create {filename} "
             f"local {file_path} "
             f"--project_id {project_id} "
             f"--overlap {overlap} "
@@ -289,10 +264,10 @@ def create_cvat_task(
 
         logger.info(f"Створення CVAT задачі для {filename}")
 
-        result = execute_cvat_command(cli_command)
+        result = subprocess.run(cli_command, shell=True, capture_output=True, text=True)
 
         if result.returncode == 0:
-            output = result.stdout.decode("utf-8")
+            output = result.stdout
             match = re.search(r"Created task ID: (\d+)", output)
             task_id = match.group(1) if match else None
 
@@ -303,8 +278,7 @@ def create_cvat_task(
                 logger.warning(f"Не вдалося витягти task ID з виводу: {output}")
                 return None
         else:
-            error_output = result.stderr.decode("utf-8")
-            logger.error(f"Помилка створення CVAT задачі: {error_output}")
+            logger.error(f"Помилка створення CVAT задачі: {result.stderr}")
             return None
 
     except Exception as e:
@@ -312,11 +286,11 @@ def create_cvat_task(
         return None
 
 
-def cleanup_temp_file(file_path: str) -> None:
-    """Видаляє тимчасовий файл"""
+def cleanup_file(file_path: str) -> None:
+    """Видаляє файл"""
     try:
         if os.path.exists(file_path):
             os.unlink(file_path)
-            logger.info(f"Видалено тимчасовий файл: {file_path}")
+            logger.info(f"Видалено файл: {file_path}")
     except Exception as e:
-        logger.error(f"Помилка видалення тимчасового файлу {file_path}: {str(e)}")
+        logger.error(f"Помилка видалення файлу {file_path}: {str(e)}")

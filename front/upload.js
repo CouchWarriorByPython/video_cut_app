@@ -145,10 +145,6 @@ function showSuccess(data) {
                 <p><strong>Azure посилання:</strong></p>
                 <p class="url-display">${data.azure_link}</p>
             </div>
-            <div class="action-buttons">
-                <button class="btn btn-success" onclick="goToAnnotatorWithVideo('${data._id}')">Перейти до анотування</button>
-                <button class="btn btn-secondary" onclick="clearResult()">Зареєструвати ще одне відео</button>
-            </div>
         </div>
     `;
     resultDiv.classList.remove('hidden');
@@ -161,19 +157,9 @@ function showError(message) {
         <div class="error-message">
             <h3>Помилка реєстрації</h3>
             <p>${message}</p>
-            <button class="btn btn-secondary" onclick="clearResult()">Спробувати ще раз</button>
         </div>
     `;
     resultDiv.classList.remove('hidden');
     uploadBtn.disabled = false;
     uploadBtn.textContent = 'Зареєструвати відео';
-}
-
-function goToAnnotatorWithVideo(videoId) {
-    window.location.href = `/annotator?video_id=${videoId}`;
-}
-
-function clearResult() {
-    resultDiv.innerHTML = '';
-    resultDiv.classList.add('hidden');
 }

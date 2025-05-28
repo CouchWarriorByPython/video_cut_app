@@ -1,5 +1,5 @@
 from typing import Dict, List, Any
-from celery import Celery, Task
+from celery import Celery, Task, group, chord
 from celery.utils.log import get_task_logger
 import os
 import tempfile
@@ -105,7 +105,10 @@ def process_video_annotation(self, azure_link: str) -> Dict[str, Any]:
             }
 
         stored_cvat_params = annotation.get("cvat_params", {})
-        task_ids = []
+
+        # Створюємо список задач для обробки кліпів
+        clip_tasks = []
+        total_clips = 0
 
         for project, project_clips in clips.items():
             cvat_params = stored_cvat_params.get(project)
@@ -114,7 +117,7 @@ def process_video_annotation(self, azure_link: str) -> Dict[str, Any]:
                 logger.info(f"Використовуємо дефолтні CVAT параметри для проєкту {project}")
 
             for clip in project_clips:
-                task = process_video_clip.delay(
+                task = process_video_clip.s(
                     azure_link=azure_link,
                     project=project,
                     clip_id=clip["id"],
@@ -126,19 +129,20 @@ def process_video_annotation(self, azure_link: str) -> Dict[str, Any]:
                     where=where,
                     when=when
                 )
-                task_ids.append(task.id)
+                clip_tasks.append(task)
+                total_clips += 1
 
-        # Оновлюємо статус соурс відео
-        annotation["status"] = "processing"
-        annotation["updated_at"] = datetime.now().isoformat(sep=" ", timespec="seconds")
-        self.source_repo.save_annotation(annotation)
+        # Використовуємо chord для запуску всіх задач та callback після завершення
+        callback = finalize_video_processing.s(azure_link)
+        job = chord(clip_tasks)(callback)
 
-        logger.info(f"Запущено обробку {len(task_ids)} кліпів для відео: {azure_link}")
+        logger.info(f"Запущено chord з {total_clips} кліпів для відео: {azure_link}")
 
         return {
             "status": "success",
-            "message": f"Запущено обробку {len(task_ids)} кліпів",
-            "task_ids": task_ids
+            "message": f"Запущено обробку {total_clips} кліпів",
+            "chord_id": job.id,
+            "total_clips": total_clips
         }
 
     except Exception as e:
@@ -250,7 +254,7 @@ def process_video_clip(
             "clip_id": clip_id,
             "extension": "mp4",
             "cvat_task_id": cvat_task_id,
-            "status": "processing",
+            "status": "not_annotated",  # Дефолтний статус для анотування в CVAT
             "azure_link": upload_result["azure_path"],
             "blob_url": upload_result["blob_url"],
             "fps": Settings.default_fps,
@@ -279,60 +283,85 @@ def process_video_clip(
             "message": str(e)
         }
     finally:
-        # Очищаємо тільки тимчасовий кліп
+        # Очищаємо тимчасовий кліп
         if temp_clip_path:
             cleanup_file(temp_clip_path)
 
 
-@app.task(name="cleanup_processed_video")
-def cleanup_processed_video(azure_link: str) -> Dict[str, Any]:
-    """Видаляє source відео після завершення обробки всіх кліпів"""
-    logger.info(f"Перевірка статусу обробки для відео: {azure_link}")
+@app.task(name="finalize_video_processing")
+def finalize_video_processing(results: List[Dict], azure_link: str) -> Dict[str, Any]:
+    """Завершує обробку відео після завершення всіх кліпів"""
+    logger.info(f"Завершення обробки відео: {azure_link}")
 
     repo = None
-    clips_repo = None
     try:
         repo = create_repository(collection_name="source_videos")
         annotation = repo.get_annotation(azure_link)
 
         if not annotation:
+            logger.error(f"Source відео не знайдено: {azure_link}")
             return {
                 "status": "error",
-                "message": "Відео не знайдено"
+                "message": "Source відео не знайдено"
             }
 
-        source_id = annotation.get("_id")
-        clips_repo = create_repository(collection_name="video_clips")
-        clips = clips_repo.get_clips_by_source_id(source_id)
+        # Підраховуємо результати
+        successful_clips = len([r for r in results if r and r.get("status") == "success"])
+        failed_clips = len([r for r in results if r and r.get("status") == "error"])
+        total_clips = len(results)
 
-        # Перевіряємо чи всі кліпи оброблено
-        pending_clips = [clip for clip in clips if clip.get("status") == "processing"]
+        logger.info(
+            f"Результати обробки {azure_link}: успішно {successful_clips}/{total_clips}, помилок {failed_clips}")
 
-        if not pending_clips:
-            # Всі кліпи оброблено, можна видаляти source
+        # КРИТИЧНО: Видаляємо source файл ТІЛЬКИ якщо ВСІ задачі завершились успішно
+        if failed_clips == 0 and successful_clips == total_clips:
+            # Всі задачі успішні - видаляємо source файл та оновлюємо статус
             local_path = annotation.get("local_path")
             if local_path and os.path.exists(local_path):
-                cleanup_file(local_path)
-                logger.info(f"Видалено локальний файл: {local_path}")
+                try:
+                    cleanup_file(local_path)
+                    logger.info(f"Видалено локальний source файл: {local_path}")
+                except Exception as e:
+                    logger.error(f"Помилка видалення source файлу {local_path}: {str(e)}")
+                    return {
+                        "status": "error",
+                        "message": f"Помилка видалення source файлу: {str(e)}",
+                        "successful_clips": successful_clips,
+                        "failed_clips": failed_clips,
+                        "total_clips": total_clips
+                    }
 
-            annotation["status"] = "completed"
+            # Оновлюємо статус source відео на "annotated"
+            annotation["status"] = "annotated"
             annotation["updated_at"] = datetime.now().isoformat(sep=" ", timespec="seconds")
             repo.save_annotation(annotation)
 
-            logger.info(f"Обробку відео {azure_link} завершено. Source файл видалено з локального сховища.")
+            logger.info(
+                f"Обробку відео {azure_link} повністю завершено. Source файл видалено, статус оновлено на 'annotated'")
 
             return {
                 "status": "completed",
-                "message": "Обробка завершена, source файл очищено"
+                "message": "Обробка відео повністю завершена",
+                "successful_clips": successful_clips,
+                "failed_clips": failed_clips,
+                "total_clips": total_clips
             }
         else:
+            # Є помилки - НЕ видаляємо source файл, залишаємо статус як є
+            logger.warning(
+                f"Обробка відео {azure_link} завершена з помилками. Source файл збережено для повторної обробки")
+
+            # Не змінюємо статус - залишаємо можливість повторної обробки
             return {
-                "status": "pending",
-                "message": f"Очікує завершення {len(pending_clips)} кліпів"
+                "status": "partial_success",
+                "message": f"Обробка завершена з помилками. Успішно оброблено {successful_clips} з {total_clips} кліпів",
+                "successful_clips": successful_clips,
+                "failed_clips": failed_clips,
+                "total_clips": total_clips
             }
 
     except Exception as e:
-        logger.error(f"Помилка при очищенні відео {azure_link}: {str(e)}")
+        logger.error(f"Помилка при завершенні обробки відео {azure_link}: {str(e)}")
         return {
             "status": "error",
             "message": str(e)
@@ -340,5 +369,3 @@ def cleanup_processed_video(azure_link: str) -> Dict[str, Any]:
     finally:
         if repo:
             repo.close()
-        if clips_repo:
-            clips_repo.close()

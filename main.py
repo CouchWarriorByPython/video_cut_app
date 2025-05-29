@@ -1,5 +1,5 @@
-from fastapi import FastAPI, Request, HTTPException
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi import FastAPI, Request, HTTPException, Response
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
@@ -37,7 +37,7 @@ templates = Jinja2Templates(directory="front")
 
 
 @app.exception_handler(RequestValidationError)
-async def validation_exception_handler(request: Request, exc: RequestValidationError) -> ValidationErrorResponse:
+async def validation_exception_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
     """Обробник помилок валідації Pydantic"""
     errors = []
     for error in exc.errors():
@@ -48,28 +48,40 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
             "input": error.get('input')
         })
 
-    return ValidationErrorResponse(
-        message="Помилка валідації даних",
-        errors=errors
+    return JSONResponse(
+        status_code=422,
+        content={
+            "success": False,
+            "message": "Помилка валідації даних",
+            "errors": errors
+        }
     )
 
 
 @app.exception_handler(StarletteHTTPException)
-async def http_exception_handler(request: Request, exc: StarletteHTTPException) -> ErrorResponse:
+async def http_exception_handler(request: Request, exc: StarletteHTTPException) -> JSONResponse:
     """Обробник HTTP помилок"""
-    return ErrorResponse(
-        message=str(exc.detail),
-        error=f"HTTP {exc.status_code}"
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={
+            "success": False,
+            "message": str(exc.detail),
+            "error": f"HTTP {exc.status_code}"
+        }
     )
 
 
 @app.exception_handler(Exception)
-async def general_exception_handler(request: Request, exc: Exception) -> ErrorResponse:
+async def general_exception_handler(request: Request, exc: Exception) -> JSONResponse:
     """Обробник загальних помилок"""
     logger.error(f"Необроблена помилка: {str(exc)}")
-    return ErrorResponse(
-        message="Внутрішня помилка сервера",
-        error=str(exc)
+    return JSONResponse(
+        status_code=500,
+        content={
+            "success": False,
+            "message": "Внутрішня помилка сервера",
+            "error": str(exc)
+        }
     )
 
 
@@ -108,7 +120,6 @@ def validate_azure_url(url: str) -> Dict[str, Any]:
         return {
             "valid": True,
             "filename": filename,
-            "size": properties.size,
             "content_type": properties.content_settings.content_type or "video/mp4",
             "blob_info": blob_info
         }
@@ -141,7 +152,6 @@ def convert_db_annotation_to_response(annotation: Dict[str, Any]) -> VideoAnnota
         _id=annotation["_id"],
         azure_link=annotation["azure_link"],
         filename=annotation["filename"],
-        size=annotation["size"],
         content_type=annotation["content_type"],
         created_at=annotation["created_at"],
         updated_at=annotation["updated_at"],
@@ -182,6 +192,12 @@ async def serve_upload_js() -> FileResponse:
 async def serve_annotator_js() -> FileResponse:
     """Статичний JS файл для анотування"""
     return FileResponse("front/annotator.js", media_type="application/javascript")
+
+
+@app.get("/favicon.ico")
+async def serve_favicon():
+    """Іконка сайту - заглушка"""
+    return Response(status_code=204)
 
 
 @app.get("/get_video")
@@ -257,7 +273,6 @@ async def upload(data: VideoUploadRequest) -> VideoUploadResponse:
         video_record = {
             "azure_link": data.video_url,
             "filename": filename,
-            "size": validation_result["size"],
             "content_type": validation_result["content_type"],
             "created_at": datetime.now().isoformat(sep=" ", timespec="seconds"),
             "updated_at": datetime.now().isoformat(sep=" ", timespec="seconds"),

@@ -123,7 +123,6 @@ class VideoAnnotationResponse(BaseModel):
     _id: str
     azure_link: str
     filename: str
-    size: int
     content_type: str
     created_at: str
     updated_at: str

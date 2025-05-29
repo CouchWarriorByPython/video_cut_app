@@ -120,7 +120,6 @@ class VideoAnnotationResponse(BaseModel):
     _id: str
     azure_link: str
     filename: str
-    content_type: str
     created_at: str
     updated_at: str
     when: Optional[str] = None

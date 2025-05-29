@@ -23,7 +23,6 @@ class VideoMetadataRequest(BaseModel):
     has_explosions: bool = False
 
     @field_validator('uav_type', 'video_content')
-    @classmethod
     def validate_required_fields(cls, v: str, info: ValidationInfo) -> str:
         if not info.data.get('skip', False) and not v.strip():
             field_names = {
@@ -41,7 +40,6 @@ class VideoUploadRequest(BaseModel):
     when: Optional[str] = Field(None, pattern=r'^\d{8}$')
 
     @field_validator('video_url')
-    @classmethod
     def validate_azure_url(cls, v: str) -> str:
         v = v.strip()
         if not v.startswith('https://') or '.blob.core.windows.net' not in v:
@@ -49,7 +47,6 @@ class VideoUploadRequest(BaseModel):
         return v
 
     @field_validator('where')
-    @classmethod
     def validate_where(cls, v: Optional[str]) -> Optional[str]:
         if v and not v.replace(' ', '').replace('-', '').replace('_', '').isalpha():
             raise ValueError('Локація може містити тільки англійські літери, пробіли, дефіси та підкреслення')

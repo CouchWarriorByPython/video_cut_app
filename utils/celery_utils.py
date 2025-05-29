@@ -79,8 +79,6 @@ def download_blob_to_local(azure_url: str, local_path: str) -> Dict[str, Any]:
         if not blob_client.exists():
             raise ResourceNotFoundError(f"Blob не знайдено: {azure_url}")
 
-        blob_properties = blob_client.get_blob_properties()
-
         # Створюємо директорію якщо не існує
         os.makedirs(os.path.dirname(local_path), exist_ok=True)
 
@@ -93,8 +91,6 @@ def download_blob_to_local(azure_url: str, local_path: str) -> Dict[str, Any]:
         return {
             "success": True,
             "local_path": local_path,
-            "size": blob_properties.size,
-            "content_type": blob_properties.content_settings.content_type or "video/mp4"
         }
 
     except Exception as e:

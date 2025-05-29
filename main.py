@@ -120,7 +120,6 @@ def validate_azure_url(url: str) -> Dict[str, Any]:
         return {
             "valid": True,
             "filename": filename,
-            "content_type": properties.content_settings.content_type or "video/mp4",
             "blob_info": blob_info
         }
 
@@ -152,7 +151,6 @@ def convert_db_annotation_to_response(annotation: Dict[str, Any]) -> VideoAnnota
         _id=annotation["_id"],
         azure_link=annotation["azure_link"],
         filename=annotation["filename"],
-        content_type=annotation["content_type"],
         created_at=annotation["created_at"],
         updated_at=annotation["updated_at"],
         when=annotation.get("when"),
@@ -273,7 +271,6 @@ async def upload(data: VideoUploadRequest) -> VideoUploadResponse:
         video_record = {
             "azure_link": data.video_url,
             "filename": filename,
-            "content_type": validation_result["content_type"],
             "created_at": datetime.now().isoformat(sep=" ", timespec="seconds"),
             "updated_at": datetime.now().isoformat(sep=" ", timespec="seconds"),
             "when": data.when,

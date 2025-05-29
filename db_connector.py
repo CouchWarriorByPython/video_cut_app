@@ -44,7 +44,6 @@ class SourceVideoAnnotation(BaseModel):
     """Модель анотації соурс відео"""
     azure_link: str
     filename: str
-    content_type: str = "video/mp4"
     created_at: str = Field(default_factory=lambda: datetime.now().isoformat(sep=" ", timespec="seconds"))
     updated_at: str = Field(default_factory=lambda: datetime.now().isoformat(sep=" ", timespec="seconds"))
     when: Optional[str] = None

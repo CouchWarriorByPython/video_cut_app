@@ -1,28 +1,17 @@
 from typing import Dict, List, Any
-from celery import Celery, Task, chord
-from celery.utils.log import get_task_logger
+from celery import Task, chord
 import os
-import tempfile
 from datetime import datetime
 
-from db_connector import create_repository
-from utils.celery_utils import (
-    trim_video_clip, upload_clip_to_azure, create_cvat_task,
-    get_blob_service_client, get_blob_container_client,
-    get_default_cvat_project_params, format_filename, cleanup_file
-)
-from configs import Settings
+from backend.background_tasks.app import app
+from backend.database.repositories.source_video import SyncSourceVideoRepository
+from backend.database.repositories.video_clip import SyncVideoClipRepository
+from backend.utils.azure_utils import get_blob_service_client, get_blob_container_client
+from backend.utils.video_utils import get_local_video_path, cleanup_file
+from backend.services.cvat_service import CVATService
+from backend.utils.logger import get_logger
 
-logger = get_task_logger(__name__)
-
-app = Celery('tasks')
-app.config_from_object('celery_config')
-
-
-def get_local_video_path(filename: str) -> str:
-    """Конструює локальний шлях для відео файлу"""
-    local_videos_dir = os.path.join(Settings.temp_folder, "source_videos")
-    return os.path.join(local_videos_dir, filename)
+logger = get_logger(__name__)
 
 
 class VideoProcessingTask(Task):
@@ -32,17 +21,18 @@ class VideoProcessingTask(Task):
     _clips_repo = None
     _azure_client = None
     _container_client = None
+    _cvat_service = None
 
     @property
     def source_repo(self):
         if self._source_repo is None:
-            self._source_repo = create_repository(collection_name="source_videos")
+            self._source_repo = SyncSourceVideoRepository()
         return self._source_repo
 
     @property
     def clips_repo(self):
         if self._clips_repo is None:
-            self._clips_repo = create_repository(collection_name="video_clips")
+            self._clips_repo = SyncVideoClipRepository()
             self._clips_repo.create_indexes()
         return self._clips_repo
 
@@ -57,6 +47,12 @@ class VideoProcessingTask(Task):
         if self._container_client is None:
             self._container_client = get_blob_container_client(self.azure_client)
         return self._container_client
+
+    @property
+    def cvat_service(self):
+        if self._cvat_service is None:
+            self._cvat_service = CVATService()
+        return self._cvat_service
 
 
 @app.task(name="process_video_annotation", bind=True, base=VideoProcessingTask)
@@ -112,13 +108,14 @@ def process_video_annotation(self, azure_link: str) -> Dict[str, Any]:
         stored_cvat_params = annotation.get("cvat_params", {})
 
         # Створюємо список задач для обробки кліпів
+        from backend.background_tasks.tasks.clip_processing import process_video_clip
         clip_tasks = []
         total_clips = 0
 
         for project, project_clips in clips.items():
             cvat_params = stored_cvat_params.get(project)
             if not cvat_params:
-                cvat_params = get_default_cvat_project_params(project)
+                cvat_params = self.cvat_service.get_default_project_params(project)
                 logger.debug(f"Використовуємо дефолтні CVAT параметри для проєкту {project}")
 
             for clip in project_clips:
@@ -158,142 +155,6 @@ def process_video_annotation(self, azure_link: str) -> Dict[str, Any]:
         }
 
 
-@app.task(name="process_video_clip", bind=True, base=VideoProcessingTask)
-def process_video_clip(
-        self,
-        azure_link: str,
-        project: str,
-        clip_id: int,
-        filename: str,
-        start_time: str,
-        end_time: str,
-        metadata: Dict[str, Any],
-        cvat_params: Dict[str, Any],
-        where: str = "",
-        when: str = ""
-) -> Dict[str, Any]:
-    """Обробляє окремий відео кліп з локального файлу"""
-    logger.debug(f"Початок обробки кліпу {clip_id} проєкту {project} з відео {filename}")
-
-    temp_clip_path = None
-
-    try:
-        source_annotation = self.source_repo.get_annotation(azure_link)
-        if not source_annotation:
-            logger.error(f"Не вдалося знайти соурс відео за azure_link: {azure_link}")
-            return {
-                "status": "error",
-                "message": f"Не вдалося знайти соурс відео за azure_link: {azure_link}"
-            }
-
-        source_id = source_annotation.get("_id")
-        local_source_path = get_local_video_path(filename)
-
-        if not os.path.exists(local_source_path):
-            logger.error(f"Локальний файл не знайдено: {local_source_path}")
-            return {
-                "status": "error",
-                "message": f"Локальний файл не знайдено: {local_source_path}"
-            }
-
-        # Створюємо тимчасовий файл для кліпу
-        clip_filename = format_filename(metadata, filename, project, clip_id, where, when)
-
-        temp_clip_file = tempfile.NamedTemporaryFile(
-            delete=False,
-            suffix=".mp4",
-            dir=Settings.temp_folder
-        )
-        temp_clip_path = temp_clip_file.name
-        temp_clip_file.close()
-
-        # Нарізаємо кліп з локального файлу
-        success = trim_video_clip(
-            source_path=local_source_path,
-            output_path=temp_clip_path,
-            start_time=start_time,
-            end_time=end_time
-        )
-
-        if not success:
-            logger.error(f"Не вдалося створити кліп {temp_clip_path}")
-            return {
-                "status": "error",
-                "message": f"Не вдалося створити кліп: {clip_filename}"
-            }
-
-        # Формуємо Azure шлях для кліпу
-        video_base_name = os.path.splitext(filename)[0]
-        azure_clip_path = f"{Settings.azure_output_folder_path}{video_base_name}/{clip_filename}"
-
-        # Завантажуємо кліп на Azure
-        upload_result = upload_clip_to_azure(
-            container_client=self.container_client,
-            file_path=temp_clip_path,
-            azure_path=azure_clip_path,
-            metadata={
-                "project": project,
-                "source_id": str(source_id),
-                "clip_id": str(clip_id)
-            }
-        )
-
-        if not upload_result["success"]:
-            logger.error(f"Помилка при завантаженні на Azure: {upload_result.get('error')}")
-            return {
-                "status": "error",
-                "message": f"Помилка при завантаженні на Azure: {upload_result.get('error')}"
-            }
-
-        # Створюємо CVAT задачу
-        cvat_task_id = create_cvat_task(
-            filename=os.path.splitext(clip_filename)[0],
-            file_path=temp_clip_path,
-            project_params=cvat_params
-        )
-
-        # Формуємо повний Azure URL
-        azure_url = f"{Settings.get_azure_account_url()}/{Settings.azure_storage_container_name}/{azure_clip_path}"
-
-        # Підготовка даних для збереження в video_clips
-        clip_data = {
-            "source_id": source_id,
-            "project": project,
-            "clip_id": clip_id,
-            "extension": "mp4",
-            "cvat_task_id": cvat_task_id,
-            "status": "not_annotated",
-            "azure_link": azure_url,
-            "fps": Settings.default_fps,
-            "created_at": datetime.now().isoformat(sep=" ", timespec="seconds"),
-            "updated_at": datetime.now().isoformat(sep=" ", timespec="seconds")
-        }
-
-        clip_id_db = self.clips_repo.save_annotation(clip_data)
-
-        logger.debug(f"Кліп оброблено: {clip_filename}")
-
-        return {
-            "status": "success",
-            "message": "Кліп успішно оброблено",
-            "clip_id_db": clip_id_db,
-            "cvat_task_id": cvat_task_id,
-            "azure_link": azure_url,
-            "filename": clip_filename
-        }
-
-    except Exception as e:
-        logger.error(f"Помилка при обробці кліпу {clip_id} проєкту {project}: {str(e)}")
-        return {
-            "status": "error",
-            "message": str(e)
-        }
-    finally:
-        # Очищаємо тимчасовий кліп
-        if temp_clip_path:
-            cleanup_file(temp_clip_path)
-
-
 @app.task(name="finalize_video_processing")
 def finalize_video_processing(results: List[Dict], azure_link: str) -> Dict[str, Any]:
     """Завершує обробку відео після завершення всіх кліпів"""
@@ -301,7 +162,7 @@ def finalize_video_processing(results: List[Dict], azure_link: str) -> Dict[str,
 
     repo = None
     try:
-        repo = create_repository(collection_name="source_videos")
+        repo = SyncSourceVideoRepository()
         annotation = repo.get_annotation(azure_link)
 
         if not annotation:
@@ -371,6 +232,3 @@ def finalize_video_processing(results: List[Dict], azure_link: str) -> Dict[str,
             "status": "error",
             "message": str(e)
         }
-    finally:
-        if repo:
-            repo.close()

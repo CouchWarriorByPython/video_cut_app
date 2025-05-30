@@ -74,7 +74,7 @@ class LoggerConfig:
 
 def get_logger(name: Optional[str] = None) -> logging.Logger:
     """Отримує логер для модуля"""
-    from configs import Settings
+    from backend.config.settings import Settings
 
     logger_name = name or "annotator"
 

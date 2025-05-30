@@ -41,7 +41,6 @@ class Settings:
     log_backup_count: ClassVar[int] = 0
 
     # Відео обробка
-    default_fps: ClassVar[int] = 0
     ffmpeg_log_level: ClassVar[str] = ""
 
     # Веб сервер
@@ -88,7 +87,6 @@ class Settings:
         cls.log_backup_count = int(os.getenv("LOG_BACKUP_COUNT", "5"))
 
         # Відео обробка - з дефолтами
-        cls.default_fps = int(os.getenv("DEFAULT_FPS", "60"))
         cls.ffmpeg_log_level = os.getenv("FFMPEG_LOG_LEVEL", "error")
 
         # Веб сервер - з дефолтами
@@ -189,5 +187,4 @@ class Settings:
             return "production"
 
 
-# Ініціалізація налаштувань при імпорті
 Settings.load_from_env()

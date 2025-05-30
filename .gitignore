@@ -181,4 +181,3 @@ cython_debug/
 .pypirc
 *.mp4
 json_data/
-azure_utils.py

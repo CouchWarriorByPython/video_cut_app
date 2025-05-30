@@ -1,4 +1,4 @@
-from configs import Settings
+from backend.config.settings import Settings
 
 # Налаштування брокера
 broker_url = Settings.celery_broker_url

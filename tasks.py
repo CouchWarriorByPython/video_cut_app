@@ -1,5 +1,5 @@
 from typing import Dict, List, Any
-from celery import Celery, Task, group, chord
+from celery import Celery, Task, chord
 from celery.utils.log import get_task_logger
 import os
 import tempfile
@@ -119,7 +119,7 @@ def process_video_annotation(self, azure_link: str) -> Dict[str, Any]:
             cvat_params = stored_cvat_params.get(project)
             if not cvat_params:
                 cvat_params = get_default_cvat_project_params(project)
-                logger.info(f"Використовуємо дефолтні CVAT параметри для проєкту {project}")
+                logger.debug(f"Використовуємо дефолтні CVAT параметри для проєкту {project}")
 
             for clip in project_clips:
                 task = process_video_clip.s(
@@ -141,7 +141,7 @@ def process_video_annotation(self, azure_link: str) -> Dict[str, Any]:
         callback = finalize_video_processing.s(azure_link)
         job = chord(clip_tasks)(callback)
 
-        logger.info(f"Запущено chord з {total_clips} кліпів для відео: {azure_link}")
+        logger.info(f"Запущено обробку {total_clips} кліпів для відео: {azure_link}")
 
         return {
             "status": "success",
@@ -173,7 +173,7 @@ def process_video_clip(
         when: str = ""
 ) -> Dict[str, Any]:
     """Обробляє окремий відео кліп з локального файлу"""
-    logger.info(f"Початок обробки кліпу {clip_id} проєкту {project} з відео {filename}")
+    logger.debug(f"Початок обробки кліпу {clip_id} проєкту {project} з відео {filename}")
 
     temp_clip_path = None
 
@@ -271,7 +271,7 @@ def process_video_clip(
 
         clip_id_db = self.clips_repo.save_annotation(clip_data)
 
-        logger.info(f"Кліп успішно оброблено: {clip_filename}")
+        logger.debug(f"Кліп оброблено: {clip_filename}")
 
         return {
             "status": "success",
@@ -316,8 +316,7 @@ def finalize_video_processing(results: List[Dict], azure_link: str) -> Dict[str,
         failed_clips = len([r for r in results if r and r.get("status") == "error"])
         total_clips = len(results)
 
-        logger.info(
-            f"Результати обробки {azure_link}: успішно {successful_clips}/{total_clips}, помилок {failed_clips}")
+        logger.info(f"Результати обробки {azure_link}: успішно {successful_clips}/{total_clips}, помилок {failed_clips}")
 
         # Видаляємо source файл ТІЛЬКИ якщо ВСІ задачі завершились успішно
         if failed_clips == 0 and successful_clips == total_clips:
@@ -345,8 +344,7 @@ def finalize_video_processing(results: List[Dict], azure_link: str) -> Dict[str,
             annotation["updated_at"] = datetime.now().isoformat(sep=" ", timespec="seconds")
             repo.save_annotation(annotation)
 
-            logger.info(
-                f"Обробку відео {azure_link} повністю завершено. Source файл видалено, статус оновлено на 'annotated'")
+            logger.info(f"Обробку відео {azure_link} повністю завершено")
 
             return {
                 "status": "completed",
@@ -357,8 +355,7 @@ def finalize_video_processing(results: List[Dict], azure_link: str) -> Dict[str,
             }
         else:
             # Є помилки - НЕ видаляємо source файл, залишаємо статус як є
-            logger.warning(
-                f"Обробка відео {azure_link} завершена з помилками. Source файл збережено для повторної обробки")
+            logger.warning(f"Обробка відео {azure_link} завершена з помилками")
 
             return {
                 "status": "partial_success",

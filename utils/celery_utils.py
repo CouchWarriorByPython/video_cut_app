@@ -2,7 +2,6 @@ import os
 import subprocess
 import logging
 import re
-import tempfile
 from typing import Dict, Any, Optional
 from urllib.parse import urlparse
 
@@ -82,7 +81,7 @@ def download_blob_to_local(azure_url: str, local_path: str) -> Dict[str, Any]:
         # Створюємо директорію якщо не існує
         os.makedirs(os.path.dirname(local_path), exist_ok=True)
 
-        logger.info(f"Завантаження blob {azure_url} в {local_path}")
+        logger.debug(f"Завантаження blob {azure_url} в {local_path}")
 
         with open(local_path, "wb") as download_file:
             blob_data = blob_client.download_blob()
@@ -109,7 +108,7 @@ def upload_clip_to_azure(
 ) -> Dict[str, Any]:
     """Завантажує кліп на Azure Blob Storage"""
     try:
-        logger.info(f"Завантаження файлу {file_path} на Azure в {azure_path}")
+        logger.debug(f"Завантаження файлу {file_path} на Azure в {azure_path}")
 
         with open(file_path, "rb") as data:
             container_client.upload_blob(
@@ -119,7 +118,7 @@ def upload_clip_to_azure(
                 metadata=metadata
             )
 
-        logger.info(f"Файл успішно завантажено на Azure: {azure_path}")
+        logger.debug(f"Файл успішно завантажено на Azure: {azure_path}")
 
         return {
             "success": True,
@@ -218,12 +217,12 @@ def trim_video_clip(
             output_path,
         ]
 
-        logger.info(f"Запуск команди: {' '.join(command)}")
+        logger.debug(f"Запуск команди: {' '.join(command)}")
 
         result = subprocess.run(command, capture_output=True, text=True)
 
         if os.path.exists(output_path) and os.path.getsize(output_path) > 0:
-            logger.info(f"Кліп успішно створено: {output_path}")
+            logger.debug(f"Кліп успішно створено: {output_path}")
             return True
         else:
             logger.error(f"Помилка при створенні кліпу: {result.stderr}")
@@ -261,7 +260,7 @@ def create_cvat_task(
             "--use_cache --use_zip_chunks"
         )
 
-        logger.info(f"Створення CVAT задачі для {filename}")
+        logger.debug(f"Створення CVAT задачі для {filename}")
 
         result = subprocess.run(cli_command, shell=True, capture_output=True, text=True)
 
@@ -271,7 +270,7 @@ def create_cvat_task(
             task_id = match.group(1) if match else None
 
             if task_id:
-                logger.info(f"CVAT задача створена успішно: {task_id}")
+                logger.info(f"CVAT задача створена: {task_id}")
                 return task_id
             else:
                 logger.warning(f"Не вдалося витягти task ID з виводу: {output}")
@@ -290,6 +289,6 @@ def cleanup_file(file_path: str) -> None:
     try:
         if os.path.exists(file_path):
             os.unlink(file_path)
-            logger.info(f"Видалено файл: {file_path}")
+            logger.debug(f"Видалено файл: {file_path}")
     except Exception as e:
         logger.error(f"Помилка видалення файлу {file_path}: {str(e)}")

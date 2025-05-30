@@ -169,8 +169,24 @@ class Settings:
 
     @classmethod
     def is_local_environment(cls) -> bool:
-        """Перевіряє чи це локальне середовище на основі наявності .env.local"""
+        """Перевіряє чи це локальне середовище на основі наявності .env.local або змінної ENVIRONMENT"""
+        # Перевіряємо змінну середовища ENVIRONMENT
+        env = os.getenv("ENVIRONMENT", "").lower()
+        if env in ("production", "prod"):
+            return False
+        if env in ("development", "dev", "local"):
+            return True
+
+        # Якщо змінна не встановлена, використовуємо наявність .env.local як індикатор
         return Path(".env.local").exists()
+
+    @classmethod
+    def get_environment_name(cls) -> str:
+        """Повертає назву поточного середовища"""
+        if cls.is_local_environment():
+            return "development"
+        else:
+            return "production"
 
 
 # Ініціалізація налаштувань при імпорті

@@ -74,7 +74,7 @@ class AnnotationBase:
     def __init__(self, collection_name: str) -> None:
         """Ініціалізує клас з вказаною колекцією"""
         self.collection_name = collection_name
-        logger.info(f"Ініціалізація репозиторію для колекції: {collection_name}")
+        logger.debug(f"Ініціалізація репозиторію для колекції: {collection_name}")
 
     def _prepare_annotation(self, annotation: Union[Dict, BaseModel]) -> Dict:
         """Підготовка даних анотації до збереження"""
@@ -124,7 +124,7 @@ class SyncVideoAnnotationRepository(AnnotationBase):
             self.client = MongoClient(Settings.mongo_uri)
             self.db = self.client[Settings.mongo_db_name]
             self.collection = self.db[self.collection_name]
-            logger.info(f"Успішне підключення до MongoDB: {Settings.mongo_db_name}.{self.collection_name}")
+            logger.debug(f"Підключення до MongoDB: {Settings.mongo_db_name}.{self.collection_name}")
         except Exception as e:
             logger.error(f"Помилка підключення до MongoDB: {str(e)}")
             raise
@@ -138,9 +138,7 @@ class SyncVideoAnnotationRepository(AnnotationBase):
             if self.collection_name == "source_videos":
                 if not any("azure_link" in name for name in index_names):
                     self.collection.create_index("azure_link", unique=True)
-                    logger.info("Створено унікальний індекс azure_link для source_videos")
-                else:
-                    logger.info("Індекс azure_link для source_videos вже існує")
+                    logger.debug("Створено унікальний індекс azure_link для source_videos")
 
             elif self.collection_name == "video_clips":
                 compound_exists = any("source_id_1_project_1_clip_id_1" in name for name in index_names)
@@ -150,15 +148,11 @@ class SyncVideoAnnotationRepository(AnnotationBase):
                         ("project", 1),
                         ("clip_id", 1)
                     ], unique=True)
-                    logger.info("Створено унікальний складний індекс для video_clips")
-                else:
-                    logger.info("Унікальний складний індекс для video_clips вже існує")
+                    logger.debug("Створено унікальний складний індекс для video_clips")
 
                 if not any("azure_link" in name for name in index_names):
                     self.collection.create_index("azure_link", unique=False)
-                    logger.info("Створено індекс azure_link для швидкого пошуку")
-                else:
-                    logger.info("Індекс azure_link для пошуку вже існує")
+                    logger.debug("Створено індекс azure_link для швидкого пошуку")
 
         except Exception as e:
             logger.error(f"Помилка при роботі з індексами: {str(e)}")
@@ -176,7 +170,7 @@ class SyncVideoAnnotationRepository(AnnotationBase):
                 if existing:
                     data_without_id["created_at"] = existing.get("created_at", data.get("created_at"))
                     self.collection.replace_one({"_id": existing["_id"]}, data_without_id)
-                    logger.info(f"Оновлено соурс відео: {azure_link}")
+                    logger.debug(f"Оновлено соурс відео: {azure_link}")
                     return str(existing["_id"])
                 else:
                     result = self.collection.insert_one(data_without_id)
@@ -200,11 +194,11 @@ class SyncVideoAnnotationRepository(AnnotationBase):
                 if existing:
                     data_without_id["created_at"] = existing.get("created_at", data.get("created_at"))
                     self.collection.replace_one({"_id": existing["_id"]}, data_without_id)
-                    logger.info(f"Оновлено кліп: {project} clip_id={clip_id}")
+                    logger.debug(f"Оновлено кліп: {project} clip_id={clip_id}")
                     return str(existing["_id"])
                 else:
                     result = self.collection.insert_one(data_without_id)
-                    logger.info(f"Створено новий кліп: {project} clip_id={clip_id}")
+                    logger.debug(f"Створено новий кліп: {project} clip_id={clip_id}")
                     return str(result.inserted_id)
 
         except Exception as e:
@@ -216,16 +210,12 @@ class SyncVideoAnnotationRepository(AnnotationBase):
         try:
             if self.collection_name == "source_videos":
                 doc = self.collection.find_one({"azure_link": identifier})
-                if doc:
-                    logger.info(f"Знайдено соурс відео: {identifier}")
-                else:
-                    logger.warning(f"Соурс відео не знайдено: {identifier}")
+                if not doc:
+                    logger.debug(f"Соурс відео не знайдено: {identifier}")
             else:
                 doc = self.collection.find_one({"_id": ObjectId(identifier)})
-                if doc:
-                    logger.info(f"Знайдено кліп: {identifier}")
-                else:
-                    logger.warning(f"Кліп не знайдено: {identifier}")
+                if not doc:
+                    logger.debug(f"Кліп не знайдено: {identifier}")
 
             return self._normalize_document(doc)
         except Exception as e:
@@ -237,7 +227,7 @@ class SyncVideoAnnotationRepository(AnnotationBase):
         try:
             source_id_obj = ObjectId(source_id)
             docs = list(self.collection.find({"source_id": source_id_obj}))
-            logger.info(f"Знайдено {len(docs)} кліпів для source_id: {source_id}")
+            logger.debug(f"Знайдено {len(docs)} кліпів для source_id: {source_id}")
             return self._normalize_documents(docs)
         except Exception as e:
             logger.error(f"Помилка отримання кліпів: {str(e)}")
@@ -248,13 +238,13 @@ class SyncVideoAnnotationRepository(AnnotationBase):
         try:
             source_doc = self.collection.find_one({"azure_link": azure_link})
             if not source_doc:
-                logger.warning(f"Соурс відео не знайдено: {azure_link}")
+                logger.debug(f"Соурс відео не знайдено: {azure_link}")
                 return []
 
             source_id = source_doc["_id"]
             clips_repo = SyncVideoAnnotationRepository("video_clips")
             docs = list(clips_repo.collection.find({"source_id": source_id}))
-            logger.info(f"Знайдено {len(docs)} кліпів для azure_link: {azure_link}")
+            logger.debug(f"Знайдено {len(docs)} кліпів для azure_link: {azure_link}")
             return self._normalize_documents(docs)
         except Exception as e:
             logger.error(f"Помилка отримання кліпів за azure_link: {str(e)}")
@@ -265,7 +255,7 @@ class SyncVideoAnnotationRepository(AnnotationBase):
         try:
             query = filter_query or {}
             docs = list(self.collection.find(query))
-            logger.info(f"Отримано {len(docs)} записів з колекції {self.collection_name}")
+            logger.debug(f"Отримано {len(docs)} записів з колекції {self.collection_name}")
             return self._normalize_documents(docs)
         except Exception as e:
             logger.error(f"Помилка отримання всіх анотацій: {str(e)}")
@@ -293,7 +283,7 @@ class SyncVideoAnnotationRepository(AnnotationBase):
         """Закриває з'єднання з MongoDB"""
         try:
             self.client.close()
-            logger.info("З'єднання з MongoDB закрито")
+            logger.debug("З'єднання з MongoDB закрито")
         except Exception as e:
             logger.error(f"Помилка закриття з'єднання: {str(e)}")
 
@@ -308,7 +298,7 @@ class AsyncVideoAnnotationRepository(AnnotationBase):
             self.client = AsyncIOMotorClient(Settings.mongo_uri)
             self.db = self.client[Settings.mongo_db_name]
             self.collection = self.db[self.collection_name]
-            logger.info(f"Ініціалізовано асинхронне підключення: {Settings.mongo_db_name}.{self.collection_name}")
+            logger.debug(f"Ініціалізовано асинхронне підключення: {Settings.mongo_db_name}.{self.collection_name}")
         except Exception as e:
             logger.error(f"Помилка ініціалізації асинхронного підключення: {str(e)}")
             raise
@@ -325,9 +315,7 @@ class AsyncVideoAnnotationRepository(AnnotationBase):
             if self.collection_name == "source_videos":
                 if not any("azure_link" in name for name in index_names):
                     await self.collection.create_index("azure_link", unique=True)
-                    logger.info("Створено асинхронний унікальний індекс azure_link для source_videos")
-                else:
-                    logger.info("Асинхронний індекс azure_link для source_videos вже існує")
+                    logger.debug("Створено асинхронний унікальний індекс azure_link для source_videos")
 
             elif self.collection_name == "video_clips":
                 compound_exists = any("source_id_1_project_1_clip_id_1" in name for name in index_names)
@@ -337,15 +325,11 @@ class AsyncVideoAnnotationRepository(AnnotationBase):
                         ("project", 1),
                         ("clip_id", 1)
                     ], unique=True)
-                    logger.info("Створено асинхронний унікальний складний індекс для video_clips")
-                else:
-                    logger.info("Асинхронний унікальний складний індекс для video_clips вже існує")
+                    logger.debug("Створено асинхронний унікальний складний індекс для video_clips")
 
                 if not any("azure_link" in name for name in index_names):
                     await self.collection.create_index("azure_link", unique=False)
-                    logger.info("Створено асинхронний індекс azure_link для швидкого пошуку")
-                else:
-                    logger.info("Асинхронний індекс azure_link для пошуку вже існує")
+                    logger.debug("Створено асинхронний індекс azure_link для швидкого пошуку")
 
         except Exception as e:
             logger.error(f"Помилка при асинхронній роботі з індексами: {str(e)}")
@@ -363,7 +347,7 @@ class AsyncVideoAnnotationRepository(AnnotationBase):
                 if existing:
                     data_without_id["created_at"] = existing.get("created_at", data.get("created_at"))
                     await self.collection.replace_one({"_id": existing["_id"]}, data_without_id)
-                    logger.info(f"Асинхронно оновлено соурс відео: {azure_link}")
+                    logger.debug(f"Асинхронно оновлено соурс відео: {azure_link}")
                     return str(existing["_id"])
                 else:
                     result = await self.collection.insert_one(data_without_id)
@@ -387,11 +371,11 @@ class AsyncVideoAnnotationRepository(AnnotationBase):
                 if existing:
                     data_without_id["created_at"] = existing.get("created_at", data.get("created_at"))
                     await self.collection.replace_one({"_id": existing["_id"]}, data_without_id)
-                    logger.info(f"Асинхронно оновлено кліп: {project} clip_id={clip_id}")
+                    logger.debug(f"Асинхронно оновлено кліп: {project} clip_id={clip_id}")
                     return str(existing["_id"])
                 else:
                     result = await self.collection.insert_one(data_without_id)
-                    logger.info(f"Асинхронно створено новий кліп: {project} clip_id={clip_id}")
+                    logger.debug(f"Асинхронно створено новий кліп: {project} clip_id={clip_id}")
                     return str(result.inserted_id)
 
         except Exception as e:
@@ -417,7 +401,7 @@ class AsyncVideoAnnotationRepository(AnnotationBase):
             source_id_obj = ObjectId(source_id)
             cursor = self.collection.find({"source_id": source_id_obj})
             docs = await cursor.to_list(length=None)
-            logger.info(f"Асинхронно знайдено {len(docs)} кліпів для source_id: {source_id}")
+            logger.debug(f"Асинхронно знайдено {len(docs)} кліпів для source_id: {source_id}")
             return self._normalize_documents(docs)
         except Exception as e:
             logger.error(f"Помилка асинхронного отримання кліпів: {str(e)}")
@@ -429,7 +413,7 @@ class AsyncVideoAnnotationRepository(AnnotationBase):
             query = filter_query or {}
             cursor = self.collection.find(query)
             docs = await cursor.to_list(length=None)
-            logger.info(f"Асинхронно отримано {len(docs)} записів з колекції {self.collection_name}")
+            logger.debug(f"Асинхронно отримано {len(docs)} записів з колекції {self.collection_name}")
             return self._normalize_documents(docs)
         except Exception as e:
             logger.error(f"Помилка асинхронного отримання всіх анотацій: {str(e)}")
@@ -457,7 +441,7 @@ class AsyncVideoAnnotationRepository(AnnotationBase):
         """Закриває з'єднання з MongoDB"""
         try:
             self.client.close()
-            logger.info("Асинхронне з'єднання з MongoDB закрито")
+            logger.debug("Асинхронне з'єднання з MongoDB закрито")
         except Exception as e:
             logger.error(f"Помилка закриття асинхронного з'єднання: {str(e)}")
 
@@ -473,7 +457,7 @@ def create_repository(collection_name: str, async_mode: bool = False):
     Returns:
         Репозиторій для роботи з анотаціями відео
     """
-    logger.info(f"Створення репозиторію: колекція={collection_name}, асинхронний={async_mode}")
+    logger.debug(f"Створення репозиторію: колекція={collection_name}, асинхронний={async_mode}")
 
     if async_mode:
         return AsyncVideoAnnotationRepository(collection_name=collection_name)

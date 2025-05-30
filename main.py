@@ -238,69 +238,6 @@ async def get_video(azure_link: str) -> FileResponse:
             repo.close()
 
 
-@app.post("/upload", response_model=VideoUploadResponse, responses={
-    400: {"model": ErrorResponse},
-    422: {"model": ValidationErrorResponse},
-    500: {"model": ErrorResponse}
-})
-async def upload(data: VideoUploadRequest) -> VideoUploadResponse:
-    """Реєстрація відео за Azure URL з локальним завантаженням"""
-    repo = None
-    try:
-        validation_result = validate_azure_url(data.video_url)
-
-        if not validation_result["valid"]:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Невірний Azure URL: {validation_result['error']}"
-            )
-
-        filename = validation_result["filename"]
-        local_path = get_local_video_path(filename)
-
-        os.makedirs(os.path.dirname(local_path), exist_ok=True)
-
-        download_result = download_blob_to_local(data.video_url, local_path)
-
-        if not download_result["success"]:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Помилка завантаження відео: {download_result['error']}"
-            )
-
-        video_record = {
-            "azure_link": data.video_url,
-            "filename": filename,
-            "created_at": datetime.now().isoformat(sep=" ", timespec="seconds"),
-            "updated_at": datetime.now().isoformat(sep=" ", timespec="seconds"),
-            "when": data.when,
-            "where": data.where,
-            "status": "not_annotated"
-        }
-
-        repo = create_repository(collection_name="source_videos")
-        repo.create_indexes()
-        record_id = repo.save_annotation(video_record)
-
-        logger.info(f"Відео завантажено локально: {local_path}")
-
-        return VideoUploadResponse(
-            _id=record_id,
-            azure_link=data.video_url,
-            filename=filename,
-            message="Відео успішно зареєстровано та завантажено локально"
-        )
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Помилка при обробці запиту: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Помилка при обробці запиту: {str(e)}")
-    finally:
-        if repo:
-            repo.close()
-
-
 @app.get("/get_videos", response_model=VideoListResponse, responses={
     500: {"model": ErrorResponse}
 })
@@ -347,6 +284,71 @@ async def get_annotation(azure_link: str) -> GetAnnotationResponse:
     except Exception as e:
         logger.error(f"Помилка при отриманні анотації: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        if repo:
+            repo.close()
+
+
+# Оновлені функції з оптимізованим логуванням
+
+@app.post("/upload", response_model=VideoUploadResponse, responses={
+    400: {"model": ErrorResponse},
+    422: {"model": ValidationErrorResponse},
+    500: {"model": ErrorResponse}
+})
+async def upload(data: VideoUploadRequest) -> VideoUploadResponse:
+    """Реєстрація відео за Azure URL з локальним завантаженням"""
+    repo = None
+    try:
+        validation_result = validate_azure_url(data.video_url)
+
+        if not validation_result["valid"]:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Невірний Azure URL: {validation_result['error']}"
+            )
+
+        filename = validation_result["filename"]
+        local_path = get_local_video_path(filename)
+
+        os.makedirs(os.path.dirname(local_path), exist_ok=True)
+
+        download_result = download_blob_to_local(data.video_url, local_path)
+
+        if not download_result["success"]:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Помилка завантаження відео: {download_result['error']}"
+            )
+
+        video_record = {
+            "azure_link": data.video_url,
+            "filename": filename,
+            "created_at": datetime.now().isoformat(sep=" ", timespec="seconds"),
+            "updated_at": datetime.now().isoformat(sep=" ", timespec="seconds"),
+            "when": data.when,
+            "where": data.where,
+            "status": "not_annotated"
+        }
+
+        repo = create_repository(collection_name="source_videos")
+        repo.create_indexes()
+        record_id = repo.save_annotation(video_record)
+
+        logger.info(f"Відео завантажено локально: {filename}")
+
+        return VideoUploadResponse(
+            _id=record_id,
+            azure_link=data.video_url,
+            filename=filename,
+            message="Відео успішно зареєстровано та завантажено локально"
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Помилка при обробці запиту: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Помилка при обробці запиту: {str(e)}")
     finally:
         if repo:
             repo.close()

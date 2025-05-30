@@ -1,0 +1,86 @@
+services:
+  mongodb:
+    image: mongo:7.0
+    container_name: video_annotator_mongodb
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    env_file:
+      - .env.prod
+    volumes:
+      - mongodb_data:/data/db
+    networks:
+      - annotator_network
+
+  redis:
+    image: redis:7.2-alpine
+    container_name: video_annotator_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - annotator_network
+
+  app:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    container_name: video_annotator_app
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env.prod
+    volumes:
+      - ./temp:/app/temp
+      - ./logs:/app/logs
+    depends_on:
+      - mongodb
+      - redis
+    networks:
+      - annotator_network
+
+  celery-worker:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    container_name: video_annotator_celery
+    restart: unless-stopped
+    command: celery -A backend.background_tasks.app worker --loglevel=info --concurrency=4
+    env_file:
+      - .env.prod
+    volumes:
+      - ./temp:/app/temp
+      - ./logs:/app/logs
+    depends_on:
+      - mongodb
+      - redis
+    networks:
+      - annotator_network
+
+  # Celery Flower
+  flower:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    container_name: video_annotator_flower
+    restart: unless-stopped
+    command: celery -A backend.background_tasks.app flower --port=5555
+    ports:
+      - "5555:5555"
+    env_file:
+      - .env.prod
+    depends_on:
+      - redis
+    networks:
+      - annotator_network
+
+volumes:
+  mongodb_data:
+  redis_data:
+
+networks:
+  annotator_network:
+    driver: bridge

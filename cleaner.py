@@ -1,7 +1,7 @@
 from azure.identity import ClientSecretCredential
 from azure.storage.blob import BlobServiceClient
 from pymongo import MongoClient
-from configs import Settings
+from backend.config.settings import Settings
 
 
 def delete_azure_output_folder() -> bool:

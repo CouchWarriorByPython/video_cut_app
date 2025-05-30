@@ -73,7 +73,7 @@ class Settings:
 
         # CVAT налаштування - обов'язкові
         cls.cvat_host = os.getenv("CVAT_HOST")
-        cls.cvat_port = int(os.getenv("CVAT_PORT", "8080"))
+        cls.cvat_port = int(os.getenv("CVAT_PORT"))
         cls.cvat_username = os.getenv("CVAT_USERNAME")
         cls.cvat_password = os.getenv("CVAT_PASSWORD")
 
@@ -90,8 +90,8 @@ class Settings:
         cls.ffmpeg_log_level = os.getenv("FFMPEG_LOG_LEVEL", "error")
 
         # Веб сервер - з дефолтами
-        cls.host = os.getenv("HOST", "localhost")
-        cls.port = int(os.getenv("PORT", "8000"))
+        cls.host = os.getenv("HOST")
+        cls.port = int(os.getenv("PORT"))
         cls.reload = os.getenv("RELOAD", "false").lower() in ("true", "1", "yes")
 
         # Створюємо необхідні директорії

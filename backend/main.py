@@ -31,11 +31,18 @@ app.include_router(static.router)
 # Створення необхідних директорій
 os.makedirs(Settings.temp_folder, exist_ok=True)
 
-
 if __name__ == "__main__":
     import uvicorn
 
+    logger.info(f"Завантажено конфігурацію: HOST={Settings.host}, PORT={Settings.port}")
     logger.info(f"Тимчасова папка: {os.path.abspath(Settings.temp_folder)}")
+    logger.info(f"MongoDB URI: {Settings.mongo_uri}")
     logger.info(f"Запуск сервера на {Settings.host}:{Settings.port}")
 
-    uvicorn.run("backend.main:app", host=Settings.host, port=Settings.port, reload=Settings.reload)
+    uvicorn.run(
+        "backend.main:app",
+        host=Settings.host,
+        port=Settings.port,
+        reload=Settings.reload,
+        log_level="info"
+    )

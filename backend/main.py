@@ -1,5 +1,6 @@
 import os
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
@@ -22,6 +23,13 @@ app = FastAPI(
 app.add_exception_handler(RequestValidationError, validation_exception_handler)
 app.add_exception_handler(StarletteHTTPException, http_exception_handler)
 app.add_exception_handler(Exception, general_exception_handler)
+
+# Монтування статичних файлів
+if os.path.exists("front"):
+    app.mount("/static", StaticFiles(directory="front"), name="static")
+    logger.info("Статичні файли змонтовано з директорії 'front'")
+else:
+    logger.warning("Директорія 'front' не знайдена")
 
 # Підключення роутерів
 app.include_router(video.router)

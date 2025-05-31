@@ -5,7 +5,7 @@ from pathlib import Path
 
 
 class Settings:
-    """Централізовані налаштування програми з завантаженням з environment variables"""
+    """Централізовані налаштування програми з завантаженням з .env файлу"""
 
     # MongoDB
     mongo_uri: ClassVar[str] = ""
@@ -50,32 +50,32 @@ class Settings:
 
     @classmethod
     def load_from_env(cls) -> None:
-        """Завантаження налаштувань з пріоритетом: .env.local -> .env.prod -> змінні середовища"""
-        cls._load_env_files()
+        """Завантаження налаштувань з .env файлу"""
+        load_dotenv(".env", override=True)
 
         # MongoDB - обов'язкові
-        cls.mongo_uri = os.getenv("MONGO_URI")
-        cls.mongo_db_name = os.getenv("MONGO_DB")
+        cls.mongo_uri = os.getenv("MONGO_URI", "")
+        cls.mongo_db_name = os.getenv("MONGO_DB", "video_annotator")
 
         # Redis/Celery - обов'язкові
-        cls.redis_url = os.getenv("REDIS_URL")
-        cls.celery_broker_url = os.getenv("CELERY_BROKER_URL")
-        cls.celery_result_backend = os.getenv("CELERY_RESULT_BACKEND")
+        cls.redis_url = os.getenv("REDIS_URL", "redis://redis:6379/0")
+        cls.celery_broker_url = os.getenv("CELERY_BROKER_URL", "redis://redis:6379/0")
+        cls.celery_result_backend = os.getenv("CELERY_RESULT_BACKEND", "redis://redis:6379/0")
 
         # Azure Storage - обов'язкові credentials
-        cls.azure_tenant_id = os.getenv("AZURE_TENANT_ID")
-        cls.azure_client_id = os.getenv("AZURE_CLIENT_ID")
-        cls.azure_client_secret = os.getenv("AZURE_CLIENT_SECRET")
-        cls.azure_storage_account_name = os.getenv("AZURE_STORAGE_ACCOUNT_NAME")
-        cls.azure_storage_container_name = os.getenv("AZURE_STORAGE_CONTAINER_NAME")
-        cls.azure_input_folder_path = os.getenv("AZURE_INPUT_FOLDER_PATH")
-        cls.azure_output_folder_path = os.getenv("AZURE_OUTPUT_FOLDER_PATH")
+        cls.azure_tenant_id = os.getenv("AZURE_TENANT_ID", "")
+        cls.azure_client_id = os.getenv("AZURE_CLIENT_ID", "")
+        cls.azure_client_secret = os.getenv("AZURE_CLIENT_SECRET", "")
+        cls.azure_storage_account_name = os.getenv("AZURE_STORAGE_ACCOUNT_NAME", "")
+        cls.azure_storage_container_name = os.getenv("AZURE_STORAGE_CONTAINER_NAME", "")
+        cls.azure_input_folder_path = os.getenv("AZURE_INPUT_FOLDER_PATH", "input/")
+        cls.azure_output_folder_path = os.getenv("AZURE_OUTPUT_FOLDER_PATH", "output/")
 
         # CVAT налаштування - обов'язкові
-        cls.cvat_host = os.getenv("CVAT_HOST")
-        cls.cvat_port = int(os.getenv("CVAT_PORT"))
-        cls.cvat_username = os.getenv("CVAT_USERNAME")
-        cls.cvat_password = os.getenv("CVAT_PASSWORD")
+        cls.cvat_host = os.getenv("CVAT_HOST", "localhost")
+        cls.cvat_port = int(os.getenv("CVAT_PORT", "8080"))
+        cls.cvat_username = os.getenv("CVAT_USERNAME", "")
+        cls.cvat_password = os.getenv("CVAT_PASSWORD", "")
 
         # Тимчасові шляхи - з дефолтами
         cls.temp_folder = os.getenv("TEMP_FOLDER", "temp")
@@ -90,8 +90,8 @@ class Settings:
         cls.ffmpeg_log_level = os.getenv("FFMPEG_LOG_LEVEL", "error")
 
         # Веб сервер - з дефолтами
-        cls.host = os.getenv("HOST")
-        cls.port = int(os.getenv("PORT"))
+        cls.host = os.getenv("HOST", "0.0.0.0")
+        cls.port = int(os.getenv("PORT", "8000"))
         cls.reload = os.getenv("RELOAD", "false").lower() in ("true", "1", "yes")
 
         # Створюємо необхідні директорії
@@ -99,23 +99,6 @@ class Settings:
 
         # Валідуємо обов'язкові налаштування
         cls._validate_required_settings()
-
-    @classmethod
-    def _load_env_files(cls) -> None:
-        """Завантажує .env файли з пріоритетом локальних над продуктовими"""
-        env_files = []
-
-        # Перевіряємо наявність файлів та додаємо у порядку пріоритету
-        if Path(".env.local").exists():
-            env_files.append(".env.local")
-
-        if Path(".env.prod").exists():
-            env_files.append(".env.prod")
-
-        # Завантажуємо файли (останній має найвищий пріоритет через override=True)
-        for env_file in reversed(env_files):
-            load_dotenv(env_file, override=True)
-            print(f"Завантажено конфігурацію з {env_file}")
 
     @classmethod
     def _create_directories(cls) -> None:
@@ -127,32 +110,18 @@ class Settings:
     def _validate_required_settings(cls) -> None:
         """Перевіряє наявність обов'язкових налаштувань"""
         required_settings = [
-            # MongoDB
             ("MONGO_URI", cls.mongo_uri),
-            ("MONGO_DB", cls.mongo_db_name),
-
-            # Redis/Celery
-            ("REDIS_URL", cls.redis_url),
-            ("CELERY_BROKER_URL", cls.celery_broker_url),
-            ("CELERY_RESULT_BACKEND", cls.celery_result_backend),
-
-            # Azure Storage
             ("AZURE_TENANT_ID", cls.azure_tenant_id),
             ("AZURE_CLIENT_ID", cls.azure_client_id),
             ("AZURE_CLIENT_SECRET", cls.azure_client_secret),
             ("AZURE_STORAGE_ACCOUNT_NAME", cls.azure_storage_account_name),
             ("AZURE_STORAGE_CONTAINER_NAME", cls.azure_storage_container_name),
-            ("AZURE_INPUT_FOLDER_PATH", cls.azure_input_folder_path),
-            ("AZURE_OUTPUT_FOLDER_PATH", cls.azure_output_folder_path),
-
-            # CVAT
             ("CVAT_HOST", cls.cvat_host),
             ("CVAT_USERNAME", cls.cvat_username),
             ("CVAT_PASSWORD", cls.cvat_password),
         ]
 
         missing = []
-
         for name, value in required_settings:
             if not value:
                 missing.append(name)
@@ -167,24 +136,14 @@ class Settings:
 
     @classmethod
     def is_local_environment(cls) -> bool:
-        """Перевіряє чи це локальне середовище на основі наявності .env.local або змінної ENVIRONMENT"""
-        # Перевіряємо змінну середовища ENVIRONMENT
-        env = os.getenv("ENVIRONMENT", "").lower()
-        if env in ("production", "prod"):
-            return False
-        if env in ("development", "dev", "local"):
-            return True
-
-        # Якщо змінна не встановлена, використовуємо наявність .env.local як індикатор
-        return Path(".env.local").exists()
+        """Перевіряє чи це локальне середовище"""
+        env = os.getenv("ENVIRONMENT", "development").lower()
+        return env in ("development", "dev", "local")
 
     @classmethod
     def get_environment_name(cls) -> str:
         """Повертає назву поточного середовища"""
-        if cls.is_local_environment():
-            return "development"
-        else:
-            return "production"
+        return os.getenv("ENVIRONMENT", "development")
 
 
 Settings.load_from_env()

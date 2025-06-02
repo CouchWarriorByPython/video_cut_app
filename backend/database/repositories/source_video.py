@@ -1,14 +1,11 @@
 from typing import Dict, List, Optional, Union
-from pymongo import MongoClient
-from motor.motor_asyncio import AsyncIOMotorClient
-from bson import ObjectId
 
 from backend.database.base import AnnotationBase
 from backend.database.connection import DatabaseConnection
 from backend.models.database import SourceVideoAnnotation
 from backend.utils.logger import get_logger
 
-logger = get_logger(__name__)
+logger = get_logger(__name__, "database.log")
 
 
 class SyncSourceVideoRepository(AnnotationBase):

@@ -11,7 +11,7 @@ from backend.api.endpoints import video, annotation, static
 from backend.config.settings import Settings
 from backend.utils.logger import get_logger
 
-logger = get_logger(__name__)
+logger = get_logger(__name__, "main.log")
 
 app = FastAPI(
     title="Video Annotation API",
@@ -36,14 +36,10 @@ app.include_router(video.router)
 app.include_router(annotation.router)
 app.include_router(static.router)
 
-# Створення необхідних директорій
-os.makedirs(Settings.temp_folder, exist_ok=True)
 
 if __name__ == "__main__":
     import uvicorn
 
-    logger.info(f"Завантажено конфігурацію: HOST={Settings.host}, PORT={Settings.port}")
-    logger.info(f"Тимчасова папка: {os.path.abspath(Settings.temp_folder)}")
     logger.info(f"MongoDB URI: {Settings.mongo_uri}")
     logger.info(f"Запуск сервера на {Settings.host}:{Settings.port}")
 

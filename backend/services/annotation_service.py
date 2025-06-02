@@ -5,7 +5,7 @@ from backend.database.repositories.source_video import SyncSourceVideoRepository
 from backend.services.cvat_service import CVATService
 from backend.utils.logger import get_logger
 
-logger = get_logger(__name__)
+logger = get_logger(__name__, "services.log")
 
 
 class AnnotationService:

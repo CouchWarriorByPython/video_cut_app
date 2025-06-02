@@ -1,6 +1,6 @@
 import os
 import logging
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 from urllib.parse import urlparse
 
 from azure.storage.blob import BlobServiceClient, ContainerClient
@@ -10,7 +10,7 @@ from azure.core.exceptions import ResourceNotFoundError
 from backend.config.settings import Settings
 from backend.utils.logger import get_logger
 
-logger = get_logger(__name__)
+logger = get_logger(__name__, "utils.log")
 
 # Зменшуємо вербальність Azure логів
 AZURE_LOGGER = logging.getLogger("azure.core.pipeline.policies.http_logging_policy")

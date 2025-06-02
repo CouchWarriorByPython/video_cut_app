@@ -1,8 +1,7 @@
 import os
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 
 from azure.storage.blob import BlobServiceClient, ContainerClient
-from azure.core.exceptions import ResourceNotFoundError
 
 from backend.utils.azure_utils import (
     get_blob_service_client, get_blob_container_client,
@@ -11,7 +10,7 @@ from backend.utils.azure_utils import (
 from backend.config.settings import Settings
 from backend.utils.logger import get_logger
 
-logger = get_logger(__name__)
+logger = get_logger(__name__, "services.log")
 
 
 class AzureService:

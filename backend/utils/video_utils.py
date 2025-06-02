@@ -4,7 +4,7 @@ from typing import Optional, Dict, Any
 from backend.utils.logger import get_logger
 from backend.config.settings import Settings
 
-logger = get_logger(__name__)
+logger = get_logger(__name__, "utils.log")
 
 
 def get_video_fps(video_path: str) -> Optional[float]:

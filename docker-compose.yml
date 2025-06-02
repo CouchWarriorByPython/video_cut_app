@@ -10,9 +10,14 @@ services:
       - MONGO_INITDB_ROOT_PASSWORD=${MONGO_INITDB_ROOT_PASSWORD:-password}
     volumes:
       - mongodb_data:/data/db
-    command: [ "mongod", "--quiet", "--bind_ip_all", "--auth" ]
+      - ./docker/mongod.conf:/etc/mongod.conf:ro
+      - ./logs/mongodb:/var/log/mongodb
+    command: [ "mongod", "--config", "/etc/mongod.conf" ]
     logging:
-      driver: "none"
+      driver: "local"
+      options:
+        max-size: "10m"
+        max-file: "5"
 
   mongo-express:
     image: mongo-express:latest

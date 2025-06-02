@@ -13,7 +13,7 @@ from backend.services.azure_service import AzureService
 from backend.config.settings import Settings
 from backend.utils.logger import get_logger
 
-logger = get_logger(__name__)
+logger = get_logger(__name__, "tasks.log")
 
 
 @app.task(name="process_video_clip", bind=True, base=VideoProcessingTask)

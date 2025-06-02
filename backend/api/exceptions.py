@@ -5,7 +5,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from backend.utils.logger import get_logger
 
-logger = get_logger(__name__)
+logger = get_logger(__name__, "api.log")
 
 
 async def validation_exception_handler(request: Request, exc: RequestValidationError) -> JSONResponse:

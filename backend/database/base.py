@@ -5,7 +5,7 @@ from bson import ObjectId
 
 from backend.utils.logger import get_logger
 
-logger = get_logger(__name__)
+logger = get_logger(__name__, "database.log")
 
 
 class AnnotationBase:

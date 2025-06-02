@@ -3,7 +3,7 @@ from motor.motor_asyncio import AsyncIOMotorClient
 from backend.config.settings import Settings
 from backend.utils.logger import get_logger
 
-logger = get_logger(__name__)
+logger = get_logger(__name__, "database.log")
 
 
 class DatabaseConnection:

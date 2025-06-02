@@ -10,7 +10,7 @@ from backend.api.dependencies import convert_db_annotation_to_response
 from backend.background_tasks.tasks.video_processing import process_video_annotation
 from backend.utils.logger import get_logger
 
-logger = get_logger(__name__)
+logger = get_logger(__name__, "api.log")
 
 router = APIRouter(tags=["annotation"])
 

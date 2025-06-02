@@ -7,7 +7,7 @@ from backend.services.azure_service import AzureService
 from backend.utils.video_utils import get_local_video_path
 from backend.utils.logger import get_logger
 
-logger = get_logger(__name__)
+logger = get_logger(__name__, "services.log")
 
 
 class VideoService:

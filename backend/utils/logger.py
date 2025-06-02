@@ -16,7 +16,8 @@ class LoggerConfig:
             max_bytes: int = 10 * 1024 * 1024,  # 10MB
             backup_count: int = 5,
             console_output: bool = True,
-            is_production: bool = False
+            is_production: bool = False,
+            log_file: Optional[str] = None  # Додаємо можливість явно вказати файл
     ):
         self.name = name
         self.level = getattr(logging, level.upper())
@@ -25,6 +26,7 @@ class LoggerConfig:
         self.backup_count = backup_count
         self.console_output = console_output
         self.is_production = is_production
+        self.log_file = log_file or "app.log"
 
         # Створюємо директорію для логів
         self.log_dir.mkdir(exist_ok=True)
@@ -39,19 +41,19 @@ class LoggerConfig:
 
         logger.setLevel(self.level)
 
-        # Формат логів - детальний для розробки, стислий для продакшену
+        # Формат логів
         if self.is_production:
             formatter = logging.Formatter(
-                '%(asctime)s - %(levelname)s - %(message)s'
+                '%(asctime)s - %(levelname)s - %(name)s - %(message)s'
             )
         else:
             formatter = logging.Formatter(
-                '%(asctime)s - %(name)s - %(levelname)s - %(filename)s:%(lineno)d - %(message)s'
+                '%(asctime)s - %(levelname)s - %(name)s - %(filename)s:%(lineno)d - %(message)s'
             )
 
         # Файловий обробник з ротацією
         file_handler = RotatingFileHandler(
-            self.log_dir / f"{self.name}.log",
+            self.log_dir / self.log_file,
             maxBytes=self.max_bytes,
             backupCount=self.backup_count,
             encoding='utf-8'
@@ -63,24 +65,42 @@ class LoggerConfig:
         # Консольний обробник
         if self.console_output:
             console_handler = logging.StreamHandler(sys.stdout)
-            # В продакшені консоль тільки WARNING і вище
             console_level = logging.WARNING if self.is_production else self.level
             console_handler.setLevel(console_level)
             console_handler.setFormatter(formatter)
             logger.addHandler(console_handler)
 
+        # Додатковий обробник для помилок
+        if self.level <= logging.ERROR:
+            error_handler = RotatingFileHandler(
+                self.log_dir / "errors.log",
+                maxBytes=self.max_bytes,
+                backupCount=self.backup_count,
+                encoding='utf-8'
+            )
+            error_handler.setLevel(logging.ERROR)
+            error_handler.setFormatter(formatter)
+            logger.addHandler(error_handler)
+
         return logger
 
 
-def get_logger(name: Optional[str] = None) -> logging.Logger:
-    """Отримує логер для модуля"""
+def get_logger(name: Optional[str] = None, log_file: Optional[str] = None) -> logging.Logger:
+    """
+    Отримує логер для модуля
+
+    Args:
+        name: Ім'я логера (зазвичай __name__)
+        log_file: Файл для логування (api.log, tasks.log, тощо)
+    """
     from backend.config.settings import Settings
 
     logger_name = name or "annotator"
 
     # Якщо логер вже існує, повертаємо його
-    if logger_name in logging.Logger.manager.loggerDict:
-        return logging.getLogger(logger_name)
+    existing_logger = logging.getLogger(logger_name)
+    if existing_logger.handlers:
+        return existing_logger
 
     # Визначаємо чи це продакшен
     is_production = not Settings.is_local_environment()
@@ -93,10 +113,11 @@ def get_logger(name: Optional[str] = None) -> logging.Logger:
         name=logger_name,
         level=log_level,
         is_production=is_production,
-        console_output=True
+        console_output=True,
+        log_file=log_file
     )
     return config.setup_logger()
 
 
 # Глобальний логер для зворотної сумісності
-logger = get_logger()
+logger = get_logger("annotator", "app.log")

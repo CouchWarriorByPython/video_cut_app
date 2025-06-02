@@ -1,4 +1,3 @@
-import os
 import re
 import subprocess
 from typing import Dict, Any, Optional
@@ -6,13 +5,13 @@ from typing import Dict, Any, Optional
 from backend.config.settings import Settings
 from backend.utils.logger import get_logger
 
-logger = get_logger(__name__)
-
+logger = get_logger(__name__, "services.log")
 
 class CVATService:
     """Сервіс для роботи з CVAT"""
 
-    def get_default_project_params(self, project_name: str) -> Dict[str, Any]:
+    @staticmethod
+    def get_default_project_params(project_name: str) -> Dict[str, Any]:
         """Отримує дефолтні CVAT параметри проєкту"""
         default_projects = {
             "motion-det": {
@@ -48,7 +47,8 @@ class CVATService:
             "image_quality": 100
         })
 
-    def create_task(self, filename: str, file_path: str, project_params: Dict[str, Any]) -> Optional[str]:
+    @staticmethod
+    def create_task(filename: str, file_path: str, project_params: Dict[str, Any]) -> Optional[str]:
         """Створює задачу в CVAT через CLI"""
         try:
             project_id = project_params.get("project_id")

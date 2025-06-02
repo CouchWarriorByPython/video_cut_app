@@ -11,7 +11,7 @@ from backend.utils.video_utils import get_local_video_path, cleanup_file
 from backend.services.cvat_service import CVATService
 from backend.utils.logger import get_logger
 
-logger = get_logger(__name__)
+logger = get_logger(__name__, "tasks.log")
 
 
 class VideoProcessingTask(Task):

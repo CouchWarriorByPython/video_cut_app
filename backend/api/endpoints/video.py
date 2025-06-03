@@ -3,7 +3,7 @@ from fastapi.responses import FileResponse
 
 from backend.models.api import (
     VideoUploadRequest, VideoUploadResponse, ErrorResponse,
-    VideoListResponse
+    VideoListResponse, VideoStatusResponse
 )
 from backend.services.video_service import VideoService
 from backend.api.dependencies import convert_db_annotation_to_response
@@ -31,10 +31,36 @@ async def upload(data: VideoUploadRequest) -> VideoUploadResponse:
         raise HTTPException(status_code=400, detail=result["error"])
 
     return VideoUploadResponse(
-        id=result["_id"],  # Маппінг _id -> id
+        id=result["_id"],
         azure_link=result["azure_link"],
         filename=result["filename"],
+        conversion_task_id=result.get("conversion_task_id"),
         message=result["message"]
+    )
+
+
+@router.get("/video_status",
+            response_model=VideoStatusResponse,
+            responses={
+                404: {"model": ErrorResponse},
+                500: {"model": ErrorResponse}
+            })
+async def get_video_status(azure_link: str) -> VideoStatusResponse:
+    """Отримання статусу обробки відео"""
+    video_service = VideoService()
+
+    result = video_service.get_video_status(azure_link)
+
+    if not result["success"]:
+        if "не знайдено" in result["error"]:
+            raise HTTPException(status_code=404, detail=result["error"])
+        else:
+            raise HTTPException(status_code=500, detail=result["error"])
+
+    return VideoStatusResponse(
+        status=result["status"],
+        filename=result["filename"],
+        ready_for_annotation=result["ready_for_annotation"]
     )
 
 
@@ -62,9 +88,8 @@ async def get_video(azure_link: str) -> FileResponse:
     local_path = video_service.get_video_for_streaming(azure_link)
 
     if not local_path:
-        raise HTTPException(status_code=404, detail="Відео не знайдено")
+        raise HTTPException(status_code=404, detail="Відео не знайдено або ще не готове")
 
-    # Отримуємо filename для response
     import os
     filename = os.path.basename(local_path)
 
@@ -74,7 +99,8 @@ async def get_video(azure_link: str) -> FileResponse:
         filename=filename,
         headers={
             "Accept-Ranges": "bytes",
-            "Cache-Control": "public, max-age=3600"
+            "Cache-Control": "public, max-age=3600",
+            "Content-Type": "video/mp4"
         }
     )
 

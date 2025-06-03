@@ -6,5 +6,6 @@ app.config_from_object('backend.background_tasks.config')
 # Автоматичне знаходження задач
 app.autodiscover_tasks([
     'backend.background_tasks.tasks.video_processing',
-    'backend.background_tasks.tasks.clip_processing'
+    'backend.background_tasks.tasks.clip_processing',
+    'backend.background_tasks.tasks.video_conversion.py'
 ])

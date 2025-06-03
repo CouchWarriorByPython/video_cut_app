@@ -1,3 +1,5 @@
+import re
+
 from typing import Dict, List, Optional, Any
 from pydantic import BaseModel, Field, field_validator, ValidationInfo
 
@@ -48,13 +50,16 @@ class VideoUploadRequest(BaseModel):
 
     @field_validator('where')
     def validate_where(cls, v: Optional[str]) -> Optional[str]:
-        if v:
-            v = v.strip()
-            if not v.replace(' ', '').replace('-', '').replace('_', '').isalpha():
-                raise ValueError('Локація може містити тільки англійські літери, пробіли, дефіси та підкреслення')
-            # Замінюємо пробіли на підкреслення
-            v = v.replace(' ', '_')
-        return v if v else None
+        if not v:
+            return None
+
+        # Замінюємо всі символи крім англійських літер на підкреслення
+        normalized = re.sub(r'[^a-zA-Z]', '_', v.strip())
+
+        # Видаляємо множинні підкреслення та підкреслення на початку/кінці
+        normalized = re.sub(r'_+', '_', normalized).strip('_')
+
+        return normalized if normalized else None
 
 
 class SaveFragmentsRequest(BaseModel):
@@ -80,7 +85,15 @@ class VideoUploadResponse(BaseResponse):
     id: str
     azure_link: str
     filename: str
+    conversion_task_id: Optional[str] = None
     message: str
+
+
+class VideoStatusResponse(BaseResponse):
+    """Схема відповіді для статусу відео"""
+    status: str
+    filename: str
+    ready_for_annotation: bool
 
 
 class SaveFragmentsResponse(BaseResponse):

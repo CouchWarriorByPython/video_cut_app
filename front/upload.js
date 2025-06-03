@@ -2,13 +2,13 @@ const videoUrlInput = document.getElementById('video-url');
 const metadataWhereInput = document.getElementById('metadata-where');
 const metadataWhenInput = document.getElementById('metadata-when');
 const uploadBtn = document.getElementById('upload-btn');
-const goToAnnotatorBtn = document.getElementById('go-to-annotator-btn');
 const resultDiv = document.getElementById('result');
 
 let lastUploadedVideoId = null;
+let lastUploadedAzureLink = null;
+let statusCheckInterval = null;
 
 uploadBtn.addEventListener('click', handleUpload);
-goToAnnotatorBtn.addEventListener('click', handleGoToAnnotator);
 videoUrlInput.addEventListener('input', validateAzureUrl);
 
 function validateAzureUrl() {
@@ -81,8 +81,10 @@ function handleUpload() {
         console.log("Отримана відповідь:", data);
         handleUploadResponse(data);
         if (data.success) {
-            lastUploadedVideoId = data.id;  // Використовуємо id замість _id
+            lastUploadedVideoId = data.id;
+            lastUploadedAzureLink = data.azure_link;
             resetForm();
+            startStatusChecking(data.azure_link);
         }
     })
     .catch(error => {
@@ -91,24 +93,72 @@ function handleUpload() {
     });
 }
 
-function handleGoToAnnotator() {
-    if (lastUploadedVideoId) {
-        window.location.href = `/annotator?video_id=${lastUploadedVideoId}`;
-    } else {
-        window.location.href = '/annotator';
-    }
-}
-
 function handleUploadResponse(data) {
     if (data.success) {
-        showSuccess({
+        showProcessing({
             message: data.message || `Відео ${data.filename} успішно зареєстровано`,
             azure_link: data.azure_link,
             filename: data.filename,
-            id: data.id  // Використовуємо id замість _id
+            id: data.id,
+            conversion_task_id: data.conversion_task_id
         });
     } else {
         showError(data.message || 'Невідома помилка при реєстрації відео');
+    }
+}
+
+function startStatusChecking(azureLink) {
+    if (statusCheckInterval) {
+        clearInterval(statusCheckInterval);
+    }
+
+    statusCheckInterval = setInterval(() => {
+        checkVideoStatus(azureLink);
+    }, 2000);
+}
+
+function checkVideoStatus(azureLink) {
+    fetch(`/video_status?azure_link=${encodeURIComponent(azureLink)}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                updateStatusDisplay(data);
+
+                if (data.ready_for_annotation) {
+                    clearInterval(statusCheckInterval);
+                    showSuccess({
+                        message: `Відео ${data.filename} готове до анотування`,
+                        azure_link: azureLink,
+                        filename: data.filename,
+                        id: lastUploadedVideoId
+                    });
+                } else if (data.status === 'conversion_failed') {
+                    clearInterval(statusCheckInterval);
+                    showError('Помилка конвертації відео. Спробуйте завантажити інше відео.');
+                }
+            }
+        })
+        .catch(error => {
+            console.error('Помилка перевірки статусу:', error);
+        });
+}
+
+function updateStatusDisplay(statusData) {
+    const statusMessages = {
+        'processing': 'Завантаження з Azure Storage...',
+        'converting': 'Конвертація відео для браузера...',
+        'ready': 'Відео готове до анотування',
+        'conversion_failed': 'Помилка конвертації відео'
+    };
+
+    const currentMessage = statusMessages[statusData.status] || 'Обробка відео...';
+
+    const existingResult = resultDiv.querySelector('.info-message');
+    if (existingResult) {
+        const statusElement = existingResult.querySelector('.status-text');
+        if (statusElement) {
+            statusElement.textContent = currentMessage;
+        }
     }
 }
 
@@ -126,6 +176,25 @@ function showLoading(url) {
     uploadBtn.textContent = 'Завантажуємо...';
 }
 
+function showProcessing(data) {
+    resultDiv.innerHTML = `
+        <div class="info-message">
+            <h3>Обробка відео</h3>
+            <p><strong>Файл:</strong> ${data.filename}</p>
+            <p><strong>ID:</strong> ${data.id}</p>
+            <p class="status-text">Завантаження з Azure Storage...</p>
+            <div class="loading-spinner"></div>
+            <div class="video-info">
+                <p><strong>Azure посилання:</strong></p>
+                <p class="url-display">${data.azure_link}</p>
+            </div>
+        </div>
+    `;
+    resultDiv.classList.remove('hidden');
+    uploadBtn.disabled = false;
+    uploadBtn.textContent = 'Зареєструвати відео';
+}
+
 function resetForm() {
     metadataWhereInput.value = '';
     metadataWhenInput.value = '';
@@ -137,13 +206,18 @@ function resetForm() {
 function showSuccess(data) {
     resultDiv.innerHTML = `
         <div class="success-message">
-            <h3>Успішно зареєстровано!</h3>
+            <h3>Відео готове!</h3>
             <p>${data.message}</p>
             <div class="video-info">
                 <p><strong>Файл:</strong> ${data.filename}</p>
                 <p><strong>ID:</strong> ${data.id}</p>
                 <p><strong>Azure посилання:</strong></p>
                 <p class="url-display">${data.azure_link}</p>
+            </div>
+            <div style="margin-top: 15px;">
+                <button class="btn btn-success full-width" onclick="window.location.href='/annotator?video_id=${data.id}'">
+                    Перейти до анотування
+                </button>
             </div>
         </div>
     `;
@@ -153,6 +227,10 @@ function showSuccess(data) {
 }
 
 function showError(message) {
+    if (statusCheckInterval) {
+        clearInterval(statusCheckInterval);
+    }
+
     resultDiv.innerHTML = `
         <div class="error-message">
             <h3>Помилка реєстрації</h3>

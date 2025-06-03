@@ -20,7 +20,6 @@ class VideoService:
     def validate_and_register_video(self, video_url: str, where: Optional[str], when: Optional[str]) -> Dict[str, Any]:
         """Валідує, завантажує та реєструє відео"""
         try:
-            # Валідація Azure URL
             validation_result = self.azure_service.validate_azure_url(video_url)
 
             if not validation_result["valid"]:
@@ -32,7 +31,6 @@ class VideoService:
             filename = validation_result["filename"]
             local_path = get_local_video_path(filename)
 
-            # Завантаження відео локально
             download_result = self.azure_service.download_video_to_local(video_url, local_path)
 
             if not download_result["success"]:
@@ -41,7 +39,6 @@ class VideoService:
                     "error": f"Помилка завантаження відео: {download_result['error']}"
                 }
 
-            # Збереження в БД
             video_record = {
                 "azure_link": video_url,
                 "filename": filename,
@@ -49,24 +46,57 @@ class VideoService:
                 "updated_at": datetime.now().isoformat(sep=" ", timespec="seconds"),
                 "when": when,
                 "where": where,
-                "status": "not_annotated"
+                "status": "processing"  # Змінено з "not_annotated" на "processing"
             }
 
             self.source_repo.create_indexes()
             record_id = self.source_repo.save_annotation(video_record)
 
-            logger.info(f"Відео завантажено та зареєстровано: {filename}")
+            # Запускаємо конвертацію відео
+            from backend.background_tasks.tasks.video_conversion import convert_video_for_web
+            conversion_task = convert_video_for_web.delay(video_url)
+
+            logger.info(
+                f"Відео завантажено та поставлено в чергу конвертації: {filename}, task_id: {conversion_task.id}")
 
             return {
                 "success": True,
                 "_id": record_id,
                 "azure_link": video_url,
                 "filename": filename,
-                "message": "Відео успішно зареєстровано та завантажено локально"
+                "conversion_task_id": conversion_task.id,
+                "message": "Відео успішно зареєстровано та поставлено в чергу обробки"
             }
 
         except Exception as e:
             logger.error(f"Помилка при реєстрації відео: {str(e)}")
+            return {
+                "success": False,
+                "error": str(e)
+            }
+
+    def get_video_status(self, azure_link: str) -> Dict[str, Any]:
+        """Отримує статус обробки відео"""
+        try:
+            annotation = self.source_repo.get_annotation(azure_link)
+
+            if not annotation:
+                return {
+                    "success": False,
+                    "error": "Відео не знайдено"
+                }
+
+            status = annotation.get("status", "unknown")
+
+            return {
+                "success": True,
+                "status": status,
+                "filename": annotation.get("filename"),
+                "ready_for_annotation": status in ["ready", "not_annotated"]
+            }
+
+        except Exception as e:
+            logger.error(f"Помилка при отриманні статусу відео: {str(e)}")
             return {
                 "success": False,
                 "error": str(e)
@@ -79,6 +109,12 @@ class VideoService:
 
             if not annotation:
                 logger.error(f"Відео не знайдено: {azure_link}")
+                return None
+
+            # Перевіряємо, чи відео готове для перегляду
+            status = annotation.get("status")
+            if status not in ["ready", "not_annotated"]:
+                logger.warning(f"Відео ще не готове для перегляду, статус: {status}")
                 return None
 
             filename = annotation.get("filename")
@@ -99,9 +135,12 @@ class VideoService:
             return None
 
     def get_videos_list(self) -> Dict[str, Any]:
-        """Отримує список відео які ще не анотовані"""
+        """Отримує список відео які готові до анотування або ще обробляються"""
         try:
-            videos_data = self.source_repo.get_all_annotations(filter_query={"status": {"$ne": "annotated"}})
+            # Отримуємо відео які не анотовані або готові до анотування
+            videos_data = self.source_repo.get_all_annotations(
+                filter_query={"status": {"$ne": "annotated"}}
+            )
 
             return {
                 "success": True,

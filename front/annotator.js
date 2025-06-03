@@ -54,6 +54,7 @@ let unfinishedFragments = {
     're-id': null
 };
 let activeProjects = [];
+let statusCheckInterval = null;
 
 // Константи
 const MIN_CLIP_DURATION = 1; // секунди
@@ -123,12 +124,39 @@ function populateVideoSelect(videos) {
     videos.forEach(video => {
         const option = document.createElement('option');
         option.value = video.azure_link;
-        option.textContent = video.filename || video.azure_link.split('/').pop() || `Відео #${video.id}`;
-        option.dataset.videoId = video.id;  // Використовуємо id замість _id
+
+        // Додаємо індикатор статусу до назви
+        const statusIndicator = getStatusIndicator(video.status);
+        option.textContent = `${statusIndicator} ${video.filename || video.azure_link.split('/').pop() || `Відео #${video.id}`}`;
+
+        option.dataset.videoId = video.id;
         option.dataset.filename = video.filename || '';
         option.dataset.azureLink = video.azure_link;
+        option.dataset.status = video.status;
+
+        // Відключаємо опцію якщо відео не готове
+        if (!isVideoReadyForAnnotation(video.status)) {
+            option.disabled = true;
+        }
+
         videoSelect.appendChild(option);
     });
+}
+
+function getStatusIndicator(status) {
+    const indicators = {
+        'processing': '⏳',
+        'converting': '🔄',
+        'ready': '✅',
+        'not_annotated': '✅',
+        'conversion_failed': '❌',
+        'annotated': '✓'
+    };
+    return indicators[status] || '❓';
+}
+
+function isVideoReadyForAnnotation(status) {
+    return ['ready', 'not_annotated'].includes(status);
 }
 
 function selectVideoById(videoId) {
@@ -151,7 +179,111 @@ function handleLoadVideo() {
     const selectedOption = videoSelect.options[videoSelect.selectedIndex];
     const azureLink = selectedOption.dataset.azureLink;
     const filename = selectedOption.dataset.filename || selectedOption.textContent;
+    const status = selectedOption.dataset.status;
 
+    if (!isVideoReadyForAnnotation(status)) {
+        showVideoProcessingStatus(azureLink, filename, status);
+        return;
+    }
+
+    loadVideoForAnnotation(azureLink, filename);
+}
+
+function showVideoProcessingStatus(azureLink, filename, status) {
+    videoSelector.style.display = 'none';
+    videoEditor.innerHTML = `
+        <div class="card">
+            <h3>Відео обробляється</h3>
+            <p><strong>Файл:</strong> ${filename}</p>
+            <p class="status-text">Статус: ${getStatusMessage(status)}</p>
+            <div class="loading-spinner"></div>
+            <div style="margin-top: 20px;">
+                <button class="btn btn-secondary" onclick="location.reload()">Оновити сторінку</button>
+                <button class="btn" onclick="goBackToVideoList()">Вибрати інше відео</button>
+            </div>
+        </div>
+    `;
+    videoEditor.classList.remove('hidden');
+
+    currentAzureLink = azureLink;
+
+    // Починаємо перевіряти статус
+    startVideoStatusChecking(azureLink);
+}
+
+function getStatusMessage(status) {
+    const messages = {
+        'processing': 'Завантаження з Azure Storage...',
+        'converting': 'Конвертація відео для браузера...',
+        'conversion_failed': 'Помилка конвертації відео'
+    };
+    return messages[status] || 'Обробка відео...';
+}
+
+function startVideoStatusChecking(azureLink) {
+    if (statusCheckInterval) {
+        clearInterval(statusCheckInterval);
+    }
+
+    statusCheckInterval = setInterval(() => {
+        checkVideoStatus(azureLink);
+    }, 3000);
+}
+
+function checkVideoStatus(azureLink) {
+    fetch(`/video_status?azure_link=${encodeURIComponent(azureLink)}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                updateVideoStatusDisplay(data);
+
+                if (data.ready_for_annotation) {
+                    clearInterval(statusCheckInterval);
+                    // Автоматично перезавантажуємо відео для анотування
+                    location.reload();
+                } else if (data.status === 'conversion_failed') {
+                    clearInterval(statusCheckInterval);
+                    showConversionError();
+                }
+            }
+        })
+        .catch(error => {
+            console.error('Помилка перевірки статусу відео:', error);
+        });
+}
+
+function updateVideoStatusDisplay(statusData) {
+    const statusElement = document.querySelector('.status-text');
+    if (statusElement) {
+        statusElement.textContent = `Статус: ${getStatusMessage(statusData.status)}`;
+    }
+}
+
+function showConversionError() {
+    const errorDiv = document.createElement('div');
+    errorDiv.className = 'error-message';
+    errorDiv.innerHTML = `
+        <h3>Помилка конвертації відео</h3>
+        <p>Не вдалося конвертувати відео в web-сумісний формат. Спробуйте завантажити інше відео.</p>
+    `;
+
+    const existingCard = videoEditor.querySelector('.card');
+    if (existingCard) {
+        existingCard.replaceWith(errorDiv);
+    }
+}
+
+function goBackToVideoList() {
+    if (statusCheckInterval) {
+        clearInterval(statusCheckInterval);
+    }
+
+    videoEditor.classList.add('hidden');
+    videoSelector.style.display = 'block';
+    loadVideoList();
+}
+
+function loadVideoForAnnotation(azureLink, filename) {
     videoSelector.style.display = 'none';
     videoEditor.classList.remove('hidden');
 
@@ -262,8 +394,10 @@ function handleVideoError() {
     errorDiv.innerHTML = `
         <h3>Помилка відтворення відео</h3>
         <p>Не вдалося завантажити відео: ${errorMessage}</p>
+        <p>Можливо, відео ще обробляється або має несумісний формат.</p>
         <div style="margin-top: 15px;">
             <button class="btn btn-secondary" onclick="retryVideoLoad()">Спробувати ще раз</button>
+            <button class="btn" onclick="goBackToVideoList()">Вибрати інше відео</button>
         </div>
     `;
 

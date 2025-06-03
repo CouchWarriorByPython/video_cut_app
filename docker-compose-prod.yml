@@ -1,0 +1,54 @@
+services:
+  redis:
+    image: redis:7.2-alpine
+    container_name: video_annotator_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+  app:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    container_name: video_annotator_app
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./temp:/app/temp
+      - ./logs:/app/logs
+    depends_on:
+      - mongodb
+      - redis
+
+  celery-worker:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    container_name: video_annotator_celery
+    restart: unless-stopped
+    command: celery -A backend.background_tasks.app worker --loglevel=info --concurrency=4
+    volumes:
+      - ./temp:/app/temp
+      - ./logs:/app/logs
+    depends_on:
+      - mongodb
+      - redis
+
+  flower:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    container_name: video_annotator_flower
+    restart: unless-stopped
+    command: celery -A backend.background_tasks.app flower --port=5555
+    ports:
+      - "5555:5555"
+    depends_on:
+      - redis
+
+volumes:
+  mongodb_data:
+  redis_data:

@@ -48,9 +48,13 @@ class VideoUploadRequest(BaseModel):
 
     @field_validator('where')
     def validate_where(cls, v: Optional[str]) -> Optional[str]:
-        if v and not v.replace(' ', '').replace('-', '').replace('_', '').isalpha():
-            raise ValueError('Локація може містити тільки англійські літери, пробіли, дефіси та підкреслення')
-        return v.strip() if v else None
+        if v:
+            v = v.strip()
+            if not v.replace(' ', '').replace('-', '').replace('_', '').isalpha():
+                raise ValueError('Локація може містити тільки англійські літери, пробіли, дефіси та підкреслення')
+            # Замінюємо пробіли на підкреслення
+            v = v.replace(' ', '_')
+        return v if v else None
 
 
 class SaveFragmentsRequest(BaseModel):

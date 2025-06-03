@@ -23,7 +23,7 @@ def convert_db_annotation_to_response(annotation: Dict[str, Any]) -> VideoAnnota
             cvat_params[project] = CVATProjectParamsResponse(**params)
 
     return VideoAnnotationResponse(
-        _id=annotation["_id"],
+        id=annotation["_id"],
         azure_link=annotation["azure_link"],
         filename=annotation["filename"],
         created_at=annotation["created_at"],

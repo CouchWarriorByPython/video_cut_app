@@ -68,7 +68,7 @@ async def save_fragments(data: SaveFragmentsRequest) -> SaveFragmentsResponse:
         logger.info(f"Запущено обробку для відео: {data.azure_link}, task_id: {task_id}")
 
     return SaveFragmentsResponse(
-        _id=result["_id"],
+        id=result["_id"],  # Маппінг _id -> id
         task_id=task_id,
         message=result["message"]
     )

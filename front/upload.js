@@ -81,7 +81,7 @@ function handleUpload() {
         console.log("Отримана відповідь:", data);
         handleUploadResponse(data);
         if (data.success) {
-            lastUploadedVideoId = data._id;
+            lastUploadedVideoId = data.id;  // Використовуємо id замість _id
             resetForm();
         }
     })
@@ -105,7 +105,7 @@ function handleUploadResponse(data) {
             message: data.message || `Відео ${data.filename} успішно зареєстровано`,
             azure_link: data.azure_link,
             filename: data.filename,
-            _id: data._id
+            id: data.id  // Використовуємо id замість _id
         });
     } else {
         showError(data.message || 'Невідома помилка при реєстрації відео');
@@ -141,7 +141,7 @@ function showSuccess(data) {
             <p>${data.message}</p>
             <div class="video-info">
                 <p><strong>Файл:</strong> ${data.filename}</p>
-                <p><strong>ID:</strong> ${data._id}</p>
+                <p><strong>ID:</strong> ${data.id}</p>
                 <p><strong>Azure посилання:</strong></p>
                 <p class="url-display">${data.azure_link}</p>
             </div>

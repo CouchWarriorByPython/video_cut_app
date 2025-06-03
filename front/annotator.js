@@ -123,8 +123,8 @@ function populateVideoSelect(videos) {
     videos.forEach(video => {
         const option = document.createElement('option');
         option.value = video.azure_link;
-        option.textContent = video.filename || video.azure_link.split('/').pop() || `Відео #${video._id}`;
-        option.dataset.videoId = video._id;
+        option.textContent = video.filename || video.azure_link.split('/').pop() || `Відео #${video.id}`;
+        option.dataset.videoId = video.id;  // Використовуємо id замість _id
         option.dataset.filename = video.filename || '';
         option.dataset.azureLink = video.azure_link;
         videoSelect.appendChild(option);

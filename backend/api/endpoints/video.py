@@ -31,7 +31,7 @@ async def upload(data: VideoUploadRequest) -> VideoUploadResponse:
         raise HTTPException(status_code=400, detail=result["error"])
 
     return VideoUploadResponse(
-        _id=result["_id"],
+        id=result["_id"],  # Маппінг _id -> id
         azure_link=result["azure_link"],
         filename=result["filename"],
         message=result["message"]

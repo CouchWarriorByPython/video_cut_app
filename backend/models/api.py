@@ -73,7 +73,7 @@ class ErrorResponse(BaseResponse):
 
 class VideoUploadResponse(BaseResponse):
     """Схема відповіді для завантаження відео"""
-    _id: str
+    id: str
     azure_link: str
     filename: str
     message: str
@@ -81,7 +81,7 @@ class VideoUploadResponse(BaseResponse):
 
 class SaveFragmentsResponse(BaseResponse):
     """Схема відповіді для збереження фрагментів"""
-    _id: str
+    id: str
     task_id: Optional[str] = None
     message: str
 
@@ -117,7 +117,7 @@ class CVATProjectParamsResponse(BaseModel):
 
 class VideoAnnotationResponse(BaseModel):
     """Схема для анотації відео у відповіді"""
-    _id: str
+    id: str
     azure_link: str
     filename: str
     created_at: str

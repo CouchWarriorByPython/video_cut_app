@@ -48,6 +48,10 @@ class Settings:
     port: ClassVar[int] = 0
     reload: ClassVar[bool] = False
 
+    # Оптимізація завантаження
+    azure_download_chunk_size: ClassVar[int] = 16777216
+    azure_max_concurrency: ClassVar[int] = 4
+
     @classmethod
     def load_from_env(cls) -> None:
         """Завантаження налаштувань з .env файлу"""

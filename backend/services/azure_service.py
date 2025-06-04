@@ -14,7 +14,7 @@ logger = get_logger(__name__, "services.log")
 
 
 class AzureService:
-    """Сервіс для роботи з Azure Storage"""
+    """Сервіс для роботи з Azure Storage з підтримкою українських символів"""
 
     def __init__(self):
         self._blob_service_client = None
@@ -35,7 +35,7 @@ class AzureService:
         return self._container_client
 
     def validate_azure_url(self, url: str) -> Dict[str, Any]:
-        """Валідує Azure blob URL та перевіряє доступність"""
+        """Валідує Azure blob URL та перевіряє доступність з підтримкою українських символів"""
         try:
             blob_info = parse_azure_blob_url(url)
 
@@ -45,12 +45,14 @@ class AzureService:
                     "error": f"URL повинен бути з storage account '{Settings.azure_storage_account_name}'"
                 }
 
+            # Використовуємо декодований blob_name для Azure API
             blob_client = self.blob_service_client.get_blob_client(
                 container=blob_info["container_name"],
                 blob=blob_info["blob_name"]
             )
 
             if not blob_client.exists():
+                logger.error(f"Blob не існує: container={blob_info['container_name']}, blob={blob_info['blob_name']}")
                 return {
                     "valid": False,
                     "error": "Файл не знайдено в Azure Storage"
@@ -58,6 +60,8 @@ class AzureService:
 
             properties = blob_client.get_blob_properties()
             filename = os.path.basename(blob_info["blob_name"])
+
+            logger.info(f"Blob знайдено: {filename}, розмір: {properties.size} байт")
 
             return {
                 "valid": True,
@@ -73,7 +77,7 @@ class AzureService:
             }
 
     def download_video_to_local(self, azure_url: str, local_path: str) -> Dict[str, Any]:
-        """Завантажує відео з Azure Storage локально"""
+        """Завантажує відео з Azure Storage локально з підтримкою українських символів"""
         try:
             # Створюємо директорію якщо не існує
             os.makedirs(os.path.dirname(local_path), exist_ok=True)

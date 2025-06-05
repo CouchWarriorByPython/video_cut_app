@@ -7,6 +7,18 @@
     <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
+    <nav class="navbar">
+        <div class="navbar-container">
+            <div class="navbar-brand">
+                <h2>Video Annotator</h2>
+            </div>
+            <div class="navbar-menu">
+                <a href="/" class="navbar-item active">Завантажити відео</a>
+                <a href="/annotator" class="navbar-item">Анотувати відео</a>
+            </div>
+        </div>
+    </nav>
+
     <div class="container">
         <h1>Реєстрація відео з Azure Storage</h1>
 
@@ -38,7 +50,7 @@
         <div class="card">
             <h3>Інформація</h3>
             <p>Система перевірить доступність відео в Azure Storage перед реєстрацією.</p>
-            <p>Підтримувані формати: MP4, AVI, MOV</p>
+            <p>Підтримувані формати: MP4, AVI, MOV, MKV</p>
             <p>Максимальний розмір: без обмежень (залежить від Azure Storage)</p>
         </div>
 

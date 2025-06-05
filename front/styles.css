@@ -51,6 +51,7 @@ select::-moz-focus-inner {
     --card-bg: #222;
     --input-bg: #333;
     --timeline-bg: #2a2a2a;
+    --navbar-bg: #1e1e1e;
 }
 
 body {
@@ -60,6 +61,63 @@ body {
     margin: 0;
     padding: 0;
     line-height: 1.6;
+}
+
+/* Навбар */
+.navbar {
+    background-color: var(--navbar-bg);
+    border-bottom: 2px solid var(--border-color);
+    padding: 0;
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.navbar-container {
+    max-width: 1200px;
+    margin: 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 20px;
+    height: 60px;
+}
+
+.navbar-brand h2 {
+    margin: 0;
+    color: var(--primary-color);
+    font-size: 24px;
+    font-weight: 600;
+}
+
+.navbar-menu {
+    display: flex;
+    gap: 0;
+}
+
+.navbar-item {
+    color: var(--text-light);
+    text-decoration: none;
+    padding: 20px 24px;
+    display: block;
+    transition: all 0.2s ease;
+    font-weight: 500;
+    border-bottom: 3px solid transparent;
+    height: 60px;
+    display: flex;
+    align-items: center;
+}
+
+.navbar-item:hover {
+    background-color: var(--bg-dark);
+    color: var(--primary-color);
+}
+
+.navbar-item.active {
+    color: var(--primary-color);
+    border-bottom-color: var(--primary-color);
+    background-color: var(--bg-dark);
 }
 
 .container {
@@ -620,6 +678,23 @@ select.form-control option:hover {
 
 /* Адаптивність */
 @media (max-width: 768px) {
+    .navbar-container {
+        flex-direction: column;
+        height: auto;
+        padding: 10px 20px;
+    }
+
+    .navbar-menu {
+        width: 100%;
+        justify-content: center;
+        margin-top: 10px;
+    }
+
+    .navbar-item {
+        height: 50px;
+        padding: 15px 20px;
+    }
+
     .main-layout {
         flex-direction: column;
     }

@@ -10,7 +10,7 @@ services:
       - MONGO_INITDB_ROOT_PASSWORD=${MONGO_INITDB_ROOT_PASSWORD:-password}
     volumes:
       - mongodb_data:/data/db
-      - ./docker/mongod.conf:/etc/mongod.conf:ro
+      - ./mongo/mongod.conf:/etc/mongod.conf:ro
     command: [ "mongod", "--config", "/etc/mongod.conf" ]
     logging:
       driver: "local"
@@ -82,6 +82,17 @@ services:
       - "5555:5555"
     depends_on:
       - redis
+
+  nginx:
+    image: nginx:alpine
+    container_name: video_annotator_nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/conf/nginx.dev.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - app
 
 volumes:
   mongodb_data:

@@ -7,6 +7,18 @@
     <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
+    <nav class="navbar">
+        <div class="navbar-container">
+            <div class="navbar-brand">
+                <h2>Video Annotator</h2>
+            </div>
+            <div class="navbar-menu">
+                <a href="/" class="navbar-item">Завантажити відео</a>
+                <a href="/annotator" class="navbar-item active">Анотувати відео</a>
+            </div>
+        </div>
+    </nav>
+
     <div class="container">
         <h1>Розмітка відео</h1>
 
@@ -25,7 +37,10 @@
 
         <div id="video-editor" class="hidden">
             <div class="card">
-                <h3>Інформація про відео</h3>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                    <h3>Інформація про відео</h3>
+                    <button onclick="goBackToVideoList()" class="btn btn-secondary">← Назад до списку</button>
+                </div>
                 <p id="video-filename">Назва файлу: <span></span></p>
             </div>
 
@@ -111,12 +126,12 @@
                             <label for="video-content">Контент відео <span style="color: #e74c3c;">*</span>:</label>
                             <select id="video-content" class="form-control">
                                 <option value="">Оберіть тип контенту</option>
-                                <option value="reconnaissance">Розвідувальна місія</option>
-                                <option value="intercept">Перехоплення</option>
-                                <option value="bombing">Скид боєприпасу</option>
-                                <option value="kamikaze">Ураження</option>
-                                <option value="panoramic">Коротке відео з панорамним оглядом</option>
-                                <option value="other">Інше</option>
+                                <option value="recon">Recon</option>
+                                <option value="interception">Interception</option>
+                                <option value="bombing">Bombing</option>
+                                <option value="strike">Strike</option>
+                                <option value="panoramic">Panoramic</option>
+                                <option value="other">Other</option>
                             </select>
                         </div>
 
@@ -159,7 +174,7 @@
 
             <div style="display: flex; gap: 10px; margin-top: 20px;">
                 <button id="view-json" class="btn btn-secondary">Перегляд JSON</button>
-                <button id="save-fragments" class="btn btn-success full-width">Почати нарізку</button>
+                <button id="save-fragments" class="btn btn-success full-width">Завершити анотацію</button>
             </div>
 
             <div id="json-modal" class="modal">

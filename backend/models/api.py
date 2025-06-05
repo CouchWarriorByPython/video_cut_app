@@ -11,6 +11,7 @@ class ClipInfoRequest(BaseModel):
     end_time: str = Field(..., pattern=r'^\d{2}:\d{2}:\d{2}$')
 
 
+# backend/models/api.py - VideoMetadataRequest клас
 class VideoMetadataRequest(BaseModel):
     """Схема для метаданих відео в запиті"""
     skip: bool = False
@@ -34,6 +35,17 @@ class VideoMetadataRequest(BaseModel):
             raise ValueError(f"Поле '{field_names.get(info.field_name, info.field_name)}' є обов'язковим")
         return v.strip()
 
+    @field_validator('video_content')
+    def validate_video_content_options(cls, v: str) -> str:
+        """Валідує допустимі варіанти контенту відео"""
+        if not v.strip():
+            return v
+
+        valid_options = ['recon', 'interception', 'bombing', 'strike', 'panoramic', 'other']
+        if v.strip() not in valid_options:
+            raise ValueError(f"Недопустимий тип контенту. Допустимі варіанти: {', '.join(valid_options)}")
+        return v.strip()
+
 
 class VideoUploadRequest(BaseModel):
     """Схема для запиту завантаження відео"""
@@ -46,6 +58,12 @@ class VideoUploadRequest(BaseModel):
         v = v.strip()
         if not v.startswith('https://') or '.blob.core.windows.net' not in v:
             raise ValueError('URL має бути з Azure Blob Storage')
+
+        # Перевіряємо підтримувані формати відео
+        supported_extensions = ['.mp4', '.avi', '.mov', '.mkv']
+        if not any(v.lower().endswith(ext) for ext in supported_extensions):
+            raise ValueError(f'Підтримувані формати відео: {", ".join(supported_extensions)}')
+
         return v
 
     @field_validator('where')

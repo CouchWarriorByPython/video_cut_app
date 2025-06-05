@@ -30,9 +30,7 @@ def get_blob_service_client() -> BlobServiceClient:
 
         return BlobServiceClient(
             account_url=Settings.get_azure_account_url(),
-            credential=credential,
-            max_single_get_size=Settings.azure_download_chunk_size * 2,
-            max_chunk_get_size=Settings.azure_download_chunk_size,
+            credential=credential
         )
     except Exception as e:
         logger.error(f"Помилка створення BlobServiceClient: {str(e)}")
@@ -192,9 +190,7 @@ def upload_clip_to_azure(
                 name=azure_path,
                 data=data,
                 overwrite=True,
-                metadata=metadata,
-                max_single_put_size=Settings.azure_download_chunk_size * 2,
-                max_block_size=Settings.azure_download_chunk_size,
+                metadata=metadata
             )
 
         logger.debug(f"Файл успішно завантажено на Azure: {azure_path}")

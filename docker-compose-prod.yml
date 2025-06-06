@@ -4,7 +4,9 @@ services:
     container_name: video_annotator_mongodb
     restart: unless-stopped
     ports:
-      - "27017:27017"
+      - "27018:27017"
+    env_file:
+      - .env
     environment:
       - MONGO_INITDB_ROOT_USERNAME=${MONGO_INITDB_ROOT_USERNAME:-admin}
       - MONGO_INITDB_ROOT_PASSWORD=${MONGO_INITDB_ROOT_PASSWORD:-password}
@@ -23,7 +25,9 @@ services:
     container_name: video_annotator_mongo_express
     restart: unless-stopped
     ports:
-      - "8081:8081"
+      - "8082:8081"
+    env_file:
+      - .env
     environment:
       - ME_CONFIG_MONGODB_ADMINUSERNAME=${MONGO_INITDB_ROOT_USERNAME:-admin}
       - ME_CONFIG_MONGODB_ADMINPASSWORD=${MONGO_INITDB_ROOT_PASSWORD:-password}
@@ -38,7 +42,7 @@ services:
     container_name: video_annotator_redis
     restart: unless-stopped
     ports:
-      - "6379:6379"
+      - "6380:6379"
     volumes:
       - redis_data:/data
 
@@ -49,7 +53,9 @@ services:
     container_name: video_annotator_app
     restart: unless-stopped
     ports:
-      - "8000:8000"
+      - "8002:8000"
+    env_file:
+      - .env
     volumes:
       - ./temp:/app/temp
       - ./logs:/app/logs
@@ -64,6 +70,8 @@ services:
     container_name: video_annotator_celery
     restart: unless-stopped
     command: celery -A backend.background_tasks.app worker --loglevel=info --concurrency=4
+    env_file:
+      - .env
     volumes:
       - ./temp:/app/temp
       - ./logs:/app/logs
@@ -79,7 +87,9 @@ services:
     restart: unless-stopped
     command: celery -A backend.background_tasks.app flower --port=5555
     ports:
-      - "5555:5555"
+      - "5556:5555"
+    env_file:
+      - .env
     depends_on:
       - redis
 
@@ -88,7 +98,7 @@ services:
     container_name: video_annotator_nginx
     restart: unless-stopped
     ports:
-      - "80:80"
+      - "8888:80"
     volumes:
       - ./nginx/conf/nginx.prod.conf:/etc/nginx/nginx.conf:ro
     depends_on:

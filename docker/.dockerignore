@@ -1,3 +1,8 @@
+# Git
+.git/
+.gitignore
+.gitattributes
+
 # Python
 __pycache__/
 *.py[cod]
@@ -8,38 +13,43 @@ env/
 venv/
 ENV/
 .venv
-pip-log.txt
-pip-delete-this-directory.txt
-.tox/
+.pytest_cache/
 .coverage
 .coverage.*
 .cache
-.pytest_cache/
 nosetests.xml
 coverage.xml
 *.cover
 .hypothesis/
+.mypy_cache/
+.dmypy.json
+dmyp.json
 
-# Celery
-celerybeat-schedule
-celerybeat.pid
-
-# Environments
+# Environments - критично для безпеки
 .env
 .env.*
 !.env.example
 
+# Logs - монтуються як volume
+logs/
+*.log
+
+# Temp files - монтуються як volume
+temp/
+tmp/
+*.tmp
+*.swp
+*.swo
+
 # IDEs
 .vscode/
 .idea/
-*.swp
-*.swo
 *~
 .project
 .pydevproject
 .settings/
 
-# OS
+# OS files
 .DS_Store
 .DS_Store?
 ._*
@@ -48,37 +58,73 @@ celerybeat.pid
 ehthumbs.db
 Thumbs.db
 
-# Git
-.git/
-.gitignore
+# Project specific - не потрібні в runtime
+cleaner.py
+commands.txt
+README.md
+*.md
+!requirements.txt
 
-# Logs
-logs/
-*.log
+# Docker files - крім основного
+docker-compose*.yml
+docker/.dockerignore
+Dockerfile.*
+!docker/Dockerfile
 
-# Temp
-temp/
-tmp/
-
-# MongoDB
+# Database dumps
 data/
 dump/
+*.dump
+*.sql
+
+# Celery
+celerybeat-schedule
+celerybeat.pid
 
 # Tests
 tests/
 test_*.py
+*_test.py
+pytest.ini
+tox.ini
 
 # Documentation
 docs/
-*.md
-!README.md
+*.rst
 
+# CI/CD
+.github/
+.gitlab-ci.yml
+Jenkinsfile
+.travis.yml
 
-# Docker
-docker-compose.override.yml
-Dockerfile.*
-!Dockerfile
+# Backup files
+*.bak
+*.backup
+*.old
 
-# Project specific
-cleaner.py
-commands.txt
+# Video files - якщо випадково потраплять
+*.mp4
+*.avi
+*.mov
+*.mkv
+*.wmv
+
+# Archive files
+*.zip
+*.tar
+*.tar.gz
+*.rar
+*.7z
+
+# Jupyter notebooks
+*.ipynb
+.ipynb_checkpoints/
+
+# Package managers
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+yarn.lock

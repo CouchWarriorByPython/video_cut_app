@@ -36,8 +36,5 @@ COPY . .
 # Створення необхідних директорій
 RUN mkdir -p temp logs temp/source_videos
 
-# Експозиція порту
-EXPOSE 8000
-
 # Команда за замовчуванням - запуск через main.py щоб використати Settings
 CMD ["python", "backend/main.py"]

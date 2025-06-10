@@ -36,8 +36,8 @@ class Settings:
 
     ffmpeg_log_level: ClassVar[str] = ""
 
-    host: ClassVar[str] = ""
-    port: ClassVar[int] = 0
+    fast_api_host: ClassVar[str] = ""
+    fast_api_port: ClassVar[int] = 0
     reload: ClassVar[bool] = False
 
     azure_download_chunk_size: ClassVar[int] = 16777216
@@ -83,8 +83,8 @@ class Settings:
 
         cls.ffmpeg_log_level = os.getenv("FFMPEG_LOG_LEVEL", "error")
 
-        cls.host = os.getenv("HOST", "0.0.0.0")
-        cls.port = int(os.getenv("PORT", "8000"))
+        cls.fast_api_host = os.getenv("FAST_API_HOST", "0.0.0.0")
+        cls.fast_api_port = int(os.getenv("FAST_API_PORT", "8000"))
         cls.reload = os.getenv("RELOAD", "false").lower() in ("true", "1", "yes")
 
         cls.azure_download_chunk_size = int(os.getenv("AZURE_DOWNLOAD_CHUNK_SIZE", "16777216"))

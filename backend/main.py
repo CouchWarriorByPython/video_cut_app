@@ -44,12 +44,12 @@ if __name__ == "__main__":
     import uvicorn
 
     logger.info(f"MongoDB URI: {Settings.mongo_uri}")
-    logger.info(f"Запуск сервера на {Settings.host}:{Settings.port}")
+    logger.info(f"Запуск сервера на {Settings.fast_api_host}:{Settings.fast_api_port}")
 
     uvicorn.run(
         "backend.main:app",
-        host=Settings.host,
-        port=Settings.port,
+        host=Settings.fast_api_host,
+        port=Settings.fast_api_port,
         reload=Settings.reload,
         log_level="info"
     )

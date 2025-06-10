@@ -1,10 +1,57 @@
 import os
 import subprocess
+import json
 from typing import Optional, Dict, Any
 from backend.utils.logger import get_logger
 from backend.config.settings import Settings
 
 logger = get_logger(__name__, "utils.log")
+
+
+def get_video_info(video_path: str) -> Optional[Dict[str, Any]]:
+    """Отримує детальну інформацію про відео"""
+    cmd = [
+        "ffprobe",
+        "-v", "quiet",
+        "-print_format", "json",
+        "-show_format",
+        "-show_streams",
+        video_path
+    ]
+
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+        probe_data = json.loads(result.stdout)
+
+        video_stream = None
+        audio_stream = None
+
+        for stream in probe_data.get("streams", []):
+            if stream.get("codec_type") == "video" and not video_stream:
+                video_stream = stream
+            elif stream.get("codec_type") == "audio" and not audio_stream:
+                audio_stream = stream
+
+        format_info = probe_data.get("format", {})
+
+        return {
+            "container": format_info.get("format_name", "").split(",")[0],
+            "duration": float(format_info.get("duration", 0)),
+            "size": int(format_info.get("size", 0)),
+            "bitrate": int(format_info.get("bit_rate", 0)),
+            "video_codec": video_stream.get("codec_name", "") if video_stream else "",
+            "video_profile": video_stream.get("profile", "") if video_stream else "",
+            "width": int(video_stream.get("width", 0)) if video_stream else 0,
+            "height": int(video_stream.get("height", 0)) if video_stream else 0,
+            "fps": eval(video_stream.get("r_frame_rate", "0/1")) if video_stream else 0,
+            "audio_codec": audio_stream.get("codec_name", "") if audio_stream else "",
+            "audio_bitrate": int(audio_stream.get("bit_rate", 0)) if audio_stream else 0,
+            "audio_channels": int(audio_stream.get("channels", 0)) if audio_stream else 0,
+        }
+
+    except Exception as e:
+        logger.error(f"Помилка отримання інформації про відео {video_path}: {str(e)}")
+        return None
 
 
 def get_video_fps(video_path: str) -> Optional[float]:
@@ -82,7 +129,6 @@ def format_filename(
 
     filename_parts = []
 
-    # Додаємо тільки непусті частини
     if uav_type:
         filename_parts.append(uav_type)
     if where:
@@ -90,7 +136,6 @@ def format_filename(
     if when:
         filename_parts.append(when)
 
-    # Базова частина завжди додається
     filename_parts.append(f"{video_base_name}_{project}_{clip_id}")
 
     return "_".join(filename_parts) + ".mp4"

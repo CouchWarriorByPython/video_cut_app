@@ -4,7 +4,7 @@ from fastapi.templating import Jinja2Templates
 
 router = APIRouter(tags=["static"])
 
-templates = Jinja2Templates(directory="front")
+templates = Jinja2Templates(directory="front/html")
 
 
 @router.get("/", response_class=HTMLResponse)
@@ -25,28 +25,46 @@ async def faq(request: Request) -> HTMLResponse:
     return templates.TemplateResponse("faq.html", {"request": request})
 
 
-@router.get("/styles.css")
-async def serve_css() -> FileResponse:
-    """Статичний CSS файл"""
-    return FileResponse("front/styles.css", media_type="text/css")
+@router.get("/css/base.css")
+async def serve_base_css() -> FileResponse:
+    """Базовий CSS файл"""
+    return FileResponse("front/css/base.css", media_type="text/css")
 
 
-@router.get("/upload.js")
+@router.get("/css/upload.css")
+async def serve_upload_css() -> FileResponse:
+    """CSS для сторінки завантаження"""
+    return FileResponse("front/css/upload.css", media_type="text/css")
+
+
+@router.get("/css/annotator.css")
+async def serve_annotator_css() -> FileResponse:
+    """CSS для сторінки анотування"""
+    return FileResponse("front/css/annotator.css", media_type="text/css")
+
+
+@router.get("/css/faq.css")
+async def serve_faq_css() -> FileResponse:
+    """CSS для сторінки FAQ"""
+    return FileResponse("front/css/faq.css", media_type="text/css")
+
+
+@router.get("/js/upload.js")
 async def serve_upload_js() -> FileResponse:
-    """Статичний JS файл для завантаження"""
-    return FileResponse("front/upload.js", media_type="application/javascript")
+    """JS для сторінки завантаження"""
+    return FileResponse("front/js/upload.js", media_type="application/javascript")
 
 
-@router.get("/annotator.js")
+@router.get("/js/annotator.js")
 async def serve_annotator_js() -> FileResponse:
-    """Статичний JS файл для анотування"""
-    return FileResponse("front/annotator.js", media_type="application/javascript")
+    """JS для сторінки анотування"""
+    return FileResponse("front/js/annotator.js", media_type="application/javascript")
 
 
-@router.get("/faq.js")
+@router.get("/js/faq.js")
 async def serve_faq_js() -> FileResponse:
-    """Статичний JS файл для FAQ"""
-    return FileResponse("front/faq.js", media_type="application/javascript")
+    """JS для сторінки FAQ"""
+    return FileResponse("front/js/faq.js", media_type="application/javascript")
 
 
 @router.get("/favicon.png")

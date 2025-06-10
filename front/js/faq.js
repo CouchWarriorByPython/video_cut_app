@@ -91,18 +91,18 @@ function generateDroneImages(images, droneName) {
     let imagesHTML = '<div class="drone-images-gallery">';
 
     images.forEach((imageData, index) => {
-        const caption = imageData.modification ? imageData.modification : droneName;
+        const hasModification = imageData.modification && imageData.modification.trim();
+        const caption = hasModification ? imageData.modification : droneName;
 
         imagesHTML += `
             <div class="drone-image-item">
-                <div class="drone-image">
+                <div class="drone-image" 
+                     onclick="openLightbox('/static/images/drones/${imageData.src}', '${caption}')">
                     <img src="/static/images/drones/${imageData.src}" 
                          alt="${caption}" 
                          onerror="this.src='/static/images/drones/placeholder.png'">
                 </div>
-                <div class="image-caption ${imageData.modification ? 'modification-caption' : 'main-caption'}">
-                    ${caption}
-                </div>
+                ${hasModification ? `<div class="image-caption">${imageData.modification}</div>` : ''}
             </div>
         `;
     });
@@ -159,6 +159,15 @@ function setupDroneAccordion() {
         header.addEventListener('click', function() {
             const isActive = item.classList.contains('active');
 
+            // Закриваємо всі інші accordion елементи
+            accordionItems.forEach(otherItem => {
+                if (otherItem !== item && otherItem.classList.contains('active')) {
+                    otherItem.classList.remove('active');
+                    otherItem.querySelector('.accordion-content').style.maxHeight = null;
+                    otherItem.querySelector('.accordion-icon').textContent = '▼';
+                }
+            });
+
             if (isActive) {
                 item.classList.remove('active');
                 content.style.maxHeight = null;
@@ -172,21 +181,50 @@ function setupDroneAccordion() {
     });
 }
 
+// Lightbox функціональність
+function openLightbox(imageSrc, caption) {
+    const lightbox = document.getElementById('imageLightbox');
+    const lightboxImage = document.getElementById('lightboxImage');
+    const lightboxCaption = document.getElementById('lightboxCaption');
+
+    lightboxImage.src = imageSrc;
+    lightboxImage.alt = caption;
+    lightboxCaption.textContent = caption;
+
+    lightbox.style.display = 'block';
+    document.body.style.overflow = 'hidden'; // Заборонити прокрутку фону
+}
+
+function closeLightbox() {
+    const lightbox = document.getElementById('imageLightbox');
+    lightbox.style.display = 'none';
+    document.body.style.overflow = 'auto'; // Відновити прокрутку
+}
+
+function setupLightbox() {
+    const lightbox = document.getElementById('imageLightbox');
+    const closeBtn = document.querySelector('.lightbox-close');
+
+    // Закрити при кліку на хрестик
+    closeBtn.addEventListener('click', closeLightbox);
+
+    // Закрити при кліку поза зображенням
+    lightbox.addEventListener('click', function(e) {
+        if (e.target === lightbox || e.target.classList.contains('lightbox-content')) {
+            closeLightbox();
+        }
+    });
+
+    // Закрити при натисканні Escape
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape' && lightbox.style.display === 'block') {
+            closeLightbox();
+        }
+    });
+}
+
 document.addEventListener('DOMContentLoaded', function() {
-    // Генеруємо весь контент
     generateAllDrones();
-
-    // Налаштовуємо обробники подій
     setupDroneAccordion();
-
-    // Відкриваємо перший тип дрона за замовчуванням
-    const firstDrone = document.querySelector('.accordion-item');
-    if (firstDrone) {
-        const firstContent = firstDrone.querySelector('.accordion-content');
-        const firstIcon = firstDrone.querySelector('.accordion-icon');
-
-        firstDrone.classList.add('active');
-        firstContent.style.maxHeight = firstContent.scrollHeight + 'px';
-        firstIcon.textContent = '▲';
-    }
+    setupLightbox();
 });

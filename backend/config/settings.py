@@ -7,16 +7,13 @@ from pathlib import Path
 class Settings:
     """Централізовані налаштування програми з завантаженням з .env файлу"""
 
-    # MongoDB
     mongo_uri: ClassVar[str] = ""
     mongo_db_name: ClassVar[str] = ""
 
-    # Redis/Celery
     redis_url: ClassVar[str] = ""
     celery_broker_url: ClassVar[str] = ""
     celery_result_backend: ClassVar[str] = ""
 
-    # Azure Storage - service principal credentials
     azure_tenant_id: ClassVar[str] = ""
     azure_client_id: ClassVar[str] = ""
     azure_client_secret: ClassVar[str] = ""
@@ -25,48 +22,45 @@ class Settings:
     azure_input_folder_path: ClassVar[str] = ""
     azure_output_folder_path: ClassVar[str] = ""
 
-    # CVAT налаштування
     cvat_host: ClassVar[str] = ""
     cvat_port: ClassVar[int] = 8080
     cvat_username: ClassVar[str] = ""
     cvat_password: ClassVar[str] = ""
 
-    # Тимчасові шляхи для обробки
     temp_folder: ClassVar[str] = ""
     logs_folder: ClassVar[str] = ""
 
-    # Логування
     log_level: ClassVar[str] = ""
     log_max_bytes: ClassVar[int] = 0
     log_backup_count: ClassVar[int] = 0
 
-    # Відео обробка
     ffmpeg_log_level: ClassVar[str] = ""
 
-    # Веб сервер
     host: ClassVar[str] = ""
     port: ClassVar[int] = 0
     reload: ClassVar[bool] = False
 
-    # Оптимізація завантаження
     azure_download_chunk_size: ClassVar[int] = 16777216
     azure_max_concurrency: ClassVar[int] = 4
+
+    video_conversion_preset: ClassVar[str] = "fast"
+    video_conversion_crf: ClassVar[int] = 23
+    enable_hardware_acceleration: ClassVar[bool] = True
+    skip_conversion_for_compatible: ClassVar[bool] = True
+    max_conversion_workers: ClassVar[int] = 2
 
     @classmethod
     def load_from_env(cls) -> None:
         """Завантаження налаштувань з .env файлу"""
         load_dotenv(".env", override=True)
 
-        # MongoDB - обов'язкові
         cls.mongo_uri = os.getenv("MONGO_URI", "")
         cls.mongo_db_name = os.getenv("MONGO_DB", "video_annotator")
 
-        # Redis/Celery - обов'язкові
         cls.redis_url = os.getenv("REDIS_URL", "redis://redis:6379/0")
         cls.celery_broker_url = os.getenv("CELERY_BROKER_URL", "redis://redis:6379/0")
         cls.celery_result_backend = os.getenv("CELERY_RESULT_BACKEND", "redis://redis:6379/0")
 
-        # Azure Storage - обов'язкові credentials
         cls.azure_tenant_id = os.getenv("AZURE_TENANT_ID", "")
         cls.azure_client_id = os.getenv("AZURE_CLIENT_ID", "")
         cls.azure_client_secret = os.getenv("AZURE_CLIENT_SECRET", "")
@@ -75,33 +69,36 @@ class Settings:
         cls.azure_input_folder_path = os.getenv("AZURE_INPUT_FOLDER_PATH", "input/")
         cls.azure_output_folder_path = os.getenv("AZURE_OUTPUT_FOLDER_PATH", "output/")
 
-        # CVAT налаштування - обов'язкові
         cls.cvat_host = os.getenv("CVAT_HOST", "localhost")
         cls.cvat_port = int(os.getenv("CVAT_PORT", "8080"))
         cls.cvat_username = os.getenv("CVAT_USERNAME", "")
         cls.cvat_password = os.getenv("CVAT_PASSWORD", "")
 
-        # Тимчасові шляхи - з дефолтами
         cls.temp_folder = os.getenv("TEMP_FOLDER", "temp")
         cls.logs_folder = os.getenv("LOGS_FOLDER", "logs")
 
-        # Логування - з дефолтами
         cls.log_level = os.getenv("LOG_LEVEL", "INFO")
         cls.log_max_bytes = int(os.getenv("LOG_MAX_BYTES", str(10 * 1024 * 1024)))
         cls.log_backup_count = int(os.getenv("LOG_BACKUP_COUNT", "5"))
 
-        # Відео обробка - з дефолтами
         cls.ffmpeg_log_level = os.getenv("FFMPEG_LOG_LEVEL", "error")
 
-        # Веб сервер - з дефолтами
         cls.host = os.getenv("HOST", "0.0.0.0")
         cls.port = int(os.getenv("PORT", "8000"))
         cls.reload = os.getenv("RELOAD", "false").lower() in ("true", "1", "yes")
 
-        # Створюємо необхідні директорії
-        cls._create_directories()
+        cls.azure_download_chunk_size = int(os.getenv("AZURE_DOWNLOAD_CHUNK_SIZE", "16777216"))
+        cls.azure_max_concurrency = int(os.getenv("AZURE_MAX_CONCURRENCY", "4"))
 
-        # Валідуємо обов'язкові налаштування
+        cls.video_conversion_preset = os.getenv("VIDEO_CONVERSION_PRESET", "fast")
+        cls.video_conversion_crf = int(os.getenv("VIDEO_CONVERSION_CRF", "23"))
+        cls.enable_hardware_acceleration = os.getenv("ENABLE_HARDWARE_ACCELERATION", "true").lower() in ("true", "1",
+                                                                                                         "yes")
+        cls.skip_conversion_for_compatible = os.getenv("SKIP_CONVERSION_FOR_COMPATIBLE", "true").lower() in ("true",
+                                                                                                             "1", "yes")
+        cls.max_conversion_workers = int(os.getenv("MAX_CONVERSION_WORKERS", "2"))
+
+        cls._create_directories()
         cls._validate_required_settings()
 
     @classmethod

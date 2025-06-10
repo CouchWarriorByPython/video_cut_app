@@ -1,7 +1,9 @@
+version: '3.8'
+
 services:
   mongodb:
     image: mongo:7.0
-    container_name: video_annotator_mongodb
+    container_name: video_annotator_mongodb_dev
     restart: unless-stopped
     ports:
       - "27017:27017"
@@ -11,18 +13,18 @@ services:
       - MONGO_INITDB_ROOT_USERNAME=${MONGO_INITDB_ROOT_USERNAME:-admin}
       - MONGO_INITDB_ROOT_PASSWORD=${MONGO_INITDB_ROOT_PASSWORD:-password}
     volumes:
-      - mongodb_data:/data/db
+      - mongodb_data_dev:/data/db
       - ./mongo/mongod.conf:/etc/mongod.conf:ro
     command: [ "mongod", "--config", "/etc/mongod.conf" ]
     logging:
       driver: "local"
       options:
         max-size: "10m"
-        max-file: "5"
+        max-file: "3"
 
   mongo-express:
     image: mongo-express:latest
-    container_name: video_annotator_mongo_express
+    container_name: video_annotator_mongo_express_dev
     restart: unless-stopped
     ports:
       - "8081:8081"
@@ -39,18 +41,19 @@ services:
 
   redis:
     image: redis:7.2-alpine
-    container_name: video_annotator_redis
+    container_name: video_annotator_redis_dev
     restart: unless-stopped
     ports:
       - "6379:6379"
     volumes:
-      - redis_data:/data
+      - redis_data_dev:/data
+    command: redis-server --maxmemory 128mb --maxmemory-policy allkeys-lru
 
   app:
     build:
       context: .
       dockerfile: docker/Dockerfile
-    container_name: video_annotator_app
+    container_name: video_annotator_app_dev
     restart: unless-stopped
     ports:
       - "8000:8000"
@@ -63,13 +66,29 @@ services:
       - mongodb
       - redis
 
-  celery-worker:
+  celery-general:
     build:
       context: .
       dockerfile: docker/Dockerfile
-    container_name: video_annotator_celery
+    container_name: video_annotator_celery_general_dev
     restart: unless-stopped
-    command: celery -A backend.background_tasks.app worker --loglevel=info --concurrency=4
+    command: celery -A backend.background_tasks.app worker --loglevel=info --concurrency=2 --queues=default,video_processing,clip_processing
+    env_file:
+      - .env
+    volumes:
+      - ./temp:/app/temp
+      - ./logs:/app/logs
+    depends_on:
+      - mongodb
+      - redis
+
+  celery-conversion:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    container_name: video_annotator_celery_conversion_dev
+    restart: unless-stopped
+    command: celery -A backend.background_tasks.app worker --loglevel=info --concurrency=1 --queues=video_conversion --max-tasks-per-child=10
     env_file:
       - .env
     volumes:
@@ -83,7 +102,7 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile
-    container_name: video_annotator_flower
+    container_name: video_annotator_flower_dev
     restart: unless-stopped
     command: celery -A backend.background_tasks.app flower --port=5555
     ports:
@@ -95,7 +114,7 @@ services:
 
   nginx:
     image: nginx:alpine
-    container_name: video_annotator_nginx
+    container_name: video_annotator_nginx_dev
     restart: unless-stopped
     ports:
       - "80:80"
@@ -105,5 +124,5 @@ services:
       - app
 
 volumes:
-  mongodb_data:
-  redis_data:
+  mongodb_data_dev:
+  redis_data_dev:

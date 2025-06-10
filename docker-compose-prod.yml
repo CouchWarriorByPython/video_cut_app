@@ -1,7 +1,9 @@
+version: '3.8'
+
 services:
   mongodb:
     image: mongo:7.0
-    container_name: video_annotator_mongodb
+    container_name: video_annotator_mongodb_prod
     restart: unless-stopped
     ports:
       - "27018:27017"
@@ -11,7 +13,7 @@ services:
       - MONGO_INITDB_ROOT_USERNAME=${MONGO_INITDB_ROOT_USERNAME:-admin}
       - MONGO_INITDB_ROOT_PASSWORD=${MONGO_INITDB_ROOT_PASSWORD:-password}
     volumes:
-      - mongodb_data:/data/db
+      - mongodb_data_prod:/data/db
       - ./mongo/mongod.conf:/etc/mongod.conf:ro
     command: [ "mongod", "--config", "/etc/mongod.conf" ]
     logging:
@@ -22,7 +24,7 @@ services:
 
   mongo-express:
     image: mongo-express:latest
-    container_name: video_annotator_mongo_express
+    container_name: video_annotator_mongo_express_prod
     restart: unless-stopped
     ports:
       - "8082:8081"
@@ -39,18 +41,19 @@ services:
 
   redis:
     image: redis:7.2-alpine
-    container_name: video_annotator_redis
+    container_name: video_annotator_redis_prod
     restart: unless-stopped
     ports:
       - "6380:6379"
     volumes:
-      - redis_data:/data
+      - redis_data_prod:/data
+    command: redis-server --maxmemory 512mb --maxmemory-policy allkeys-lru
 
   app:
     build:
       context: .
       dockerfile: docker/Dockerfile
-    container_name: video_annotator_app
+    container_name: video_annotator_app_prod
     restart: unless-stopped
     ports:
       - "8002:8000"
@@ -62,14 +65,22 @@ services:
     depends_on:
       - mongodb
       - redis
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: '4096M'
+        reservations:
+          cpus: '1.0'
+          memory: '2048M'
 
-  celery-worker:
+  celery-general:
     build:
       context: .
       dockerfile: docker/Dockerfile
-    container_name: video_annotator_celery
+    container_name: video_annotator_celery_general_prod
     restart: unless-stopped
-    command: celery -A backend.background_tasks.app worker --loglevel=info --concurrency=4
+    command: celery -A backend.background_tasks.app worker --loglevel=info --concurrency=4 --queues=default,video_processing,clip_processing
     env_file:
       - .env
     volumes:
@@ -78,12 +89,44 @@ services:
     depends_on:
       - mongodb
       - redis
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: '3072M'
+        reservations:
+          cpus: '1.0'
+          memory: '1536M'
+
+  celery-conversion:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    container_name: video_annotator_celery_conversion_prod
+    restart: unless-stopped
+    command: celery -A backend.background_tasks.app worker --loglevel=info --concurrency=2 --queues=video_conversion --max-tasks-per-child=5
+    env_file:
+      - .env
+    volumes:
+      - ./temp:/app/temp
+      - ./logs:/app/logs
+    depends_on:
+      - mongodb
+      - redis
+    deploy:
+      resources:
+        limits:
+          cpus: '4.0'
+          memory: '4096M'
+        reservations:
+          cpus: '2.0'
+          memory: '2048M'
 
   flower:
     build:
       context: .
       dockerfile: docker/Dockerfile
-    container_name: video_annotator_flower
+    container_name: video_annotator_flower_prod
     restart: unless-stopped
     command: celery -A backend.background_tasks.app flower --port=5555
     ports:
@@ -95,7 +138,7 @@ services:
 
   nginx:
     image: nginx:alpine
-    container_name: video_annotator_nginx
+    container_name: video_annotator_nginx_prod
     restart: unless-stopped
     ports:
       - "8888:80"
@@ -105,5 +148,13 @@ services:
       - app
 
 volumes:
-  mongodb_data:
-  redis_data:
+  mongodb_data_prod:
+  redis_data_prod:
+
+# Для GPU доступу потрібно:
+# 1. Встановити nvidia-container-toolkit:
+#    sudo apt install nvidia-container-toolkit
+#    sudo systemctl restart docker
+# 
+# 2. Запускати з GPU підтримкою:
+#    docker-compose -f docker-compose-prod.yml up celery-conversion --gpus all

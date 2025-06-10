@@ -1,0 +1,186 @@
+/* FAQ styles */
+.page-description {
+    color: var(--text-muted);
+    margin-bottom: 30px;
+    font-size: 18px;
+}
+
+.faq-accordion {
+    max-width: 100%;
+}
+
+.accordion-item {
+    background-color: var(--card-bg);
+    border-radius: 8px;
+    margin-bottom: 15px;
+    overflow: hidden;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+.accordion-header {
+    padding: 20px;
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background-color: var(--card-bg);
+    transition: background-color 0.2s ease;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.accordion-header:hover {
+    background-color: var(--input-bg);
+}
+
+.accordion-header h3 {
+    margin: 0;
+    color: var(--text-light);
+    font-size: 20px;
+    font-weight: 600;
+}
+
+.accordion-icon {
+    font-size: 18px;
+    color: var(--primary-color);
+    transition: transform 0.2s ease;
+}
+
+.accordion-item.active .accordion-icon {
+    transform: rotate(180deg);
+}
+
+.accordion-content {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.3s ease;
+    background-color: var(--bg-darker);
+}
+
+.drone-content {
+    padding: 20px;
+}
+
+.drone-description {
+    background-color: var(--card-bg);
+    padding: 15px;
+    border-radius: 6px;
+    margin-bottom: 20px;
+    border-left: 4px solid var(--primary-color);
+    font-style: italic;
+    color: var(--text-muted);
+}
+
+.drone-images-gallery {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 20px;
+}
+
+.drone-image-item {
+    background-color: var(--card-bg);
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    display: flex;
+    flex-direction: column;
+}
+
+.drone-image {
+    width: 100%;
+    height: 400px;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: var(--bg-dark);
+    flex-shrink: 0;
+}
+
+.drone-image img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: center;
+}
+
+.image-caption {
+    padding: 12px;
+    text-align: center;
+    font-weight: 500;
+    background-color: var(--primary-color);
+    color: white;
+    flex-shrink: 0;
+}
+
+/* Image lightbox */
+.image-lightbox {
+    display: none;
+    position: fixed;
+    z-index: 1000;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.9);
+    cursor: pointer;
+}
+
+.lightbox-content {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    box-sizing: border-box;
+}
+
+.lightbox-image {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+    border-radius: 8px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+}
+
+.lightbox-close {
+    position: absolute;
+    top: 20px;
+    right: 30px;
+    color: white;
+    font-size: 40px;
+    font-weight: bold;
+    cursor: pointer;
+    z-index: 1001;
+    transition: opacity 0.2s ease;
+}
+
+.lightbox-close:hover {
+    opacity: 0.7;
+}
+
+.lightbox-caption {
+    position: absolute;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    background-color: rgba(0, 0, 0, 0.8);
+    color: white;
+    padding: 10px 20px;
+    border-radius: 6px;
+    font-size: 16px;
+    font-weight: 500;
+    max-width: 80%;
+    text-align: center;
+}
+
+/* Додати курсор для зображень */
+.drone-image {
+    cursor: pointer;
+    transition: opacity 0.2s ease;
+}
+
+.drone-image:hover {
+    opacity: 0.8;
+}

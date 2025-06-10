@@ -19,6 +19,12 @@ async def annotator(request: Request) -> HTMLResponse:
     return templates.TemplateResponse("annotator.html", {"request": request})
 
 
+@router.get("/faq", response_class=HTMLResponse)
+async def faq(request: Request) -> HTMLResponse:
+    """Сторінка FAQ з інформацією про дрони"""
+    return templates.TemplateResponse("faq.html", {"request": request})
+
+
 @router.get("/styles.css")
 async def serve_css() -> FileResponse:
     """Статичний CSS файл"""
@@ -35,3 +41,21 @@ async def serve_upload_js() -> FileResponse:
 async def serve_annotator_js() -> FileResponse:
     """Статичний JS файл для анотування"""
     return FileResponse("front/annotator.js", media_type="application/javascript")
+
+
+@router.get("/faq.js")
+async def serve_faq_js() -> FileResponse:
+    """Статичний JS файл для FAQ"""
+    return FileResponse("front/faq.js", media_type="application/javascript")
+
+
+@router.get("/favicon.png")
+async def serve_favicon_png() -> FileResponse:
+    """Favicon PNG"""
+    return FileResponse("front/static/images/favicon.png", media_type="image/png")
+
+
+@router.get("/favicon.ico")
+async def serve_favicon_ico() -> FileResponse:
+    """Favicon ICO (аліас для PNG)"""
+    return FileResponse("front/static/images/favicon.png", media_type="image/png")

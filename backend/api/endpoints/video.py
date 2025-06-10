@@ -103,9 +103,3 @@ async def get_video(azure_link: str) -> FileResponse:
             "Content-Type": "video/mp4"
         }
     )
-
-
-@router.get("/favicon.ico")
-async def serve_favicon():
-    """Іконка сайту - заглушка"""
-    return Response(status_code=204)

@@ -25,7 +25,10 @@ app.add_exception_handler(StarletteHTTPException, http_exception_handler)
 app.add_exception_handler(Exception, general_exception_handler)
 
 # Монтування статичних файлів
-if os.path.exists("front"):
+if os.path.exists("front/static"):
+    app.mount("/static", StaticFiles(directory="front/static"), name="static")
+    logger.info("Статичні файли змонтовано з директорії 'front/static'")
+elif os.path.exists("front"):
     app.mount("/static", StaticFiles(directory="front"), name="static")
     logger.info("Статичні файли змонтовано з директорії 'front'")
 else:

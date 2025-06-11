@@ -67,11 +67,11 @@ function init() {
     setupEventListeners();
     syncActiveProjects();
 
-    // Перевіряємо параметр video_id в URL
+    // Перевіряємо параметр azure_link в URL
     const urlParams = new URLSearchParams(window.location.search);
-    const videoId = urlParams.get('video_id');
-    if (videoId) {
-        selectVideoById(videoId);
+    const azureLink = urlParams.get('azure_link');
+    if (azureLink) {
+        selectVideoByAzureLink(azureLink);
     }
 }
 
@@ -145,11 +145,16 @@ function populateVideoSelect(videos) {
 
 function getStatusIndicator(status) {
     const indicators = {
-        'processing': '⏳',
+        'queued': '⏳',
+        'downloading': '⬇️',
+        'analyzing': '🔍',
         'converting': '🔄',
         'ready': '✅',
         'not_annotated': '✅',
+        'processing_failed': '❌',
+        'download_failed': '❌',
         'conversion_failed': '❌',
+        'analysis_failed': '❌',
         'annotated': '✓'
     };
     return indicators[status] || '❓';
@@ -159,13 +164,22 @@ function isVideoReadyForAnnotation(status) {
     return ['ready', 'not_annotated'].includes(status);
 }
 
-function selectVideoById(videoId) {
-    const option = videoSelect.querySelector(`option[data-video-id="${videoId}"]`);
+function selectVideoByAzureLink(azureLink) {
+    const option = videoSelect.querySelector(`option[data-azure-link="${azureLink}"]`);
     if (option) {
         videoSelect.value = option.value;
         handleLoadVideo();
     } else {
-        console.warn(`Відео з ID ${videoId} не знайдено в списку`);
+        console.warn(`Відео з Azure Link ${azureLink} не знайдено в списку`);
+        // Оновлюємо список відео та спробуємо ще раз
+        loadVideoList();
+        setTimeout(() => {
+            const retryOption = videoSelect.querySelector(`option[data-azure-link="${azureLink}"]`);
+            if (retryOption) {
+                videoSelect.value = retryOption.value;
+                handleLoadVideo();
+            }
+        }, 1000);
     }
 }
 
@@ -213,9 +227,14 @@ function showVideoProcessingStatus(azureLink, filename, status) {
 
 function getStatusMessage(status) {
     const messages = {
-        'processing': 'Завантаження з Azure Storage...',
+        'queued': 'В черзі на обробку...',
+        'downloading': 'Завантаження з Azure Storage...',
+        'analyzing': 'Аналіз характеристик відео...',
         'converting': 'Конвертація відео для браузера...',
-        'conversion_failed': 'Помилка конвертації відео'
+        'processing_failed': 'Помилка обробки відео',
+        'download_failed': 'Помилка завантаження з Azure Storage',
+        'conversion_failed': 'Помилка конвертації відео',
+        'analysis_failed': 'Помилка аналізу відео'
     };
     return messages[status] || 'Обробка відео...';
 }
@@ -241,9 +260,9 @@ function checkVideoStatus(azureLink) {
                     clearInterval(statusCheckInterval);
                     // Автоматично перезавантажуємо відео для анотування
                     location.reload();
-                } else if (data.status === 'conversion_failed') {
+                } else if (data.status.includes('failed')) {
                     clearInterval(statusCheckInterval);
-                    showConversionError();
+                    showProcessingError(data.status);
                 }
             }
         })
@@ -259,12 +278,23 @@ function updateVideoStatusDisplay(statusData) {
     }
 }
 
-function showConversionError() {
+function showProcessingError(status) {
     const errorDiv = document.createElement('div');
     errorDiv.className = 'error-message';
+
+    let errorText = 'Не вдалося обробити відео.';
+    if (status === 'download_failed') {
+        errorText = 'Не вдалося завантажити відео з Azure Storage. Перевірте посилання.';
+    } else if (status === 'conversion_failed') {
+        errorText = 'Не вдалося конвертувати відео в web-сумісний формат.';
+    } else if (status === 'analysis_failed') {
+        errorText = 'Не вдалося проаналізувати характеристики відео.';
+    }
+
     errorDiv.innerHTML = `
-        <h3>Помилка конвертації відео</h3>
-        <p>Не вдалося конвертувати відео в web-сумісний формат. Спробуйте завантажити інше відео.</p>
+        <h3>Помилка обробки відео</h3>
+        <p>${errorText}</p>
+        <p>Спробуйте завантажити відео ще раз або оберіть інший файл.</p>
     `;
 
     const existingCard = videoEditor.querySelector('.card');

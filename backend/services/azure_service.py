@@ -5,7 +5,7 @@ from azure.storage.blob import BlobServiceClient, ContainerClient
 
 from backend.utils.azure_utils import (
     get_blob_service_client, get_blob_container_client,
-    parse_azure_blob_url, download_blob_to_local, upload_clip_to_azure
+    parse_azure_blob_url, upload_clip_to_azure
 )
 from backend.config.settings import Settings
 from backend.utils.logger import get_logger
@@ -76,20 +76,19 @@ class AzureService:
                 "error": f"Помилка валідації URL: {str(e)}"
             }
 
-    def download_video_to_local(self, azure_url: str, local_path: str) -> Dict[str, Any]:
-        """Завантажує відео з Azure Storage локально з підтримкою українських символів"""
+    def download_video_to_local_with_progress(
+            self,
+            azure_url: str,
+            local_path: str,
+            progress_callback=None
+    ) -> Dict[str, Any]:
+        """Завантажує відео з Azure Storage локально з паралельним завантаженням та прогресом"""
         try:
-            # Створюємо директорію якщо не існує
-            os.makedirs(os.path.dirname(local_path), exist_ok=True)
+            from backend.utils.azure_utils import download_blob_to_local_parallel_with_progress
 
-            result = download_blob_to_local(azure_url, local_path)
-
-            if result["success"]:
-                logger.info(f"Відео завантажено локально: {local_path}")
-            else:
-                logger.error(f"Помилка завантаження відео: {result['error']}")
-
-            return result
+            return download_blob_to_local_parallel_with_progress(
+                azure_url, local_path, progress_callback
+            )
 
         except Exception as e:
             logger.error(f"Помилка при завантаженні відео {azure_url}: {str(e)}")

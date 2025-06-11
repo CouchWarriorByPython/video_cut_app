@@ -18,7 +18,7 @@ class VideoService:
         self.azure_service = AzureService()
 
     def validate_and_register_video(self, video_url: str, where: Optional[str], when: Optional[str]) -> Dict[str, Any]:
-        """Валідує, завантажує та реєструє відео"""
+        """Валідує Azure URL та реєструє відео для асинхронної обробки"""
         try:
             validation_result = self.azure_service.validate_azure_url(video_url)
 
@@ -29,15 +29,6 @@ class VideoService:
                 }
 
             filename = validation_result["filename"]
-            local_path = get_local_video_path(filename)
-
-            download_result = self.azure_service.download_video_to_local(video_url, local_path)
-
-            if not download_result["success"]:
-                return {
-                    "success": False,
-                    "error": f"Помилка завантаження відео: {download_result['error']}"
-                }
 
             video_record = {
                 "azure_link": video_url,
@@ -46,26 +37,25 @@ class VideoService:
                 "updated_at": datetime.now().isoformat(sep=" ", timespec="seconds"),
                 "when": when,
                 "where": where,
-                "status": "processing"  # Змінено з "not_annotated" на "processing"
+                "status": "queued"
             }
 
             self.source_repo.create_indexes()
             record_id = self.source_repo.save_annotation(video_record)
 
-            # Запускаємо конвертацію відео
-            from backend.background_tasks.tasks.video_conversion import convert_video_for_web
-            conversion_task = convert_video_for_web.delay(video_url)
+            # Запускаємо асинхронну задачу завантаження та конвертації
+            from backend.background_tasks.tasks.video_download_conversion import download_and_convert_video
+            task = download_and_convert_video.delay(video_url)
 
-            logger.info(
-                f"Відео завантажено та поставлено в чергу конвертації: {filename}, task_id: {conversion_task.id}")
+            logger.info(f"Відео зареєстровано та поставлено в чергу: {filename}, task_id: {task.id}")
 
             return {
                 "success": True,
                 "_id": record_id,
                 "azure_link": video_url,
                 "filename": filename,
-                "conversion_task_id": conversion_task.id,
-                "message": "Відео успішно зареєстровано та поставлено в чергу обробки"
+                "task_id": task.id,
+                "message": "Відео зареєстровано та поставлено в чергу обробки"
             }
 
         except Exception as e:
@@ -75,8 +65,64 @@ class VideoService:
                 "error": str(e)
             }
 
+    def get_task_status(self, task_id: str) -> Dict[str, Any]:
+        """Отримує статус виконання задачі Celery"""
+        try:
+            from backend.background_tasks.app import app
+            task = app.AsyncResult(task_id)
+
+            if task.state == 'PENDING':
+                response = {
+                    "status": "pending",
+                    "progress": 0,
+                    "stage": "queued",
+                    "message": "Задача в черзі на виконання"
+                }
+            elif task.state == 'PROGRESS':
+                response = {
+                    "status": "processing",
+                    "progress": task.info.get('progress', 0),
+                    "stage": task.info.get('stage', 'unknown'),
+                    "message": task.info.get('message', 'Обробка...')
+                }
+            elif task.state == 'SUCCESS':
+                response = {
+                    "status": "completed",
+                    "progress": 100,
+                    "stage": "completed",
+                    "message": "Відео готове до анотування",
+                    "result": task.result
+                }
+            elif task.state == 'FAILURE':
+                response = {
+                    "status": "failed",
+                    "progress": task.info.get('progress', 0) if hasattr(task, 'info') and task.info else 0,
+                    "stage": "failed",
+                    "message": str(task.info.get('error', task.result)) if hasattr(task, 'info') and task.info else str(
+                        task.result)
+                }
+            else:
+                response = {
+                    "status": task.state.lower(),
+                    "progress": 0,
+                    "stage": "unknown",
+                    "message": f"Невідомий стан: {task.state}"
+                }
+
+            return {
+                "success": True,
+                **response
+            }
+
+        except Exception as e:
+            logger.error(f"Помилка при отриманні статусу задачі {task_id}: {str(e)}")
+            return {
+                "success": False,
+                "error": str(e)
+            }
+
     def get_video_status(self, azure_link: str) -> Dict[str, Any]:
-        """Отримує статус обробки відео"""
+        """Отримує статус обробки відео за Azure посиланням"""
         try:
             annotation = self.source_repo.get_annotation(azure_link)
 
@@ -137,7 +183,6 @@ class VideoService:
     def get_videos_list(self) -> Dict[str, Any]:
         """Отримує список відео які готові до анотування або ще обробляються"""
         try:
-            # Отримуємо відео які не анотовані або готові до анотування
             videos_data = self.source_repo.get_all_annotations(
                 filter_query={"status": {"$ne": "annotated"}}
             )

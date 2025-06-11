@@ -1,8 +1,9 @@
 import os
 import logging
+import threading
 import urllib.parse
 from concurrent.futures import ThreadPoolExecutor
-from typing import Dict, Any
+from typing import Dict, Any, Callable, Optional
 from urllib.parse import urlparse
 
 from azure.storage.blob import BlobServiceClient, ContainerClient
@@ -70,7 +71,7 @@ def parse_azure_blob_url(azure_url: str) -> Dict[str, str]:
 def download_chunk(blob_client, start: int, end: int, chunk_index: int) -> bytes:
     """Завантажує частину blob"""
     try:
-        logger.debug(f"Завантаження частини {chunk_index}: {start}-{end} ({(end-start+1)/(1024*1024):.1f} MB)")
+        logger.debug(f"Завантаження частини {chunk_index}: {start}-{end} ({(end - start + 1) / (1024 * 1024):.1f} MB)")
         stream = blob_client.download_blob(offset=start, length=end - start + 1)
         return stream.readall()
     except Exception as e:
@@ -78,8 +79,12 @@ def download_chunk(blob_client, start: int, end: int, chunk_index: int) -> bytes
         raise
 
 
-def download_blob_to_local_parallel(azure_url: str, local_path: str) -> Dict[str, Any]:
-    """Завантажує blob з Azure у локальний файл з паралельним завантаженням"""
+def download_blob_to_local_parallel_with_progress(
+        azure_url: str,
+        local_path: str,
+        progress_callback: Optional[Callable[[int, int], None]] = None
+) -> Dict[str, Any]:
+    """Завантажує blob з Azure у локальний файл з паралельним завантаженням та прогрес-трекінгом"""
     try:
         blob_info = parse_azure_blob_url(azure_url)
         blob_service_client = get_blob_service_client()
@@ -96,14 +101,14 @@ def download_blob_to_local_parallel(azure_url: str, local_path: str) -> Dict[str
         properties = blob_client.get_blob_properties()
         file_size = properties.size
 
-        logger.info(f"Завантаження blob {azure_url} ({file_size / (1024 * 1024):.1f} MB) в {local_path}")
+        logger.info(f"Паралельне завантаження blob {azure_url} ({file_size / (1024 * 1024):.1f} MB) в {local_path}")
 
         # Створюємо директорію якщо не існує
         os.makedirs(os.path.dirname(local_path), exist_ok=True)
 
-        # Якщо файл невеликий, завантажуємо звичайним способом
+        # Якщо файл невеликий, завантажуємо звичайним способом з прогресом
         if file_size < Settings.azure_download_chunk_size * 2:
-            return download_blob_to_local_simple(blob_client, local_path)
+            return download_blob_to_local_simple_with_progress(blob_client, local_path, file_size, progress_callback)
 
         # Розбиваємо на частини
         chunks = []
@@ -112,14 +117,39 @@ def download_blob_to_local_parallel(azure_url: str, local_path: str) -> Dict[str
             end = min(i + Settings.azure_download_chunk_size - 1, file_size - 1)
             chunks.append((start, end, len(chunks)))
 
-        logger.info(f"Завантаження {len(chunks)} частин по {Settings.azure_download_chunk_size / (1024 * 1024):.1f} MB з {Settings.azure_max_concurrency} потоками")
+        logger.info(
+            f"Завантаження {len(chunks)} частин по {Settings.azure_download_chunk_size / (1024 * 1024):.1f} MB з {Settings.azure_max_concurrency} потоками")
+
+        # Змінна для відстеження завантажених байтів
+        downloaded_bytes = 0
+        bytes_lock = threading.Lock()
+
+        def download_chunk_with_progress(blob_client, start: int, end: int, chunk_index: int) -> bytes:
+            """Завантажує частину blob з відстеженням прогресу"""
+            nonlocal downloaded_bytes
+            try:
+                logger.debug(
+                    f"Завантаження частини {chunk_index}: {start}-{end} ({(end - start + 1) / (1024 * 1024):.1f} MB)")
+                stream = blob_client.download_blob(offset=start, length=end - start + 1)
+                chunk_data = stream.readall()
+
+                # Оновлюємо прогрес thread-safe
+                with bytes_lock:
+                    downloaded_bytes += len(chunk_data)
+                    if progress_callback:
+                        progress_callback(downloaded_bytes, file_size)
+
+                return chunk_data
+            except Exception as e:
+                logger.error(f"Помилка завантаження частини {chunk_index}: {str(e)}")
+                raise
 
         # Паралельне завантаження частин
         with ThreadPoolExecutor(max_workers=Settings.azure_max_concurrency) as executor:
             futures = []
 
             for start, end, chunk_index in chunks:
-                future = executor.submit(download_chunk, blob_client, start, end, chunk_index)
+                future = executor.submit(download_chunk_with_progress, blob_client, start, end, chunk_index)
                 futures.append((chunk_index, future))
 
             # Збираємо результати в правильному порядку
@@ -137,6 +167,7 @@ def download_blob_to_local_parallel(azure_url: str, local_path: str) -> Dict[str
         return {
             "success": True,
             "local_path": local_path,
+            "file_size": file_size
         }
 
     except Exception as e:
@@ -147,20 +178,31 @@ def download_blob_to_local_parallel(azure_url: str, local_path: str) -> Dict[str
         }
 
 
-def download_blob_to_local_simple(blob_client, local_path: str) -> Dict[str, Any]:
-    """Простий спосіб завантаження для невеликих файлів"""
+def download_blob_to_local_simple_with_progress(
+        blob_client,
+        local_path: str,
+        file_size: int,
+        progress_callback: Optional[Callable[[int, int], None]] = None
+) -> Dict[str, Any]:
+    """Простий спосіб завантаження для невеликих файлів з прогрес-трекінгом"""
     try:
         logger.debug(f"Звичайне завантаження blob в {local_path}")
 
+        downloaded_bytes = 0
         with open(local_path, "wb") as download_file:
             blob_data = blob_client.download_blob()
-            # Використовуємо буферизоване читання
+            # Використовуємо буферизоване читання з прогресом
             for chunk in blob_data.chunks():
                 download_file.write(chunk)
+                downloaded_bytes += len(chunk)
+
+                if progress_callback:
+                    progress_callback(downloaded_bytes, file_size)
 
         return {
             "success": True,
             "local_path": local_path,
+            "file_size": file_size
         }
     except Exception as e:
         logger.error(f"Помилка завантаження blob: {str(e)}")
@@ -168,11 +210,6 @@ def download_blob_to_local_simple(blob_client, local_path: str) -> Dict[str, Any
             "success": False,
             "error": str(e)
         }
-
-
-def download_blob_to_local(azure_url: str, local_path: str) -> Dict[str, Any]:
-    """Головна функція завантаження з автовибором методу"""
-    return download_blob_to_local_parallel(azure_url, local_path)
 
 
 def upload_clip_to_azure(

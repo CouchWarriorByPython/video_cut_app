@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Response
+from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
 
 from backend.models.api import (
@@ -20,7 +20,7 @@ router = APIRouter(tags=["video"])
                  500: {"model": ErrorResponse}
              })
 async def upload(data: VideoUploadRequest) -> VideoUploadResponse:
-    """Реєстрація відео за Azure URL з локальним завантаженням"""
+    """Реєстрація відео за Azure URL з асинхронним завантаженням та конвертацією"""
     video_service = VideoService()
 
     result = video_service.validate_and_register_video(
@@ -34,9 +34,28 @@ async def upload(data: VideoUploadRequest) -> VideoUploadResponse:
         id=result["_id"],
         azure_link=result["azure_link"],
         filename=result["filename"],
-        conversion_task_id=result.get("conversion_task_id"),
+        conversion_task_id=result.get("task_id"),
         message=result["message"]
     )
+
+
+@router.get("/task_status/{task_id}")
+async def get_task_status(task_id: str):
+    """Отримання статусу виконання Celery задачі"""
+    video_service = VideoService()
+
+    result = video_service.get_task_status(task_id)
+
+    if not result["success"]:
+        raise HTTPException(status_code=500, detail=result["error"])
+
+    return {
+        "status": result["status"],
+        "progress": result["progress"],
+        "stage": result["stage"],
+        "message": result["message"],
+        "result": result.get("result")
+    }
 
 
 @router.get("/video_status",

@@ -19,14 +19,14 @@ task_track_started = True
 task_time_limit = 7200
 
 task_routes = {
-    'convert_video_for_web': {'queue': 'video_conversion'},
+    'download_and_convert_video': {'queue': 'video_processing'},
     'process_video_annotation': {'queue': 'video_processing'},
     'process_video_clip': {'queue': 'clip_processing'},
     'finalize_video_processing': {'queue': 'video_processing'},
 }
 
 task_annotations = {
-    'convert_video_for_web': {'rate_limit': f'{Settings.max_conversion_workers}/m'},
+    'download_and_convert_video': {'rate_limit': f'{Settings.max_conversion_workers}/m'},
 }
 
 worker_prefetch_multiplier = 1
@@ -38,3 +38,8 @@ result_compression = 'gzip'
 
 broker_connection_retry_on_startup = True
 broker_connection_retry = True
+
+# Налаштування для збереження прогресу задач
+result_expires = 86400  # 24 години
+task_ignore_result = False
+task_store_eager_result = True

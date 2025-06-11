@@ -4,7 +4,7 @@ services:
     container_name: video_annotator_mongodb_dev
     restart: unless-stopped
     ports:
-      - "27017:27017"
+      - "27018:27017"
     env_file:
       - .env
     volumes:
@@ -22,7 +22,7 @@ services:
     container_name: video_annotator_mongo_express_dev
     restart: unless-stopped
     ports:
-      - "8081:8081"
+      - "8082:8081"
     env_file:
       - .env
     depends_on:
@@ -33,7 +33,7 @@ services:
     container_name: video_annotator_redis_dev
     restart: unless-stopped
     ports:
-      - "6379:6379"
+      - "6380:6379"
     volumes:
       - redis_data_dev:/data
     command: redis-server --maxmemory 128mb --maxmemory-policy allkeys-lru
@@ -45,7 +45,7 @@ services:
     container_name: video_annotator_app_dev
     restart: unless-stopped
     ports:
-      - "8000:8000"
+      - "8002:8000"
     env_file:
       - .env
     volumes:
@@ -95,7 +95,7 @@ services:
     restart: unless-stopped
     command: celery -A backend.background_tasks.app flower --port=5555
     ports:
-      - "5555:5555"
+      - "5556:5555"
     env_file:
       - .env
     depends_on:
@@ -106,7 +106,7 @@ services:
     container_name: video_annotator_nginx_dev
     restart: unless-stopped
     ports:
-      - "80:80"
+      - "8888:80"
     volumes:
       - ./nginx/conf/nginx.dev.conf:/etc/nginx/nginx.conf:ro
     depends_on:

@@ -183,3 +183,4 @@ cython_debug/
 json_data/
 
 front/static/images/drones/*
+.DS_Store

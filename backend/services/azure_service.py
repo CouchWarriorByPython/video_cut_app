@@ -7,8 +7,10 @@ from backend.utils.azure_utils import (
     get_blob_service_client, get_blob_container_client,
     parse_azure_blob_url, upload_clip_to_azure
 )
+
 from backend.config.settings import Settings
 from backend.utils.logger import get_logger
+from backend.utils.azure_utils import download_blob_to_local_parallel_with_progress
 
 logger = get_logger(__name__, "services.log")
 
@@ -82,10 +84,8 @@ class AzureService:
             local_path: str,
             progress_callback=None
     ) -> Dict[str, Any]:
-        """Завантажує відео з Azure Storage локально з паралельним завантаженням та прогресом"""
+        """Завантажує відео з Azure Storage локально з прогресом"""
         try:
-            from backend.utils.azure_utils import download_blob_to_local_parallel_with_progress
-
             return download_blob_to_local_parallel_with_progress(
                 azure_url, local_path, progress_callback
             )

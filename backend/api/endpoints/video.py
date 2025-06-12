@@ -89,15 +89,19 @@ async def get_videos() -> VideoListResponse:
 
 
 @router.get("/get_video")
-async def get_video(azure_link: str, token: str | None = None) -> FileResponse:
-    """Відображає локальне відео для анотування"""
+async def get_video(azure_link: str, token: str) -> FileResponse:
+    """Відображає локальне відео для анотування з перевіркою токена"""
 
-    # Перевіряємо токен з URL якщо не в header
-    if token:
-        auth_service = AuthService()
-        payload = auth_service.verify_token(token)
-        if not payload:
-            raise HTTPException(status_code=401, detail="Невалідний токен")
+    # Перевіряємо токен
+    auth_service = AuthService()
+    payload = auth_service.verify_token(token)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Невалідний токен")
+
+    # Перевіряємо роль
+    allowed_roles = ["annotator", "admin", "super_admin"]
+    if payload.get("role") not in allowed_roles:
+        raise HTTPException(status_code=403, detail="Недостатньо прав доступу")
 
     video_service = VideoService()
     local_path = video_service.get_video_for_streaming(azure_link)

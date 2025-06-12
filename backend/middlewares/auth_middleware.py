@@ -16,6 +16,7 @@ ENDPOINT_PERMISSIONS = {
     "/health": None,
     "/favicon.ico": None,
     "/favicon.png": None,
+    "/get_video": None,
 
     # HTML сторінки (JavaScript сам перевіряє)
     "/": "html",
@@ -27,7 +28,6 @@ ENDPOINT_PERMISSIONS = {
     "/task_status": ["annotator", "admin", "super_admin"],
     "/video_status": ["annotator", "admin", "super_admin"],
     "/get_videos": ["annotator", "admin", "super_admin"],
-    "/get_video": ["annotator", "admin", "super_admin"],
     "/get_annotation": ["annotator", "admin", "super_admin"],
     "/save_fragments": ["annotator", "admin", "super_admin"],
 

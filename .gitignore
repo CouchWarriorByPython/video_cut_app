@@ -182,6 +182,6 @@ cython_debug/
 *.mp4
 json_data/
 
-front/static/images/drones/*
+frontend/static/images/drones/*
 .DS_Store
 improvements.md

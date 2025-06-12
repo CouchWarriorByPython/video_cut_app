@@ -13,6 +13,7 @@ async def auth_middleware(request: Request, call_next):
     public_paths = [
         "/auth/login",
         "/auth/refresh",
+        "/login",
         "/docs",
         "/openapi.json",
         "/health",
@@ -22,10 +23,18 @@ async def auth_middleware(request: Request, call_next):
 
     # Перевіряємо чи це публічний шлях
     request_path = request.url.path
-    if request_path in public_paths or request_path.startswith("/static"):
+    if (request_path in public_paths or
+        request_path.startswith("/static") or
+        request_path.startswith("/css") or
+        request_path.startswith("/js")):
         return await call_next(request)
 
-    # Отримуємо токен з заголовка
+    # Для HTML сторінок - дозволяємо показати сторінку, JavaScript сам перевірить авторизацію
+    is_html_request = request.headers.get("accept", "").startswith("text/html")
+    if is_html_request:
+        return await call_next(request)
+
+    # Для API запитів - перевіряємо авторизацію
     auth_header = request.headers.get("Authorization")
     if not auth_header:
         logger.warning(f"Відсутній Authorization header для {request.method} {request.url}")

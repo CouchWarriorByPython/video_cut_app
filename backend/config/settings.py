@@ -54,6 +54,9 @@ class Settings:
     access_token_expire_minutes: ClassVar[int] = 30
     refresh_token_expire_minutes: ClassVar[int] = 10080  # 7 днів
 
+    admin_email: ClassVar[str] = ""
+    admin_password: ClassVar[str] = ""
+
     @classmethod
     def load_from_env(cls) -> None:
         """Завантаження налаштувань з .env файлу"""
@@ -107,6 +110,9 @@ class Settings:
         cls.jwt_algorithm = os.getenv("JWT_ALGORITHM", "HS256")
         cls.access_token_expire_minutes = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "30"))
         cls.refresh_token_expire_minutes = int(os.getenv("REFRESH_TOKEN_EXPIRE_MINUTES", "10080"))
+
+        cls.admin_email = os.getenv("SUPER_ADMIN_EMAIL", "admin@example.com")
+        cls.admin_password = os.getenv("SUPER_ADMIN_PASSWORD", "SuperAdmin123!")
 
         cls._create_directories()
         cls._validate_required_settings()

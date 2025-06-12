@@ -22,7 +22,7 @@ class UserCreate(BaseModel):
 class UserResponse(BaseModel):
     """Схема відповіді користувача"""
     id: str
-    email: str  # Змінено з EmailStr на str
+    email: EmailStr
     role: str
     created_at: str
     is_active: bool
@@ -44,3 +44,16 @@ class Token(BaseModel):
 class RefreshTokenRequest(BaseModel):
     """Схема рефреш токена"""
     refresh_token: str
+
+
+class UserCreateResponse(BaseModel):
+    """Схема відповіді створення користувача"""
+    success: bool
+    message: str
+    user_id: str | None = None
+
+
+class UserDeleteResponse(BaseModel):
+    """Схема відповіді видалення користувача"""
+    success: bool
+    message: str

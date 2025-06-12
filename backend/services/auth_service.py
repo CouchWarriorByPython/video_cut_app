@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta, timezone
 from typing import Dict, Any, Optional
 from jose import jwt, JWTError
+from pydantic import EmailStr
 
 from backend.database.repositories.user import UserRepository
 from backend.models.user import Token
@@ -20,7 +21,7 @@ class AuthService:
         self.access_token_expire_minutes = Settings.access_token_expire_minutes
         self.refresh_token_expire_minutes = Settings.refresh_token_expire_minutes
 
-    def authenticate_user(self, email: str, password: str) -> Optional[Dict]:
+    def authenticate_user(self, email: EmailStr, password: str) -> Optional[Dict]:
         """Аутентифікує користувача"""
         try:
             user = self.user_repo.get_user_by_email(email)
@@ -107,7 +108,7 @@ class AuthService:
             logger.error(f"Помилка оновлення токена: {str(e)}")
             return None
 
-    def create_user(self, email: str, password: str, role: str) -> Dict[str, Any]:
+    def create_user(self, email: EmailStr, password: str, role: str) -> Dict[str, Any]:
         """Створює нового користувача"""
         try:
             self.user_repo.create_indexes()

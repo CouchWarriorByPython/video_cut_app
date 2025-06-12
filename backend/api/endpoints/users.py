@@ -1,7 +1,7 @@
 from typing import List
 from fastapi import APIRouter, HTTPException, Depends
 
-from backend.models.user import UserCreate, UserResponse
+from backend.models.user import UserCreate, UserResponse, UserCreateResponse, UserDeleteResponse
 from backend.services.auth_service import AuthService
 from backend.database.repositories.user import UserRepository
 from backend.api.dependencies import require_admin_or_super, get_current_user
@@ -12,9 +12,9 @@ logger = get_logger(__name__, "api.log")
 router = APIRouter(prefix="/users", tags=["users"])
 
 
-@router.post("/", response_model=dict, dependencies=[Depends(require_admin_or_super())])
-async def create_user(user_data: UserCreate, current_user: dict = Depends(get_current_user)) -> dict:
-    """Створення користувача (тільки admin та super_admin)"""
+@router.post("/", response_model=UserCreateResponse, dependencies=[Depends(require_admin_or_super())])
+async def create_user(user_data: UserCreate, current_user: dict = Depends(get_current_user)) -> UserCreateResponse:
+    """Створення користувача (admin може створювати тільки annotator, super_admin - всіх)"""
 
     # Перевіряємо права на створення адміна
     if user_data.role == "admin" and current_user["role"] != "super_admin":
@@ -30,12 +30,16 @@ async def create_user(user_data: UserCreate, current_user: dict = Depends(get_cu
         raise HTTPException(status_code=400, detail=result["error"])
 
     logger.info(f"Користувач {user_data.email} створений адміністратором {current_user['email']}")
-    return {"success": True, "message": result["message"]}
+    return UserCreateResponse(
+        success=True,
+        message=result["message"],
+        user_id=result["user_id"]
+    )
 
 
 @router.get("/", response_model=List[UserResponse], dependencies=[Depends(require_admin_or_super())])
 async def get_users() -> List[UserResponse]:
-    """Отримання списку користувачів"""
+    """Отримання списку користувачів (тільки admin та super_admin)"""
     user_repo = UserRepository()
     users = user_repo.get_all_users()
 
@@ -51,9 +55,9 @@ async def get_users() -> List[UserResponse]:
     ]
 
 
-@router.delete("/{user_id}", dependencies=[Depends(require_admin_or_super())])
-async def delete_user(user_id: str, current_user: dict = Depends(get_current_user)) -> dict:
-    """Видалення користувача"""
+@router.delete("/{user_id}", response_model=UserDeleteResponse)
+async def delete_user(user_id: str, current_user: dict = Depends(get_current_user)) -> UserDeleteResponse:
+    """Видалення користувача (admin може видаляти annotator, super_admin - всіх)"""
     user_repo = UserRepository()
 
     # Отримуємо інформацію про користувача що видаляється
@@ -62,10 +66,22 @@ async def delete_user(user_id: str, current_user: dict = Depends(get_current_use
         raise HTTPException(status_code=404, detail="Користувача не знайдено")
 
     # Перевіряємо права на видалення
+    if current_user["role"] == "annotator":
+        raise HTTPException(
+            status_code=403,
+            detail="Анотатори не можуть видаляти користувачів"
+        )
+
     if user_to_delete["role"] == "admin" and current_user["role"] != "super_admin":
         raise HTTPException(
             status_code=403,
             detail="Тільки super_admin може видаляти адміністраторів"
+        )
+
+    if user_to_delete["role"] == "super_admin" and current_user["role"] != "super_admin":
+        raise HTTPException(
+            status_code=403,
+            detail="Тільки super_admin може видаляти інших super_admin"
         )
 
     # Заборонити видалення самого себе
@@ -80,4 +96,4 @@ async def delete_user(user_id: str, current_user: dict = Depends(get_current_use
         raise HTTPException(status_code=400, detail="Помилка видалення користувача")
 
     logger.info(f"Користувач {user_to_delete['email']} видалений адміністратором {current_user['email']}")
-    return {"success": True, "message": "Користувача успішно видалено"}
+    return UserDeleteResponse(success=True, message="Користувача успішно видалено")

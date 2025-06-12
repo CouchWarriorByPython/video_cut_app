@@ -1,6 +1,7 @@
 from typing import Dict, List, Optional
 from bson import ObjectId
 from passlib.context import CryptContext
+from pydantic import EmailStr
 
 from backend.database.base import AnnotationBase
 from backend.database.connection import DatabaseConnection
@@ -31,13 +32,13 @@ class UserRepository(AnnotationBase):
         except Exception as e:
             logger.error(f"Помилка при роботі з індексами: {str(e)}")
 
-    def create_user(self, email: str, password: str, role: str) -> str:
+    def create_user(self, email: EmailStr, password: str, role: str) -> str:
         """Створює нового користувача"""
         try:
             hashed_password = self.hash_password(password)
 
             user_data = {
-                "email": str(email),  # Конвертуємо EmailStr в str
+                "email": str(email),  # Конвертуємо тільки для БД
                 "hashed_password": hashed_password,
                 "role": role,
                 "is_active": True
@@ -54,12 +55,11 @@ class UserRepository(AnnotationBase):
             logger.error(f"Помилка створення користувача: {str(e)}")
             raise
 
-    def get_user_by_email(self, email: str) -> Optional[Dict]:
+    def get_user_by_email(self, email: EmailStr) -> Optional[Dict]:
         """Отримує користувача за email"""
         try:
-            # Конвертуємо в str якщо прийшов EmailStr
-            email_str = str(email) if hasattr(email, '__str__') else email
-            doc = self.collection.find_one({"email": email_str, "is_active": True})
+            # Конвертуємо в str тільки для запиту до БД
+            doc = self.collection.find_one({"email": str(email), "is_active": True})
             return self._normalize_document(doc)
         except Exception as e:
             logger.error(f"Помилка отримання користувача: {str(e)}")

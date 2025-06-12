@@ -6,7 +6,13 @@ from backend.api.dependencies import require_any_role
 
 router = APIRouter(tags=["static"])
 
-templates = Jinja2Templates(directory="front/html")
+templates = Jinja2Templates(directory="frontend/html")
+
+
+@router.get("/login", response_class=HTMLResponse)
+async def login_page(request: Request) -> HTMLResponse:
+    """Сторінка логіна (доступна всім)"""
+    return templates.TemplateResponse("login.html", {"request": request})
 
 
 @router.get("/",
@@ -25,62 +31,34 @@ async def annotator(request: Request) -> HTMLResponse:
     return templates.TemplateResponse("annotator.html", {"request": request})
 
 
-@router.get("/faq", response_class=HTMLResponse)
+@router.get("/faq",
+           response_class=HTMLResponse,
+           dependencies=[Depends(require_any_role())])
 async def faq(request: Request) -> HTMLResponse:
-    """Сторінка FAQ з інформацією про дрони (доступна всім)"""
+    """Сторінка FAQ з інформацією про дрони"""
     return templates.TemplateResponse("faq.html", {"request": request})
 
 
-# CSS та JS файли (доступні всім)
-@router.get("/css/base.css")
-async def serve_base_css() -> FileResponse:
-    """Базовий CSS файл"""
-    return FileResponse("front/css/base.css", media_type="text/css")
+# CSS та JS файли
+@router.get("/css/{file_name}")
+async def serve_css(file_name: str) -> FileResponse:
+    """CSS файли"""
+    return FileResponse(f"frontend/css/{file_name}", media_type="text/css")
 
 
-@router.get("/css/upload.css")
-async def serve_upload_css() -> FileResponse:
-    """CSS для сторінки завантаження"""
-    return FileResponse("front/css/upload.css", media_type="text/css")
-
-
-@router.get("/css/annotator.css")
-async def serve_annotator_css() -> FileResponse:
-    """CSS для сторінки анотування"""
-    return FileResponse("front/css/annotator.css", media_type="text/css")
-
-
-@router.get("/css/faq.css")
-async def serve_faq_css() -> FileResponse:
-    """CSS для сторінки FAQ"""
-    return FileResponse("front/css/faq.css", media_type="text/css")
-
-
-@router.get("/js/upload.js")
-async def serve_upload_js() -> FileResponse:
-    """JS для сторінки завантаження"""
-    return FileResponse("front/js/upload.js", media_type="application/javascript")
-
-
-@router.get("/js/annotator.js")
-async def serve_annotator_js() -> FileResponse:
-    """JS для сторінки анотування"""
-    return FileResponse("front/js/annotator.js", media_type="application/javascript")
-
-
-@router.get("/js/faq.js")
-async def serve_faq_js() -> FileResponse:
-    """JS для сторінки FAQ"""
-    return FileResponse("front/js/faq.js", media_type="application/javascript")
+@router.get("/js/{file_name}")
+async def serve_js(file_name: str) -> FileResponse:
+    """JS файли"""
+    return FileResponse(f"frontend/js/{file_name}", media_type="application/javascript")
 
 
 @router.get("/favicon.png")
 async def serve_favicon_png() -> FileResponse:
     """Favicon PNG"""
-    return FileResponse("front/static/images/favicon.png", media_type="image/png")
+    return FileResponse("frontend/static/images/favicon.png", media_type="image/png")
 
 
 @router.get("/favicon.ico")
 async def serve_favicon_ico() -> FileResponse:
-    """Favicon ICO (аліас для PNG)"""
-    return FileResponse("front/static/images/favicon.png", media_type="image/png")
+    """Favicon ICO"""
+    return FileResponse("frontend/static/images/favicon.png", media_type="image/png")

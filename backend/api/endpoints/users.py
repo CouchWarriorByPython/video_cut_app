@@ -1,10 +1,10 @@
 from typing import List
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Request
 
 from backend.models.user import UserCreate, UserResponse, UserCreateResponse, UserDeleteResponse
 from backend.services.auth_service import AuthService
 from backend.database.repositories.user import UserRepository
-from backend.api.dependencies import require_admin_or_super, get_current_user
+from backend.api.dependencies import get_current_user
 from backend.utils.logger import get_logger
 
 logger = get_logger(__name__, "api.log")
@@ -12,9 +12,10 @@ logger = get_logger(__name__, "api.log")
 router = APIRouter(prefix="/users", tags=["users"])
 
 
-@router.post("/", response_model=UserCreateResponse, dependencies=[Depends(require_admin_or_super())])
-async def create_user(user_data: UserCreate, current_user: dict = Depends(get_current_user)) -> UserCreateResponse:
+@router.post("/", response_model=UserCreateResponse)
+async def create_user(user_data: UserCreate, request: Request) -> UserCreateResponse:
     """Створення користувача (admin може створювати тільки annotator, super_admin - всіх)"""
+    current_user = get_current_user(request)
 
     # Перевіряємо права на створення адміна
     if user_data.role == "admin" and current_user["role"] != "super_admin":
@@ -37,7 +38,7 @@ async def create_user(user_data: UserCreate, current_user: dict = Depends(get_cu
     )
 
 
-@router.get("/", response_model=List[UserResponse], dependencies=[Depends(require_admin_or_super())])
+@router.get("/", response_model=List[UserResponse])
 async def get_users() -> List[UserResponse]:
     """Отримання списку користувачів (тільки admin та super_admin)"""
     user_repo = UserRepository()
@@ -56,8 +57,9 @@ async def get_users() -> List[UserResponse]:
 
 
 @router.delete("/{user_id}", response_model=UserDeleteResponse)
-async def delete_user(user_id: str, current_user: dict = Depends(get_current_user)) -> UserDeleteResponse:
+async def delete_user(user_id: str, request: Request) -> UserDeleteResponse:
     """Видалення користувача (admin може видаляти annotator, super_admin - всіх)"""
+    current_user = get_current_user(request)
     user_repo = UserRepository()
 
     # Отримуємо інформацію про користувача що видаляється

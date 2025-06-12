@@ -53,7 +53,6 @@ async function checkAuthAndRedirect() {
         if (!isValid) {
             clearTokens();
             window.location.href = '/login';
-            return;
         }
     }
 }
@@ -121,8 +120,9 @@ async function refreshAccessToken() {
 async function authenticatedFetch(url, options = {}) {
     let token = getAuthToken();
     if (!token) {
+        console.error('Відсутній токен авторизації');
         window.location.href = '/login';
-        return;
+        return null;
     }
 
     const makeRequest = async (authToken) => {
@@ -139,12 +139,15 @@ async function authenticatedFetch(url, options = {}) {
 
     // Якщо токен прострочений, спробуємо оновити
     if (response.status === 401) {
+        console.log('Токен прострочений, спробуємо оновити...');
         token = await refreshAccessToken();
         if (token) {
+            console.log('Токен оновлено, повторюємо запит...');
             response = await makeRequest(token);
         } else {
+            console.error('Не вдалося оновити токен');
             window.location.href = '/login';
-            return;
+            return null;
         }
     }
 

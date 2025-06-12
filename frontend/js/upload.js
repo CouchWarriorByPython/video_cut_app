@@ -4,10 +4,9 @@ const metadataWhenInput = document.getElementById('metadata-when');
 const uploadBtn = document.getElementById('upload-btn');
 const resultDiv = document.getElementById('result');
 
-let activeUploads = new Map(); // Map для зберігання активних завантажень
-let progressIntervals = new Map(); // Map для intervals
+let activeUploads = new Map();
+let progressIntervals = new Map();
 
-// Завантажуємо збережені завантаження при ініціалізації
 document.addEventListener('DOMContentLoaded', function() {
     loadSavedUploads();
 });
@@ -37,10 +36,13 @@ function isValidAzureUrl(url) {
     }
 }
 
-function handleUpload() {
+async function handleUpload() {
     const url = videoUrlInput.value.trim();
     const where = metadataWhereInput.value.trim();
     const when = metadataWhenInput.value.trim();
+
+    console.log('Токен є:', !!getAuthToken());
+    console.log('authenticatedFetch доступний:', typeof authenticatedFetch);
 
     if (!url) {
         showError('Будь ласка, вкажіть Azure Blob URL відео');
@@ -65,33 +67,38 @@ function handleUpload() {
     uploadBtn.disabled = true;
     uploadBtn.textContent = 'Реєструємо...';
 
-    fetch('/upload', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-            video_url: url,
-            where: where || null,
-            when: when || null
-        }),
-    })
-    .then(response => {
+    try {
+        console.log('Виконуємо authenticated запит...');
+        const response = await authenticatedFetch('/upload', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                video_url: url,
+                where: where || null,
+                when: when || null
+            }),
+        });
+
+        if (!response) {
+            console.log('Response null - перенаправлення на логін');
+            return;
+        }
+
         if (!response.ok) {
             throw new Error(`HTTP помилка! Статус: ${response.status}`);
         }
-        return response.json();
-    })
-    .then(data => {
+
+        const data = await response.json();
         console.log("Отримана відповідь:", data);
         handleUploadResponse(data);
         resetForm();
-    })
-    .catch(error => {
+    } catch (error) {
         console.error('Помилка:', error);
         showError(`Помилка з'єднання з сервером: ${error.message}`);
         resetForm();
-    });
+    }
 }
 
 function handleUploadResponse(data) {
@@ -106,14 +113,9 @@ function handleUploadResponse(data) {
             timestamp: Date.now()
         };
 
-        // Зберігаємо в activeUploads та localStorage
         activeUploads.set(uploadId, uploadData);
         saveUploadsToStorage();
-
-        // Показуємо прогрес-бар
         showProgressBar(uploadData);
-
-        // Починаємо відстеження прогресу
         startProgressTracking(uploadId);
     } else {
         showError(data.message || 'Невідома помилка при реєстрації відео');
@@ -147,7 +149,6 @@ function showProgressBar(uploadData) {
         </div>
     `;
 
-    // Додаємо до результатів або замінюємо існуючий
     if (resultDiv.children.length === 0) {
         resultDiv.innerHTML = progressHTML;
     } else {
@@ -163,43 +164,46 @@ function startProgressTracking(uploadId) {
 
     const interval = setInterval(() => {
         checkTaskProgress(uploadId);
-    }, 2000); // Перевіряємо кожні 2 секунди
+    }, 2000);
 
     progressIntervals.set(uploadId, interval);
 }
 
-function checkTaskProgress(uploadId) {
+async function checkTaskProgress(uploadId) {
     const uploadData = activeUploads.get(uploadId);
     if (!uploadData) {
         clearProgressInterval(uploadId);
         return;
     }
 
-    fetch(`/task_status/${uploadData.taskId}`)
-        .then(response => {
-            if (!response.ok) {
-                throw new Error(`HTTP ${response.status}`);
-            }
-            return response.json();
-        })
-        .then(data => {
-            updateProgressDisplay(uploadId, data);
+    try {
+        const response = await authenticatedFetch(`/task_status/${uploadData.taskId}`);
 
-            if (data.status === 'completed' || data.status === 'failed') {
-                clearProgressInterval(uploadId);
-
-                if (data.status === 'completed') {
-                    showCompletedState(uploadId, uploadData);
-                } else {
-                    showErrorState(uploadId, data.message);
-                }
-            }
-        })
-        .catch(error => {
-            console.error('Помилка перевірки прогресу:', error);
-            // Видаляємо неіснуючу задачу
+        if (!response) {
             removeUpload(uploadId);
-        });
+            return;
+        }
+
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+
+        const data = await response.json();
+        updateProgressDisplay(uploadId, data);
+
+        if (data.status === 'completed' || data.status === 'failed') {
+            clearProgressInterval(uploadId);
+
+            if (data.status === 'completed') {
+                showCompletedState(uploadId, uploadData);
+            } else {
+                showErrorState(uploadId, data.message);
+            }
+        }
+    } catch (error) {
+        console.error('Помилка перевірки прогресу:', error);
+        removeUpload(uploadId);
+    }
 }
 
 function updateProgressDisplay(uploadId, progressData) {
@@ -215,7 +219,6 @@ function updateProgressDisplay(uploadId, progressData) {
     const stage = progressData.stage || 'unknown';
     const message = progressData.message || 'Обробка...';
 
-    // Оновлюємо текст статусу
     const stageTexts = {
         'queued': 'В черзі',
         'downloading': 'Завантаження',
@@ -231,7 +234,6 @@ function updateProgressDisplay(uploadId, progressData) {
     progressFill.style.width = `${progress}%`;
     progressStage.textContent = message;
 
-    // Змінюємо колір в залежності від етапу
     progressFill.className = 'progress-fill';
     if (stage === 'downloading') {
         progressFill.classList.add('downloading');
@@ -250,13 +252,12 @@ function showCompletedState(uploadId, uploadData) {
 
     const actionsDiv = progressElement.querySelector('.upload-actions');
     actionsDiv.innerHTML = `
-        <button class="btn btn-success" onclick="window.location.href='/annotator?azure_link=${encodeURIComponent(uploadData.azure_link)}'">
+        <button class="btn btn-success" onclick="window.location.href='/annotator'">
             Перейти до анотування
         </button>
         <button class="btn btn-secondary" onclick="removeUpload('${uploadId}')">Приховати</button>
     `;
 
-    // Видаляємо з активних завантажень
     activeUploads.delete(uploadId);
     saveUploadsToStorage();
 }
@@ -268,7 +269,6 @@ function showErrorState(uploadId, errorMessage) {
     const progressStage = progressElement.querySelector('.progress-stage');
     progressStage.innerHTML = `<span style="color: #e74c3c;">Помилка: ${errorMessage}</span>`;
 
-    // Видаляємо з активних завантажень
     activeUploads.delete(uploadId);
     saveUploadsToStorage();
 }
@@ -283,7 +283,6 @@ function removeUpload(uploadId) {
         progressElement.remove();
     }
 
-    // Якщо немає більше завантажень, ховаємо весь блок результатів
     if (resultDiv.children.length === 0) {
         resultDiv.classList.add('hidden');
     }
@@ -308,8 +307,8 @@ function saveUploadsToStorage() {
 
 async function validateTaskExists(taskId) {
     try {
-        const response = await fetch(`/task_status/${taskId}`);
-        return response.ok;
+        const response = await authenticatedFetch(`/task_status/${taskId}`);
+        return response && response.ok;
     } catch (error) {
         return false;
     }
@@ -324,7 +323,6 @@ async function loadSavedUploads() {
             for (const uploadData of uploadsArray) {
                 const hoursSinceUpload = (Date.now() - uploadData.timestamp) / (1000 * 60 * 60);
 
-                // Перевіряємо чи не застаріла задача та чи існує вона в системі
                 if (hoursSinceUpload < 24) {
                     const taskExists = await validateTaskExists(uploadData.taskId);
                     if (taskExists) {
@@ -339,7 +337,6 @@ async function loadSavedUploads() {
                 resultDiv.classList.remove('hidden');
             }
 
-            // Оновлюємо localStorage, видаляючи неактуальні записи
             saveUploadsToStorage();
         }
     } catch (error) {

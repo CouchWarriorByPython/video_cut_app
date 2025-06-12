@@ -223,8 +223,16 @@ function setupLightbox() {
     });
 }
 
-document.addEventListener('DOMContentLoaded', function() {
-    generateAllDrones();
-    setupDroneAccordion();
-    setupLightbox();
-});
+async function initializeFAQ() {
+    // Перевіряємо авторизацію перед ініціалізацією
+    await checkAuthAndRedirect();
+
+    // Ініціалізуємо контент тільки якщо користувач авторизований
+    if (isAuthenticated()) {
+        generateAllDrones();
+        setupDroneAccordion();
+        setupLightbox();
+    }
+}
+
+document.addEventListener('DOMContentLoaded', initializeFAQ);

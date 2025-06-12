@@ -1,8 +1,6 @@
-from fastapi import APIRouter, Request, Depends
+from fastapi import APIRouter, Request
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.templating import Jinja2Templates
-
-from backend.api.dependencies import require_any_role
 
 router = APIRouter(tags=["static"])
 
@@ -15,31 +13,24 @@ async def login_page(request: Request) -> HTMLResponse:
     return templates.TemplateResponse("login.html", {"request": request})
 
 
-@router.get("/",
-           response_class=HTMLResponse,
-           dependencies=[Depends(require_any_role())])
+@router.get("/", response_class=HTMLResponse)
 async def index(request: Request) -> HTMLResponse:
     """Головна сторінка завантаження відео"""
     return templates.TemplateResponse("upload.html", {"request": request})
 
 
-@router.get("/annotator",
-           response_class=HTMLResponse,
-           dependencies=[Depends(require_any_role())])
+@router.get("/annotator", response_class=HTMLResponse)
 async def annotator(request: Request) -> HTMLResponse:
     """Сторінка анотування відео"""
     return templates.TemplateResponse("annotator.html", {"request": request})
 
 
-@router.get("/faq",
-           response_class=HTMLResponse,
-           dependencies=[Depends(require_any_role())])
+@router.get("/faq", response_class=HTMLResponse)
 async def faq(request: Request) -> HTMLResponse:
     """Сторінка FAQ з інформацією про дрони"""
     return templates.TemplateResponse("faq.html", {"request": request})
 
 
-# CSS та JS файли
 @router.get("/css/{file_name}")
 async def serve_css(file_name: str) -> FileResponse:
     """CSS файли"""

@@ -102,20 +102,22 @@ function setupEventListeners() {
     window.addEventListener('click', handleWindowClick);
 }
 
-function loadVideoList() {
-    fetch('/get_videos')
-        .then(response => response.json())
-        .then(data => {
-            if (data.success && data.videos && data.videos.length > 0) {
-                populateVideoSelect(data.videos);
-            } else {
-                videoSelect.innerHTML = '<option value="">Немає доступних відео</option>';
-            }
-        })
-        .catch(error => {
-            console.error('Error loading videos:', error);
-            videoSelect.innerHTML = '<option value="">Помилка завантаження відео</option>';
-        });
+async function loadVideoList() {
+    try {
+        const response = await authenticatedFetch('/get_videos');
+
+        if (!response) return; // Перенаправлення на логін
+
+        const data = await response.json();
+        if (data.success && data.videos && data.videos.length > 0) {
+            populateVideoSelect(data.videos);
+        } else {
+            videoSelect.innerHTML = '<option value="">Немає доступних відео</option>';
+        }
+    } catch (error) {
+        console.error('Error loading videos:', error);
+        videoSelect.innerHTML = '<option value="">Помилка завантаження відео</option>';
+    }
 }
 
 function populateVideoSelect(videos) {
@@ -249,26 +251,31 @@ function startVideoStatusChecking(azureLink) {
     }, 3000);
 }
 
-function checkVideoStatus(azureLink) {
-    fetch(`/video_status?azure_link=${encodeURIComponent(azureLink)}`)
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                updateVideoStatusDisplay(data);
+async function checkVideoStatus(azureLink) {
+    try {
+        const response = await authenticatedFetch(`/video_status?azure_link=${encodeURIComponent(azureLink)}`);
 
-                if (data.ready_for_annotation) {
-                    clearInterval(statusCheckInterval);
-                    // Автоматично перезавантажуємо відео для анотування
-                    location.reload();
-                } else if (data.status.includes('failed')) {
-                    clearInterval(statusCheckInterval);
-                    showProcessingError(data.status);
-                }
+        if (!response) {
+            clearInterval(statusCheckInterval);
+            return;
+        }
+
+        const data = await response.json();
+        if (data.success) {
+            updateVideoStatusDisplay(data);
+
+            if (data.ready_for_annotation) {
+                clearInterval(statusCheckInterval);
+                // Автоматично перезавантажуємо відео для анотування
+                location.reload();
+            } else if (data.status.includes('failed')) {
+                clearInterval(statusCheckInterval);
+                showProcessingError(data.status);
             }
-        })
-        .catch(error => {
-            console.error('Помилка перевірки статусу відео:', error);
-        });
+        }
+    } catch (error) {
+        console.error('Помилка перевірки статусу відео:', error);
+    }
 }
 
 function updateVideoStatusDisplay(statusData) {
@@ -317,13 +324,13 @@ function loadVideoForAnnotation(azureLink, filename) {
     videoSelector.style.display = 'none';
     videoEditor.classList.remove('hidden');
 
-    // Використовуємо локальний ендпоінт для отримання відео
-    const videoUrl = `/get_video?azure_link=${encodeURIComponent(azureLink)}`;
+    // Додаємо токен до URL для відео
+    const token = getAuthToken();
+    const videoUrl = `/get_video?azure_link=${encodeURIComponent(azureLink)}&token=${encodeURIComponent(token)}`;
     videoPlayer.src = videoUrl;
     videoPlayer.load();
 
     videoFilenameSpan.textContent = filename;
-
     currentAzureLink = azureLink;
     videoFileName = filename;
 
@@ -351,16 +358,20 @@ function resetFragments() {
     };
 }
 
-function loadExistingAnnotations(azureLink) {
-    fetch(`/get_annotation?azure_link=${encodeURIComponent(azureLink)}`)
-        .then(response => response.json())
-        .then(data => {
-            if (data.success && data.annotation) {
-                populateFormFromAnnotation(data.annotation);
-                loadFragmentsFromAnnotation(data.annotation);
-            }
-        })
-        .catch(error => console.error('Error loading annotations:', error));
+async function loadExistingAnnotations(azureLink) {
+    try {
+        const response = await authenticatedFetch(`/get_annotation?azure_link=${encodeURIComponent(azureLink)}`);
+
+        if (!response) return;
+
+        const data = await response.json();
+        if (data.success && data.annotation) {
+            populateFormFromAnnotation(data.annotation);
+            loadFragmentsFromAnnotation(data.annotation);
+        }
+    } catch (error) {
+        console.error('Error loading annotations:', error);
+    }
 }
 
 function populateFormFromAnnotation(annotation) {
@@ -843,7 +854,7 @@ function prepareJsonData() {
     };
 }
 
-function saveFragmentsToJson() {
+async function saveFragmentsToJson() {
     // Валідація обов'язкових полів (тільки якщо не skip)
     if (!skipVideoCheckbox.checked) {
         const validationErrors = validateRequiredFields();
@@ -876,18 +887,21 @@ function saveFragmentsToJson() {
 
     const jsonData = prepareJsonData();
 
-    fetch('/save_fragments', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-            azure_link: currentAzureLink,
-            data: jsonData
-        })
-    })
-    .then(response => response.json())
-    .then(data => {
+    try {
+        const response = await authenticatedFetch('/save_fragments', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                azure_link: currentAzureLink,
+                data: jsonData
+            })
+        });
+
+        if (!response) return; // Перенаправлення на логін
+
+        const data = await response.json();
         if (data.success) {
             alert(data.message || 'Дані успішно збережено в MongoDB.');
             if (data.task_id) {
@@ -896,11 +910,10 @@ function saveFragmentsToJson() {
         } else {
             alert('Помилка: ' + data.error);
         }
-    })
-    .catch(error => {
+    } catch (error) {
         console.error('Error:', error);
         alert('Помилка збереження даних');
-    });
+    }
 }
 
 function closeModals() {

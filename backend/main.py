@@ -7,7 +7,9 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from backend.api.exceptions import (
     validation_exception_handler, http_exception_handler, general_exception_handler
 )
-from backend.api.endpoints import video, annotation, static
+from backend.api.endpoints import video, annotation, static, auth, users
+from backend.middlewares.auth_middleware import auth_middleware
+from backend.middlewares.log_middleware import log_middleware
 from backend.config.settings import Settings
 from backend.utils.logger import get_logger
 
@@ -15,9 +17,13 @@ logger = get_logger(__name__, "main.log")
 
 app = FastAPI(
     title="Video Annotation API",
-    description="API для завантаження, анотування та обробки відео",
+    description="API для завантаження, анотування та обробки відео з авторизацією",
     version="1.0.0"
 )
+
+# Додаємо мідлвейри (порядок важливий!)
+app.middleware("http")(log_middleware)
+app.middleware("http")(auth_middleware)
 
 # Реєстрація обробників помилок
 app.add_exception_handler(RequestValidationError, validation_exception_handler)
@@ -35,9 +41,16 @@ else:
     logger.warning("Директорія 'front' не знайдена")
 
 # Підключення роутерів
+app.include_router(auth.router)  # Додаємо роутер авторизації
+app.include_router(users.router)  # Додаємо роутер користувачів
 app.include_router(video.router)
 app.include_router(annotation.router)
 app.include_router(static.router)
+
+# Health check
+@app.get("/health")
+async def health_check():
+    return {"status": "healthy", "service": "video-annotation-api"}
 
 
 if __name__ == "__main__":

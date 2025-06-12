@@ -49,6 +49,11 @@ class Settings:
     skip_conversion_for_compatible: ClassVar[bool] = True
     max_conversion_workers: ClassVar[int] = 2
 
+    jwt_secret_key: ClassVar[str] = ""
+    jwt_algorithm: ClassVar[str] = "HS256"
+    access_token_expire_minutes: ClassVar[int] = 30
+    refresh_token_expire_minutes: ClassVar[int] = 10080  # 7 днів
+
     @classmethod
     def load_from_env(cls) -> None:
         """Завантаження налаштувань з .env файлу"""
@@ -97,6 +102,11 @@ class Settings:
         cls.skip_conversion_for_compatible = os.getenv("SKIP_CONVERSION_FOR_COMPATIBLE", "true").lower() in ("true",
                                                                                                              "1", "yes")
         cls.max_conversion_workers = int(os.getenv("MAX_CONVERSION_WORKERS", "2"))
+
+        cls.jwt_secret_key = os.getenv("SECRET_KEY", "your-super-secret-key-change-in-production")
+        cls.jwt_algorithm = os.getenv("JWT_ALGORITHM", "HS256")
+        cls.access_token_expire_minutes = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "30"))
+        cls.refresh_token_expire_minutes = int(os.getenv("REFRESH_TOKEN_EXPIRE_MINUTES", "10080"))
 
         cls._create_directories()
         cls._validate_required_settings()

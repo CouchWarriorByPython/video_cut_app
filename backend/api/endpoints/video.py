@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from fastapi.responses import FileResponse
 
 from backend.models.api import (
@@ -6,7 +6,7 @@ from backend.models.api import (
     VideoListResponse, VideoStatusResponse
 )
 from backend.services.video_service import VideoService
-from backend.api.dependencies import convert_db_annotation_to_response
+from backend.api.dependencies import convert_db_annotation_to_response, require_any_role
 from backend.utils.logger import get_logger
 
 logger = get_logger(__name__, "api.log")
@@ -15,6 +15,7 @@ router = APIRouter(tags=["video"])
 
 @router.post("/upload",
              response_model=VideoUploadResponse,
+             dependencies=[Depends(require_any_role())],
              responses={
                  400: {"model": ErrorResponse},
                  500: {"model": ErrorResponse}
@@ -39,7 +40,8 @@ async def upload(data: VideoUploadRequest) -> VideoUploadResponse:
     )
 
 
-@router.get("/task_status/{task_id}")
+@router.get("/task_status/{task_id}",
+           dependencies=[Depends(require_any_role())])
 async def get_task_status(task_id: str):
     """Отримання статусу виконання Celery задачі"""
     video_service = VideoService()
@@ -60,6 +62,7 @@ async def get_task_status(task_id: str):
 
 @router.get("/video_status",
             response_model=VideoStatusResponse,
+            dependencies=[Depends(require_any_role())],
             responses={
                 404: {"model": ErrorResponse},
                 500: {"model": ErrorResponse}
@@ -85,6 +88,7 @@ async def get_video_status(azure_link: str) -> VideoStatusResponse:
 
 @router.get("/get_videos",
             response_model=VideoListResponse,
+            dependencies=[Depends(require_any_role())],
             responses={500: {"model": ErrorResponse}})
 async def get_videos() -> VideoListResponse:
     """Отримання списку відео які ще не анотовані"""
@@ -99,7 +103,8 @@ async def get_videos() -> VideoListResponse:
     return VideoListResponse(videos=videos)
 
 
-@router.get("/get_video")
+@router.get("/get_video",
+           dependencies=[Depends(require_any_role())])
 async def get_video(azure_link: str) -> FileResponse:
     """Відображає локальне відео для анотування"""
     video_service = VideoService()

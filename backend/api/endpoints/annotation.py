@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 
 from backend.models.api import (
     SaveFragmentsRequest, SaveFragmentsResponse, ErrorResponse,
@@ -6,7 +6,7 @@ from backend.models.api import (
 )
 from backend.services.annotation_service import AnnotationService
 from backend.services.video_service import VideoService
-from backend.api.dependencies import convert_db_annotation_to_response
+from backend.api.dependencies import convert_db_annotation_to_response, require_any_role
 from backend.background_tasks.tasks.video_processing import process_video_annotation
 from backend.utils.logger import get_logger
 
@@ -17,6 +17,7 @@ router = APIRouter(tags=["annotation"])
 
 @router.get("/get_annotation",
             response_model=GetAnnotationResponse,
+            dependencies=[Depends(require_any_role())],
             responses={
                 404: {"model": ErrorResponse},
                 500: {"model": ErrorResponse}
@@ -39,6 +40,7 @@ async def get_annotation(azure_link: str) -> GetAnnotationResponse:
 
 @router.post("/save_fragments",
              response_model=SaveFragmentsResponse,
+             dependencies=[Depends(require_any_role())],
              responses={
                  400: {"model": ErrorResponse},
                  404: {"model": ErrorResponse},

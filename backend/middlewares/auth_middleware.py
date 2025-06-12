@@ -1,50 +1,77 @@
 from fastapi import Request
 from fastapi.responses import JSONResponse
-from backend.config import config
-from backend.gcp_tools.logging import get_logger
-from backend.autorization.utils import decode_token
+from backend.services.auth_service import AuthService
+from backend.utils.logger import get_logger
 
-logger = get_logger()
+logger = get_logger(__name__, "middleware.log")
 
 
 async def auth_middleware(request: Request, call_next):
-    """ Middleware for authorization via JWT """
+    """Мідлвейр для перевірки авторизації"""
+
+    # Публічні шляхи що не потребують авторизації
     public_paths = [
-        f"{config.API_VERSION}/auth/login/",
-        f"{config.API_VERSION}/auth/token/refresh/",
+        "/auth/login",
+        "/auth/refresh",
         "/docs",
-        "/openapi.json"
+        "/openapi.json",
+        "/health",
+        "/favicon.ico",
+        "/favicon.png"
     ]
 
-    if request.scope["path"] in public_paths:
+    # Перевіряємо чи це публічний шлях
+    request_path = request.url.path
+    if request_path in public_paths or request_path.startswith("/static"):
         return await call_next(request)
 
+    # Отримуємо токен з заголовка
     auth_header = request.headers.get("Authorization")
     if not auth_header:
-        logger.warning(f"❌ Missing Authorization header for {request.method} {request.url}")
-        return JSONResponse(status_code=401, content={"error": "Not authenticated"})
+        logger.warning(f"Відсутній Authorization header для {request.method} {request.url}")
+        return JSONResponse(
+            status_code=401,
+            content={"success": False, "message": "Authorization header відсутній"}
+        )
 
     try:
+        # Парсимо заголовок
         scheme, token = auth_header.split(" ", 1)
         if scheme.lower() != "bearer":
-            logger.warning(f"⚠️ Invalid authentication scheme: {auth_header} for {request.url}")
-            return JSONResponse(status_code=401, content={"error": "Invalid authentication scheme"})
+            return JSONResponse(
+                status_code=401,
+                content={"success": False, "message": "Невірна схема авторизації"}
+            )
 
-        payload = await decode_token(token)
+        # Перевіряємо токен
+        auth_service = AuthService()
+        payload = auth_service.verify_token(token)
 
         if not payload:
-            return JSONResponse(status_code=401, content={"error": "Token has expired or is invalid"})
+            return JSONResponse(
+                status_code=401,
+                content={"success": False, "message": "Невалідний або прострочений токен"}
+            )
 
-        email, role = payload.get("sub"), payload.get("role")
-        if not email or not role:
-            logger.error(f"❌ Invalid token payload for {request.url}")
-            return JSONResponse(status_code=401, content={"error": "Invalid token payload"})
+        # Зберігаємо інформацію про користувача в request
+        request.state.user = {
+            "user_id": payload["user_id"],
+            "email": payload["sub"],
+            "role": payload["role"]
+        }
 
-        request.state.user = {"email": email, "role": role}
-        logger.info(f"✅ Authorization successful: {email} ({role}) for {request.url}")
+        logger.debug(f"Авторизація успішна: {payload['sub']} ({payload['role']})")
 
+    except ValueError:
+        return JSONResponse(
+            status_code=401,
+            content={"success": False, "message": "Невірний формат токена"}
+        )
     except Exception as e:
-        logger.exception(f"⚠️ Unexpected error in auth_middleware: {str(e)}")
-        return JSONResponse(status_code=500, content={"error": "Internal server error"})
+        logger.error(f"Помилка в auth_middleware: {str(e)}")
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "message": "Внутрішня помилка сервера"}
+        )
 
     return await call_next(request)

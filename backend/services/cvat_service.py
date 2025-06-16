@@ -3,41 +3,46 @@ import subprocess
 from typing import Dict, Any, Optional
 
 from backend.config.settings import Settings
+from backend.database.repositories.cvat_settings import CVATSettingsRepository
 from backend.utils.logger import get_logger
 
 logger = get_logger(__name__, "services.log")
 
+
 class CVATService:
     """Сервіс для роботи з CVAT"""
 
-    @staticmethod
-    def get_default_project_params(project_name: str) -> Dict[str, Any]:
-        """Отримує дефолтні CVAT параметри проєкту"""
+    def __init__(self):
+        self.settings_repo = CVATSettingsRepository()
+
+    def get_default_project_params(self, project_name: str) -> Dict[str, Any]:
+        """Отримує параметри проєкту з БД або дефолтні значення"""
+        try:
+            settings = self.settings_repo.get_settings_by_project(project_name)
+
+            if settings:
+                return {
+                    "project_id": settings["project_id"],
+                    "overlap": settings["overlap"],
+                    "segment_size": settings["segment_size"],
+                    "image_quality": settings["image_quality"]
+                }
+            else:
+                # Fallback на хардкод параметри якщо БД недоступна
+                logger.warning(f"Налаштування для проєкту {project_name} не знайдені в БД, використовуємо дефолтні")
+                return self._get_hardcoded_defaults(project_name)
+
+        except Exception as e:
+            logger.error(f"Помилка отримання параметрів проєкту {project_name}: {str(e)}")
+            return self._get_hardcoded_defaults(project_name)
+
+    def _get_hardcoded_defaults(self, project_name: str) -> Dict[str, Any]:
+        """Дефолтні хардкод параметри як fallback"""
         default_projects = {
-            "motion-det": {
-                "project_id": 5,
-                "overlap": 5,
-                "segment_size": 400,
-                "image_quality": 100
-            },
-            "tracking": {
-                "project_id": 6,
-                "overlap": 5,
-                "segment_size": 400,
-                "image_quality": 100
-            },
-            "mil-hardware": {
-                "project_id": 7,
-                "overlap": 5,
-                "segment_size": 400,
-                "image_quality": 100
-            },
-            "re-id": {
-                "project_id": 8,
-                "overlap": 5,
-                "segment_size": 400,
-                "image_quality": 100
-            }
+            "motion-det": {"project_id": 5, "overlap": 5, "segment_size": 400, "image_quality": 100},
+            "tracking": {"project_id": 6, "overlap": 5, "segment_size": 400, "image_quality": 100},
+            "mil-hardware": {"project_id": 7, "overlap": 5, "segment_size": 400, "image_quality": 100},
+            "re-id": {"project_id": 8, "overlap": 5, "segment_size": 400, "image_quality": 100}
         }
 
         return default_projects.get(project_name, {
@@ -47,8 +52,7 @@ class CVATService:
             "image_quality": 100
         })
 
-    @staticmethod
-    def create_task(filename: str, file_path: str, project_params: Dict[str, Any]) -> Optional[str]:
+    def create_task(self, filename: str, file_path: str, project_params: Dict[str, Any]) -> Optional[str]:
         """Створює задачу в CVAT через CLI"""
         try:
             project_id = project_params.get("project_id")

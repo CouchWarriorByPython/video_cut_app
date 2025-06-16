@@ -134,6 +134,25 @@ h1, h2, h3 {
     background-color: var(--bg-dark);
 }
 
+.navbar-item.admin-link {
+    background: linear-gradient(135deg, var(--danger-color), var(--danger-hover));
+    color: white;
+    margin-left: 8px;
+    border-radius: 6px;
+    font-weight: 600;
+}
+
+.navbar-item.admin-link:hover {
+    background: linear-gradient(135deg, var(--danger-hover), var(--danger-color));
+    color: white;
+    transform: translateY(-1px);
+}
+
+.navbar-item.admin-link.active {
+    background: linear-gradient(135deg, var(--danger-hover), var(--danger-color));
+    border-bottom-color: white;
+}
+
 /* Buttons */
 .btn {
     background-color: var(--primary-color);

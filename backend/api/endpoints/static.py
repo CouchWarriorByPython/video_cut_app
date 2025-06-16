@@ -53,3 +53,8 @@ async def serve_favicon_png() -> FileResponse:
 async def serve_favicon_ico() -> FileResponse:
     """Favicon ICO"""
     return FileResponse("frontend/static/images/favicon.png", media_type="image/png")
+
+@router.get("/admin", response_class=HTMLResponse)
+async def admin_panel(request: Request) -> HTMLResponse:
+    """Адміністративна панель"""
+    return templates.TemplateResponse("admin.html", {"request": request})

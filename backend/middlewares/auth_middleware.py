@@ -31,9 +31,12 @@ ENDPOINT_PERMISSIONS = {
     "/get_annotation": ["annotator", "admin", "super_admin"],
     "/save_fragments": ["annotator", "admin", "super_admin"],
 
-    # Користувачі (всі операції тільки для адмінів)
-    "/users": ["admin", "super_admin"],
-    "/users/": ["admin", "super_admin"],
+    # Admin panel
+    "/admin": "html",
+    "/admin/": "html",
+    "/admin/stats": ["admin", "super_admin"],
+    "/admin/users": ["admin", "super_admin"],
+    "/admin/cvat-settings": ["admin", "super_admin"],
 }
 
 

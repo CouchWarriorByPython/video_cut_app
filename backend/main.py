@@ -8,12 +8,12 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from backend.api.exceptions import (
     validation_exception_handler, http_exception_handler, general_exception_handler
 )
-from backend.api.endpoints import video, annotation, static, auth, users
+from backend.api.endpoints import video, annotation, static, auth, admin
 from backend.middlewares.auth_middleware import auth_middleware
 from backend.middlewares.log_middleware import log_middleware
 from backend.config.settings import Settings
 from backend.utils.logger import get_logger
-from backend.utils.admin_setup import create_super_admin
+from backend.utils.admin_setup import create_super_admin, validate_admin_configuration
 
 logger = get_logger(__name__, "main.log")
 
@@ -25,8 +25,18 @@ async def lifespan(_app: FastAPI):
     logger.info("🚀 Запуск додатка...")
 
     try:
+        if not validate_admin_configuration():
+            raise ValueError("Невірна конфігурація супер адміна")
+
         # Створюємо супер адміна
         create_super_admin()
+
+        # Ініціалізуємо CVAT налаштування
+        from backend.database.repositories.cvat_settings import CVATSettingsRepository
+        cvat_repo = CVATSettingsRepository()
+        cvat_repo.create_indexes()
+        cvat_repo.initialize_default_settings()
+
         logger.info("✅ Ініціалізація завершена")
     except Exception as e:
         logger.error(f"❌ Помилка ініціалізації: {str(e)}")
@@ -64,7 +74,7 @@ else:
 
 # Підключення роутерів
 app.include_router(auth.router)
-app.include_router(users.router)
+app.include_router(admin.router)
 app.include_router(video.router)
 app.include_router(annotation.router)
 app.include_router(static.router)

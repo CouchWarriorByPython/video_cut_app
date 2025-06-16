@@ -1,5 +1,3 @@
-// Утилітарні функції для роботи з авторизацією
-
 function getAuthToken() {
     return localStorage.getItem('access_token');
 }
@@ -27,13 +25,28 @@ function isAuthenticated() {
     return !!getAuthToken();
 }
 
-// Перевірка авторизації з перенаправленням
+function getCurrentUserRole() {
+    const token = getAuthToken();
+    if (!token) return null;
+
+    try {
+        const payload = JSON.parse(atob(token.split('.')[1]));
+        return payload.role;
+    } catch (error) {
+        console.error('Помилка декодування токена:', error);
+        return null;
+    }
+}
+
+function isAdminRole() {
+    const role = getCurrentUserRole();
+    return ['admin', 'super_admin'].includes(role);
+}
+
 async function checkAuthAndRedirect() {
     const currentPath = window.location.pathname;
 
-    // Якщо вже на сторінці логіна і є токен - перенаправляємо на головну
     if (currentPath === '/login' && isAuthenticated()) {
-        // Додаткова перевірка - чи токен валідний
         const isValid = await validateToken();
         if (isValid) {
             window.location.href = '/';
@@ -41,13 +54,11 @@ async function checkAuthAndRedirect() {
         }
     }
 
-    // Якщо не на сторінці логіна і немає токена - перенаправляємо на логін
     if (currentPath !== '/login' && !isAuthenticated()) {
         window.location.href = '/login';
         return;
     }
 
-    // Якщо не на сторінці логіна і є токен - перевіряємо його валідність
     if (currentPath !== '/login' && isAuthenticated()) {
         const isValid = await validateToken();
         if (!isValid) {
@@ -57,7 +68,6 @@ async function checkAuthAndRedirect() {
     }
 }
 
-// Перевірка валідності токена
 async function validateToken() {
     const token = getAuthToken();
     if (!token) return false;
@@ -71,7 +81,6 @@ async function validateToken() {
         });
 
         if (response.status === 401) {
-            // Спробуємо оновити токен
             const newToken = await refreshAccessToken();
             return !!newToken;
         }
@@ -83,7 +92,6 @@ async function validateToken() {
     }
 }
 
-// Автоматичне оновлення токена
 async function refreshAccessToken() {
     const refreshToken = getRefreshToken();
     if (!refreshToken) {
@@ -116,7 +124,6 @@ async function refreshAccessToken() {
     }
 }
 
-// Fetch з автоматичним оновленням токена
 async function authenticatedFetch(url, options = {}) {
     let token = getAuthToken();
     if (!token) {
@@ -137,7 +144,6 @@ async function authenticatedFetch(url, options = {}) {
 
     let response = await makeRequest(token);
 
-    // Якщо токен прострочений, спробуємо оновити
     if (response.status === 401) {
         console.log('Токен прострочений, спробуємо оновити...');
         token = await refreshAccessToken();
@@ -154,32 +160,55 @@ async function authenticatedFetch(url, options = {}) {
     return response;
 }
 
-// Додаємо кнопку logout до навбару
-function addLogoutButton() {
+function addAdminAndLogoutButtons() {
     const navbar = document.querySelector('.navbar-menu');
-    if (navbar && !document.getElementById('logout-btn')) {
-        const logoutBtn = document.createElement('a');
-        logoutBtn.id = 'logout-btn';
-        logoutBtn.href = '#';
-        logoutBtn.className = 'navbar-item';
-        logoutBtn.textContent = 'Вийти';
-        logoutBtn.addEventListener('click', function(e) {
-            e.preventDefault();
-            if (confirm('Ви впевнені, що хочете вийти?')) {
-                logout();
-            }
-        });
-        navbar.appendChild(logoutBtn);
+    if (!navbar) return;
+
+    // Видаляємо існуючі динамічні кнопки щоб уникнути дублювання
+    const existingAdminBtn = document.querySelector('.navbar-item.admin-link');
+    const existingLogoutBtn = document.getElementById('logout-btn');
+
+    if (existingAdminBtn) existingAdminBtn.remove();
+    if (existingLogoutBtn) existingLogoutBtn.remove();
+
+    // Додаємо кнопку адмінки для привілейованих користувачів
+    if (isAdminRole()) {
+        const adminBtn = document.createElement('a');
+        adminBtn.href = '/admin';
+        adminBtn.className = 'navbar-item admin-link';
+        adminBtn.textContent = 'Адмінка';
+
+        if (window.location.pathname === '/admin') {
+            adminBtn.classList.add('active');
+        }
+
+        navbar.appendChild(adminBtn);
     }
+
+    // Додаємо кнопку виходу
+    const logoutBtn = document.createElement('a');
+    logoutBtn.id = 'logout-btn';
+    logoutBtn.href = '#';
+    logoutBtn.className = 'navbar-item';
+    logoutBtn.textContent = 'Вийти';
+    logoutBtn.addEventListener('click', function(e) {
+        e.preventDefault();
+        if (confirm('Ви впевнені, що хочете вийти?')) {
+            logout();
+        }
+    });
+    navbar.appendChild(logoutBtn);
 }
 
-// Ініціалізація при завантаженні DOM
+// Зберігаємо стару функцію для зворотної сумісності
+function addLogoutButton() {
+    addAdminAndLogoutButtons();
+}
+
 document.addEventListener('DOMContentLoaded', async function() {
-    // Перевіряємо авторизацію та перенаправляємо якщо потрібно
     await checkAuthAndRedirect();
 
-    // Додаємо кнопку logout якщо авторизований
     if (isAuthenticated() && window.location.pathname !== '/login') {
-        addLogoutButton();
+        addAdminAndLogoutButtons();
     }
 });

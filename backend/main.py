@@ -32,10 +32,8 @@ async def lifespan(_app: FastAPI):
         create_super_admin()
 
         # Ініціалізуємо CVAT налаштування
-        from backend.database.repositories.cvat_settings import CVATSettingsRepository
-        cvat_repo = CVATSettingsRepository()
-        cvat_repo.create_indexes()
-        cvat_repo.initialize_default_settings()
+        from backend.utils.cvat_setup import initialize_default_cvat_settings
+        initialize_default_cvat_settings()
 
         logger.info("✅ Ініціалізація завершена")
     except Exception as e:

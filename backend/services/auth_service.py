@@ -2,20 +2,22 @@ from datetime import datetime, timedelta, timezone
 from typing import Dict, Any, Optional
 from jose import jwt, JWTError
 from pydantic import EmailStr
+from passlib.context import CryptContext
 
-from backend.database.repositories.user import UserRepository
+from backend.database import create_repository
 from backend.models.user import Token
 from backend.utils.logger import get_logger
 from backend.config.settings import Settings
 
 logger = get_logger(__name__, "services.log")
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
 class AuthService:
     """Сервіс авторизації"""
 
     def __init__(self):
-        self.user_repo = UserRepository()
+        self.user_repo = create_repository("users", async_mode=False)
         self.secret_key = Settings.jwt_secret_key
         self.algorithm = Settings.jwt_algorithm
         self.access_token_expire_minutes = Settings.access_token_expire_minutes
@@ -24,11 +26,11 @@ class AuthService:
     def authenticate_user(self, email: EmailStr, password: str) -> Optional[Dict]:
         """Аутентифікує користувача"""
         try:
-            user = self.user_repo.get_user_by_email(email)
+            user = self.user_repo.find_by_field("email", str(email))
             if not user:
                 return None
 
-            if not self.user_repo.verify_password(password, user["hashed_password"]):
+            if not self._verify_password(password, user["hashed_password"]):
                 return None
 
             return user
@@ -41,14 +43,12 @@ class AuthService:
         try:
             now = datetime.now(timezone.utc)
 
-            # Дані для токена
             token_data = {
                 "sub": user["email"],
                 "user_id": user["_id"],
                 "role": user["role"]
             }
 
-            # Access token
             access_expire = now + timedelta(minutes=self.access_token_expire_minutes)
             access_token = jwt.encode(
                 {**token_data, "exp": access_expire, "type": "access"},
@@ -56,7 +56,6 @@ class AuthService:
                 algorithm=self.algorithm
             )
 
-            # Refresh token
             refresh_expire = now + timedelta(minutes=self.refresh_token_expire_minutes)
             refresh_token = jwt.encode(
                 {**token_data, "exp": refresh_expire, "type": "refresh"},
@@ -98,7 +97,7 @@ class AuthService:
             if not payload:
                 return None
 
-            user = self.user_repo.get_user_by_email(payload["sub"])
+            user = self.user_repo.find_by_field("email", payload["sub"])
             if not user:
                 return None
 
@@ -113,12 +112,20 @@ class AuthService:
         try:
             self.user_repo.create_indexes()
 
-            # Перевіряємо чи користувач існує
-            existing_user = self.user_repo.get_user_by_email(email)
+            existing_user = self.user_repo.find_by_field("email", str(email))
             if existing_user:
                 return {"success": False, "error": "Користувач з таким email вже існує"}
 
-            user_id = self.user_repo.create_user(email, password, role)
+            user_data = {
+                "email": str(email),
+                "hashed_password": self._hash_password(password),
+                "role": role,
+                "is_active": True,
+                "created_at": datetime.now().isoformat(sep=" ", timespec="seconds"),
+                "updated_at": datetime.now().isoformat(sep=" ", timespec="seconds")
+            }
+
+            user_id = self.user_repo.save_document(user_data)
 
             return {
                 "success": True,
@@ -133,7 +140,15 @@ class AuthService:
     def get_user_info(self, user_id: str) -> Optional[Dict]:
         """Отримує інформацію про користувача"""
         try:
-            return self.user_repo.get_user_by_id(user_id)
+            return self.user_repo.find_by_id(user_id)
         except Exception as e:
             logger.error(f"Помилка отримання користувача: {str(e)}")
             return None
+
+    def _verify_password(self, plain_password: str, hashed_password: str) -> bool:
+        """Перевіряє пароль"""
+        return pwd_context.verify(plain_password, hashed_password)
+
+    def _hash_password(self, password: str) -> str:
+        """Хешує пароль"""
+        return pwd_context.hash(password)

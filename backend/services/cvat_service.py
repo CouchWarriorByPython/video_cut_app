@@ -3,7 +3,7 @@ import subprocess
 from typing import Dict, Any, Optional
 
 from backend.config.settings import Settings
-from backend.database.repositories.cvat_settings import CVATSettingsRepository
+from backend.database import create_repository
 from backend.utils.logger import get_logger
 
 logger = get_logger(__name__, "services.log")
@@ -13,12 +13,12 @@ class CVATService:
     """Сервіс для роботи з CVAT"""
 
     def __init__(self):
-        self.settings_repo = CVATSettingsRepository()
+        self.settings_repo = create_repository("cvat_project_settings", async_mode=False)
 
     def get_default_project_params(self, project_name: str) -> Dict[str, Any]:
         """Отримує параметри проєкту з БД або дефолтні значення"""
         try:
-            settings = self.settings_repo.get_settings_by_project(project_name)
+            settings = self.settings_repo.find_by_field("project_name", project_name)
 
             if settings:
                 return {
@@ -28,7 +28,6 @@ class CVATService:
                     "image_quality": settings["image_quality"]
                 }
             else:
-                # Fallback на хардкод параметри якщо БД недоступна
                 logger.warning(f"Налаштування для проєкту {project_name} не знайдені в БД, використовуємо дефолтні")
                 return self._get_hardcoded_defaults(project_name)
 

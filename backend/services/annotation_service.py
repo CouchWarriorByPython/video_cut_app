@@ -1,7 +1,7 @@
 from typing import Dict, Any, Optional
 from datetime import datetime
 
-from backend.database.repositories.source_video import SyncSourceVideoRepository
+from backend.database import create_repository
 from backend.services.cvat_service import CVATService
 from backend.utils.logger import get_logger
 
@@ -12,7 +12,7 @@ class AnnotationService:
     """Сервіс для роботи з анотаціями"""
 
     def __init__(self):
-        self.source_repo = SyncSourceVideoRepository()
+        self.source_repo = create_repository("source_videos", async_mode=False)
         self.cvat_service = CVATService()
 
     def save_fragments_and_metadata(self, azure_link: str, annotation_data: Dict[str, Any]) -> Dict[str, Any]:
@@ -22,7 +22,7 @@ class AnnotationService:
 
             self.source_repo.create_indexes()
 
-            existing = self.source_repo.get_annotation(azure_link)
+            existing = self.source_repo.find_by_field("azure_link", azure_link)
             if not existing:
                 return {
                     "success": False,
@@ -53,7 +53,7 @@ class AnnotationService:
                     cvat_params[clip_type] = self.cvat_service.get_default_project_params(clip_type)
                 existing["cvat_params"] = cvat_params
 
-            record_id = self.source_repo.save_annotation(existing)
+            record_id = self.source_repo.save_document(existing)
 
             if skip_processing:
                 success_message = "Дані успішно збережено. Обробку пропущено (skip)."

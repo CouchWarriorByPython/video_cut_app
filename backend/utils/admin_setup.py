@@ -1,59 +1,69 @@
-# backend/utils/admin_setup.py
-from backend.database.repositories.user import UserRepository
+from backend.database import create_repository
 from backend.utils.logger import get_logger
 from backend.config.settings import Settings
 from datetime import datetime
+from passlib.context import CryptContext
 
 logger = get_logger(__name__, "admin_setup.log")
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
 def create_super_admin() -> None:
     """Створює супер адміна якщо його немає"""
     try:
-        user_repo = UserRepository()
+        user_repo = create_repository("users", async_mode=False)
         user_repo.create_indexes()
 
-        existing_admin = user_repo.get_user_by_email(Settings.admin_email)
+        existing_admin = user_repo.find_by_field("email", Settings.admin_email)
 
         if existing_admin:
             needs_update = False
-            updates = {}
             current_time = datetime.now().isoformat(sep=" ", timespec="seconds")
 
             # Перевірка та оновлення відсутніх полів
             if "created_at" not in existing_admin:
-                updates["created_at"] = current_time
+                existing_admin["created_at"] = current_time
                 needs_update = True
 
             if "updated_at" not in existing_admin:
-                updates["updated_at"] = current_time
+                existing_admin["updated_at"] = current_time
                 needs_update = True
 
             if "is_active" not in existing_admin or not existing_admin["is_active"]:
-                updates["is_active"] = True
+                existing_admin["is_active"] = True
                 needs_update = True
 
             # Критично важливо: перевірка ролі супер адміна
             if existing_admin["role"] != "super_admin":
-                updates["role"] = "super_admin"
+                existing_admin["role"] = "super_admin"
                 needs_update = True
                 logger.warning(f"Виправлено роль супер адміна з '{existing_admin['role']}' на 'super_admin'")
 
             # Оновлення пароля якщо змінився в конфігурації
-            if not user_repo.verify_password(Settings.admin_password, existing_admin["hashed_password"]):
-                updates["hashed_password"] = user_repo.hash_password(Settings.admin_password)
+            if not verify_password(Settings.admin_password, existing_admin["hashed_password"]):
+                existing_admin["hashed_password"] = hash_password(Settings.admin_password)
                 needs_update = True
                 logger.info("Оновлено пароль супер адміна згідно з поточними налаштуваннями")
 
             if needs_update:
-                user_repo.update_user(existing_admin["_id"], updates)
+                existing_admin["updated_at"] = current_time
+                user_repo.save_document(existing_admin, update_mode="replace")
                 logger.info(f"Оновлено поля супер адміна: {Settings.admin_email}")
             else:
                 logger.info(f"Супер адмін {Settings.admin_email} вже існує та актуальний")
             return
 
         # Створення нового супер адміна
-        admin_id = user_repo.create_user(Settings.admin_email, Settings.admin_password, "super_admin")
+        admin_data = {
+            "email": Settings.admin_email,
+            "hashed_password": hash_password(Settings.admin_password),
+            "role": "super_admin",
+            "is_active": True,
+            "created_at": datetime.now().isoformat(sep=" ", timespec="seconds"),
+            "updated_at": datetime.now().isoformat(sep=" ", timespec="seconds")
+        }
+
+        admin_id = user_repo.save_document(admin_data)
         logger.info(f"Створено супер адміна: {Settings.admin_email} (ID: {admin_id})")
 
     except Exception as e:
@@ -72,3 +82,13 @@ def validate_admin_configuration() -> bool:
         return False
 
     return True
+
+
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    """Перевіряє пароль"""
+    return pwd_context.verify(plain_password, hashed_password)
+
+
+def hash_password(password: str) -> str:
+    """Хешує пароль"""
+    return pwd_context.hash(password)

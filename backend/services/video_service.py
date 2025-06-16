@@ -2,7 +2,7 @@ import os
 from typing import Dict, Any, Optional
 from datetime import datetime
 
-from backend.database.repositories.source_video import SyncSourceVideoRepository
+from backend.database import create_repository
 from backend.services.azure_service import AzureService
 from backend.utils.video_utils import get_local_video_path
 from backend.utils.logger import get_logger
@@ -14,7 +14,7 @@ class VideoService:
     """Сервіс для роботи з відео"""
 
     def __init__(self):
-        self.source_repo = SyncSourceVideoRepository()
+        self.source_repo = create_repository("source_videos", async_mode=False)
         self.azure_service = AzureService()
 
     def validate_and_register_video(self, video_url: str, where: Optional[str], when: Optional[str]) -> Dict[str, Any]:
@@ -41,7 +41,7 @@ class VideoService:
             }
 
             self.source_repo.create_indexes()
-            record_id = self.source_repo.save_annotation(video_record)
+            record_id = self.source_repo.save_document(video_record)
 
             # Запускаємо асинхронну задачу завантаження та конвертації
             from backend.background_tasks.tasks.video_download_conversion import download_and_convert_video
@@ -124,7 +124,7 @@ class VideoService:
     def get_video_status(self, azure_link: str) -> Dict[str, Any]:
         """Отримує статус обробки відео за Azure посиланням"""
         try:
-            annotation = self.source_repo.get_annotation(azure_link)
+            annotation = self.source_repo.find_by_field("azure_link", azure_link)
 
             if not annotation:
                 return {
@@ -151,7 +151,7 @@ class VideoService:
     def get_video_for_streaming(self, azure_link: str) -> Optional[str]:
         """Отримує локальний шлях до відео для стрімінгу"""
         try:
-            annotation = self.source_repo.get_annotation(azure_link)
+            annotation = self.source_repo.find_by_field("azure_link", azure_link)
 
             if not annotation:
                 logger.error(f"Відео не знайдено: {azure_link}")
@@ -183,7 +183,7 @@ class VideoService:
     def get_videos_list(self) -> Dict[str, Any]:
         """Отримує список відео які готові до анотування або ще обробляються"""
         try:
-            videos_data = self.source_repo.get_all_annotations(
+            videos_data = self.source_repo.find_all(
                 filter_query={"status": {"$ne": "annotated"}}
             )
 
@@ -201,9 +201,9 @@ class VideoService:
     def get_annotation(self, azure_link: str) -> Dict[str, Any]:
         """Отримує існуючу анотацію для відео"""
         try:
-            annotation_data = self.source_repo.get_annotation(azure_link)
+            annotation = self.source_repo.find_by_field("azure_link", azure_link)
 
-            if not annotation_data:
+            if not annotation:
                 return {
                     "success": False,
                     "error": f"Анотацію для відео '{azure_link}' не знайдено"
@@ -211,7 +211,7 @@ class VideoService:
 
             return {
                 "success": True,
-                "annotation": annotation_data
+                "annotation": annotation
             }
 
         except Exception as e:

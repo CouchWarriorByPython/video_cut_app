@@ -10,7 +10,6 @@ class Settings:
     mongo_uri: ClassVar[str] = ""
     mongo_db_name: ClassVar[str] = ""
 
-    redis_url: ClassVar[str] = ""
     celery_broker_url: ClassVar[str] = ""
     celery_result_backend: ClassVar[str] = ""
 
@@ -19,7 +18,6 @@ class Settings:
     azure_client_secret: ClassVar[str] = ""
     azure_storage_account_name: ClassVar[str] = ""
     azure_storage_container_name: ClassVar[str] = ""
-    azure_input_folder_path: ClassVar[str] = ""
     azure_output_folder_path: ClassVar[str] = ""
 
     cvat_host: ClassVar[str] = ""

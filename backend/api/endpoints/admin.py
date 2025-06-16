@@ -1,7 +1,7 @@
 from typing import List
 from fastapi import APIRouter, HTTPException, Request
 
-from backend.models.user import UserCreate, UserResponse, UserCreateResponse, UserDeleteResponse
+from backend.models.user import UserCreate, UserResponse, UserCreateResponse, UserDeleteResponse, UserUpdateRequest
 from backend.models.cvat_settings import (
     CVATSettingsRequest, CVATSettingsResponse, AdminStatsResponse
 )
@@ -66,7 +66,7 @@ async def get_all_users_admin(request: Request) -> List[UserResponse]:
             id=user["_id"],
             email=user["email"],
             role=user["role"],
-            created_at=user["created_at"],
+            created_at=user.get("created_at", ""),
             is_active=user["is_active"]
         )
         for user in users
@@ -97,6 +97,58 @@ async def create_user_admin(user_data: UserCreate, request: Request) -> UserCrea
         message=result["message"],
         user_id=result["user_id"]
     )
+
+
+@router.put("/users/{user_id}")
+async def update_user_admin(user_id: str, user_data: UserUpdateRequest, request: Request):
+    """Оновлення користувача через адмін панель"""
+    current_user = get_current_user(request)
+    user_repo = UserRepository()
+
+    user_to_update = user_repo.get_user_by_id(user_id)
+    if not user_to_update:
+        raise HTTPException(status_code=404, detail="Користувача не знайдено")
+
+    if user_to_update["_id"] == current_user["user_id"]:
+        raise HTTPException(status_code=400, detail="Не можна редагувати самого себе")
+
+    updates = {}
+
+    # Оновлення email
+    if user_data.email and user_data.email != user_to_update["email"]:
+        # Перевіряємо унікальність email
+        existing_user = user_repo.get_user_by_email(user_data.email)
+        if existing_user and existing_user["_id"] != user_id:
+            raise HTTPException(status_code=400, detail="Користувач з таким email вже існує")
+        updates["email"] = user_data.email
+
+    # Оновлення ролі
+    if user_data.role and user_data.role != user_to_update["role"]:
+        if user_data.role not in ["annotator", "admin"]:
+            raise HTTPException(status_code=400, detail="Невірна роль")
+
+        if user_data.role == "admin" and current_user["role"] != "super_admin":
+            raise HTTPException(
+                status_code=403,
+                detail="Тільки super_admin може призначати роль admin"
+            )
+        updates["role"] = user_data.role
+
+    # Оновлення пароля
+    if user_data.password:
+        if len(user_data.password) < 8:
+            raise HTTPException(status_code=400, detail="Пароль повинен містити мінімум 8 символів")
+        updates["hashed_password"] = user_repo.hash_password(user_data.password)
+
+    if not updates:
+        return {"success": True, "message": "Немає змін для оновлення"}
+
+    success = user_repo.update_user(user_id, updates)
+    if not success:
+        raise HTTPException(status_code=400, detail="Помилка оновлення користувача")
+
+    logger.info(f"Користувач {user_to_update['email']} оновлений адміністратором {current_user['email']}")
+    return {"success": True, "message": "Користувача успішно оновлено"}
 
 
 @router.put("/users/{user_id}/role")

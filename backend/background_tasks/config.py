@@ -19,7 +19,7 @@ task_track_started = True
 task_time_limit = 7200
 
 task_routes = {
-    'download_and_convert_video': {'queue': 'video_processing'},
+    'download_and_convert_video': {'queue': 'video_conversion'},
     'process_video_annotation': {'queue': 'video_processing'},
     'process_video_clip': {'queue': 'clip_processing'},
     'finalize_video_processing': {'queue': 'video_processing'},

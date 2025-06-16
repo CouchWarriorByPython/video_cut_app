@@ -1,4 +1,3 @@
-// frontend/js/admin.js
 const currentUsers = [];
 const currentCvatSettings = [];
 let currentEditingUser = null;
@@ -54,44 +53,6 @@ const UI = {
             document.body.appendChild(modal);
             modal.style.display = 'block';
         });
-    },
-
-    showPrompt(message, defaultValue = '') {
-        return new Promise((resolve) => {
-            const modal = document.createElement('div');
-            modal.className = 'modal';
-            modal.innerHTML = `
-                <div class="modal-content">
-                    <div class="modal-header">
-                        <h3>Введіть значення</h3>
-                    </div>
-                    <div class="modal-body">
-                        <p>${message}</p>
-                        <input type="text" class="form-control" value="${defaultValue}" id="prompt-input">
-                    </div>
-                    <div class="modal-footer">
-                        <button class="btn btn-secondary" data-action="cancel">Скасувати</button>
-                        <button class="btn btn-success" data-action="confirm">OK</button>
-                    </div>
-                </div>
-            `;
-
-            const input = modal.querySelector('#prompt-input');
-
-            modal.addEventListener('click', (e) => {
-                if (e.target.dataset.action === 'confirm') {
-                    modal.remove();
-                    resolve(input.value);
-                } else if (e.target.dataset.action === 'cancel' || e.target === modal) {
-                    modal.remove();
-                    resolve(null);
-                }
-            });
-
-            document.body.appendChild(modal);
-            modal.style.display = 'block';
-            input.focus();
-        });
     }
 };
 
@@ -137,6 +98,8 @@ function setupEventListeners() {
         addUserBtn: document.getElementById('add-user-btn'),
         saveUserBtn: document.getElementById('save-user-btn'),
         cancelUserBtn: document.getElementById('cancel-user-btn'),
+        saveEditUserBtn: document.getElementById('save-edit-user-btn'),
+        cancelEditUserBtn: document.getElementById('cancel-edit-user-btn'),
         resetCvatBtn: document.getElementById('reset-cvat-btn'),
         saveCvatBtn: document.getElementById('save-cvat-btn'),
         cancelCvatBtn: document.getElementById('cancel-cvat-btn'),
@@ -150,6 +113,8 @@ function setupEventListeners() {
     elements.addUserBtn.addEventListener('click', openAddUserModal);
     elements.saveUserBtn.addEventListener('click', handleSaveUser);
     elements.cancelUserBtn.addEventListener('click', closeUserModal);
+    elements.saveEditUserBtn.addEventListener('click', handleSaveEditUser);
+    elements.cancelEditUserBtn.addEventListener('click', closeEditUserModal);
     elements.resetCvatBtn.addEventListener('click', handleResetCvatSettings);
     elements.saveCvatBtn.addEventListener('click', handleSaveCvatSettings);
     elements.cancelCvatBtn.addEventListener('click', closeCvatModal);
@@ -255,7 +220,7 @@ function renderUsersTable() {
             <td>${formatDate(user.created_at)}</td>
             <td>
                 <div class="action-buttons">
-                    <button class="btn btn-icon" data-action="edit-role" data-user-id="${user.id}" title="Змінити роль">
+                    <button class="btn btn-icon" data-action="edit-user" data-user-id="${user.id}" title="Редагувати">
                         ✏️
                     </button>
                     <button class="btn btn-danger btn-icon" data-action="delete-user" data-user-id="${user.id}" title="Видалити">
@@ -274,11 +239,98 @@ function handleUserActions(e) {
     const action = e.target.dataset.action;
     const userId = e.target.dataset.userId;
 
-    if (action === 'edit-role') {
-        editUserRole(userId);
+    if (action === 'edit-user') {
+        openEditUserModal(userId);
     } else if (action === 'delete-user') {
         deleteUser(userId);
     }
+}
+
+function openEditUserModal(userId) {
+    const user = currentUsers.find(u => u.id === userId);
+    if (!user) return;
+
+    currentEditingUser = user;
+
+    const elements = {
+        title: document.getElementById('edit-user-modal-title'),
+        email: document.getElementById('edit-user-email'),
+        password: document.getElementById('edit-user-password'),
+        role: document.getElementById('edit-user-role'),
+        modal: document.getElementById('edit-user-modal')
+    };
+
+    elements.title.textContent = `Редагувати ${user.email}`;
+    elements.email.value = user.email;
+    elements.password.value = '';
+    elements.role.value = user.role;
+    elements.modal.style.display = 'block';
+}
+
+async function handleSaveEditUser() {
+    if (!currentEditingUser) return;
+
+    const formData = {
+        email: document.getElementById('edit-user-email').value.trim(),
+        password: document.getElementById('edit-user-password').value,
+        role: document.getElementById('edit-user-role').value
+    };
+
+    const validation = validateEditUserForm(formData);
+    if (!validation.valid) {
+        UI.showNotification(validation.message, 'error');
+        return;
+    }
+
+    try {
+        const requestData = {
+            email: formData.email,
+            role: formData.role
+        };
+
+        if (formData.password) {
+            requestData.password = formData.password;
+        }
+
+        const response = await authenticatedFetch(`/admin/users/${currentEditingUser.id}`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(requestData),
+        });
+
+        if (!response?.ok) {
+            const error = await response.json();
+            throw new Error(error.detail || 'Помилка оновлення користувача');
+        }
+
+        UI.showNotification('Користувача успішно оновлено', 'success');
+        closeEditUserModal();
+        await loadUsers();
+
+    } catch (error) {
+        console.error('Помилка оновлення користувача:', error);
+        UI.showNotification(error.message, 'error');
+    }
+}
+
+function validateEditUserForm({ email, password, role }) {
+    if (!email || !role) {
+        return { valid: false, message: 'Email та роль є обов\'язковими' };
+    }
+
+    if (password && password.length < 8) {
+        return { valid: false, message: 'Пароль повинен містити мінімум 8 символів' };
+    }
+
+    return { valid: true };
+}
+
+function closeEditUserModal() {
+    document.getElementById('edit-user-modal').style.display = 'none';
+    document.getElementById('edit-user-form').reset();
+    currentEditingUser = null;
 }
 
 function escapeHtml(text) {
@@ -310,45 +362,6 @@ function openAddUserModal() {
     document.getElementById('user-modal-title').textContent = 'Додати користувача';
     document.getElementById('user-form').reset();
     document.getElementById('user-modal').style.display = 'block';
-}
-
-async function editUserRole(userId) {
-    const user = currentUsers.find(u => u.id === userId);
-    if (!user) return;
-
-    const newRole = await UI.showPrompt(
-        `Змінити роль для ${user.email}:\n\nВведіть нову роль (annotator/admin):`,
-        user.role
-    );
-
-    if (!newRole || newRole === user.role) return;
-
-    if (!['annotator', 'admin'].includes(newRole)) {
-        UI.showNotification('Невірна роль. Дозволені: annotator, admin', 'error');
-        return;
-    }
-
-    try {
-        const response = await authenticatedFetch(`/admin/users/${userId}/role`, {
-            method: 'PUT',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ new_role: newRole }),
-        });
-
-        if (!response?.ok) {
-            const error = await response.json();
-            throw new Error(error.detail || 'Помилка зміни ролі');
-        }
-
-        UI.showNotification('Роль користувача успішно змінена', 'success');
-        await loadUsers();
-
-    } catch (error) {
-        console.error('Помилка зміни ролі:', error);
-        UI.showNotification(error.message, 'error');
-    }
 }
 
 async function deleteUser(userId) {
@@ -652,6 +665,7 @@ function closeCvatModal() {
 
 function closeAllModals() {
     closeUserModal();
+    closeEditUserModal();
     closeCvatModal();
 }
 

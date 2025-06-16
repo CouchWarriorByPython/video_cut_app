@@ -21,7 +21,14 @@ class AnnotationBase:
         if isinstance(annotation, BaseModel):
             annotation = annotation.model_dump()
 
-        annotation["updated_at"] = datetime.now().isoformat(sep=" ", timespec="seconds")
+        current_time = datetime.now().isoformat(sep=" ", timespec="seconds")
+
+        # Додаємо created_at для нових записів
+        if "_id" not in annotation and "created_at" not in annotation:
+            annotation["created_at"] = current_time
+
+        # Завжди оновлюємо updated_at
+        annotation["updated_at"] = current_time
 
         if self.collection_name == "source_videos" and "azure_link" not in annotation:
             raise ValueError("Анотація соурс відео повинна містити поле 'azure_link'")

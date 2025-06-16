@@ -123,6 +123,7 @@
                     <div class="form-group">
                         <label for="user-role">Роль:</label>
                         <select id="user-role" class="form-control" required>
+                            <option value="">Оберіть роль</option>
                             <option value="annotator">Annotator</option>
                             <option value="admin">Admin</option>
                         </select>
@@ -132,6 +133,40 @@
             <div class="modal-footer">
                 <button class="btn btn-secondary" id="cancel-user-btn">Скасувати</button>
                 <button class="btn btn-success" id="save-user-btn">Зберегти</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit User Modal -->
+    <div id="edit-user-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="edit-user-modal-title">Редагувати користувача</h3>
+                <span class="modal-close">&times;</span>
+            </div>
+            <div class="modal-body">
+                <form id="edit-user-form">
+                    <div class="form-group">
+                        <label for="edit-user-email">Email:</label>
+                        <input type="email" id="edit-user-email" class="form-control" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="edit-user-password">Новий пароль (опційно):</label>
+                        <input type="password" id="edit-user-password" class="form-control" minlength="8">
+                        <small class="form-text">Залиште порожнім, щоб не змінювати пароль</small>
+                    </div>
+                    <div class="form-group">
+                        <label for="edit-user-role">Роль:</label>
+                        <select id="edit-user-role" class="form-control" required>
+                            <option value="annotator">Annotator</option>
+                            <option value="admin">Admin</option>
+                        </select>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" id="cancel-edit-user-btn">Скасувати</button>
+                <button class="btn btn-success" id="save-edit-user-btn">Зберегти зміни</button>
             </div>
         </div>
     </div>

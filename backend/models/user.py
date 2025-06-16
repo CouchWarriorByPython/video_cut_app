@@ -1,5 +1,6 @@
 from pydantic import BaseModel, Field, EmailStr
 from datetime import datetime
+from typing import Optional
 
 
 class User(BaseModel):
@@ -17,6 +18,13 @@ class UserCreate(BaseModel):
     email: EmailStr
     password: str = Field(..., min_length=8)
     role: str = Field(..., pattern="^(admin|annotator)$")
+
+
+class UserUpdateRequest(BaseModel):
+    """Схема оновлення користувача"""
+    email: Optional[EmailStr] = None
+    password: Optional[str] = Field(None, min_length=8)
+    role: Optional[str] = Field(None, pattern="^(admin|annotator)$")
 
 
 class UserResponse(BaseModel):

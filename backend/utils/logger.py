@@ -4,6 +4,8 @@ from pathlib import Path
 from typing import Optional
 from logging.handlers import RotatingFileHandler
 
+from backend.config.settings import Settings
+
 
 class LoggerConfig:
     """Централізована конфігурація логера з підтримкою різних середовищ"""
@@ -12,9 +14,9 @@ class LoggerConfig:
             self,
             name: str = "annotator",
             level: str = "INFO",
-            log_dir: Optional[Path] = None,
-            max_bytes: int = 10 * 1024 * 1024,  # 10MB
-            backup_count: int = 5,
+            log_dir: Path = Path(Settings.logs_folder),
+            max_bytes: int = Settings.log_max_bytes,
+            backup_count: int = Settings.log_backup_count,
             console_output: bool = True,
             is_production: bool = False,
             log_file: Optional[str] = None  # Додаємо можливість явно вказати файл
@@ -117,7 +119,3 @@ def get_logger(name: Optional[str] = None, log_file: Optional[str] = None) -> lo
         log_file=log_file
     )
     return config.setup_logger()
-
-
-# Глобальний логер для зворотної сумісності
-logger = get_logger("annotator", "app.log")

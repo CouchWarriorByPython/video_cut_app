@@ -18,14 +18,15 @@ def create_super_admin() -> None:
         if existing_admin:
             needs_update = False
             updates = {}
+            current_time = datetime.now().isoformat(sep=" ", timespec="seconds")
 
             # Перевірка та оновлення відсутніх полів
             if "created_at" not in existing_admin:
-                updates["created_at"] = datetime.now().isoformat(sep=" ", timespec="seconds")
+                updates["created_at"] = current_time
                 needs_update = True
 
             if "updated_at" not in existing_admin:
-                updates["updated_at"] = datetime.now().isoformat(sep=" ", timespec="seconds")
+                updates["updated_at"] = current_time
                 needs_update = True
 
             if "is_active" not in existing_admin or not existing_admin["is_active"]:

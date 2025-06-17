@@ -216,7 +216,7 @@ class AdminPanel {
 
     _handleUserActions(e) {
         const action = e.target.dataset.action;
-        const userId = e.target.dataset.userId;
+        const userId = e.target.dataset['user-id'];
 
         if (action === 'edit-user') {
             this._openEditUserModal(userId);
@@ -603,9 +603,6 @@ class AdminPanel {
     }
 }
 
-/**
- * Ініціалізація при завантаженні сторінки
- */
 document.addEventListener('DOMContentLoaded', () => {
     window.adminPanel = new AdminPanel();
 });

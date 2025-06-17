@@ -12,6 +12,7 @@ class VideoAnnotator {
             videoSelector: document.getElementById('video-selector'),
             videoSelect: document.getElementById('video-select'),
             loadVideoBtn: document.getElementById('load-video-btn'),
+            backToListBtn: document.getElementById('back-to-list-btn'),
             videoEditor: document.getElementById('video-editor'),
             videoPlayer: document.getElementById('video-player'),
             timeline: document.getElementById('timeline'),
@@ -76,6 +77,11 @@ class VideoAnnotator {
 
     _setupEventListeners() {
         this.elements.loadVideoBtn.addEventListener('click', () => this._handleLoadVideo());
+
+        const backBtn = document.getElementById('back-to-list-btn');
+        if (backBtn) {
+            backBtn.addEventListener('click', () => this.goBackToVideoList());
+        }
         this.elements.startFragmentBtn.addEventListener('click', () => this._handleStartFragment());
         this.elements.endFragmentBtn.addEventListener('click', () => this._handleEndFragment());
         this.elements.cancelFragmentBtn.addEventListener('click', () => this._handleCancelFragment());
@@ -223,7 +229,6 @@ class VideoAnnotator {
         `;
         this.elements.videoEditor.classList.remove('hidden');
 
-        // Додати обробник події
         const backBtn = document.getElementById('back-to-list-btn');
         if (backBtn) {
             backBtn.addEventListener('click', () => this.goBackToVideoList());

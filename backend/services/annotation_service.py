@@ -1,5 +1,4 @@
 from typing import Dict, Any, Optional
-from datetime import datetime
 
 from backend.database import create_repository
 from backend.services.cvat_service import CVATService

@@ -1,363 +1,341 @@
-const videoUrlInput = document.getElementById('video-url');
-const metadataWhereInput = document.getElementById('metadata-where');
-const metadataWhenInput = document.getElementById('metadata-when');
-const uploadBtn = document.getElementById('upload-btn');
-const resultDiv = document.getElementById('result');
+/**
+ * Модуль завантаження відео
+ */
 
-let activeUploads = new Map();
-let progressIntervals = new Map();
-
-document.addEventListener('DOMContentLoaded', function() {
-    loadSavedUploads();
-});
-
-uploadBtn.addEventListener('click', handleUpload);
-videoUrlInput.addEventListener('input', validateAzureUrl);
-
-function validateAzureUrl() {
-    const url = videoUrlInput.value.trim();
-
-    if (!url) {
-        videoUrlInput.style.borderColor = '';
-        return;
-    }
-
-    const isValid = isValidAzureUrl(url);
-    videoUrlInput.style.borderColor = isValid ? '#2ecc71' : '#e74c3c';
-}
-
-function isValidAzureUrl(url) {
-    try {
-        const urlObj = new URL(url);
-        return urlObj.hostname.includes('.blob.core.windows.net') &&
-               urlObj.pathname.length > 1;
-    } catch {
-        return false;
-    }
-}
-
-async function handleUpload() {
-    const url = videoUrlInput.value.trim();
-    const where = metadataWhereInput.value.trim();
-    const when = metadataWhenInput.value.trim();
-
-    console.log('Токен є:', !!getAuthToken());
-    console.log('authenticatedFetch доступний:', typeof authenticatedFetch);
-
-    if (!url) {
-        showError('Будь ласка, вкажіть Azure Blob URL відео');
-        return;
-    }
-
-    if (!isValidAzureUrl(url)) {
-        showError('Некоректний Azure Blob URL. Використовуйте формат: https://account.blob.core.windows.net/container/path/file.mp4');
-        return;
-    }
-
-    if (where && !/^[A-Za-z\s\-_]+$/.test(where)) {
-        showError('Локація може містити тільки англійські літери, пробіли, дефіси та підкреслення');
-        return;
-    }
-
-    if (when && !/^\d{8}$/.test(when)) {
-        showError('Дата повинна бути у форматі РРРРММДД (8 цифр)');
-        return;
-    }
-
-    uploadBtn.disabled = true;
-    uploadBtn.textContent = 'Реєструємо...';
-
-    try {
-        console.log('Виконуємо authenticated запит...');
-        const response = await authenticatedFetch('/upload', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                video_url: url,
-                where: where || null,
-                when: when || null
-            }),
-        });
-
-        if (!response) {
-            console.log('Response null - перенаправлення на логін');
-            return;
-        }
-
-        if (!response.ok) {
-            throw new Error(`HTTP помилка! Статус: ${response.status}`);
-        }
-
-        const data = await response.json();
-        console.log("Отримана відповідь:", data);
-        handleUploadResponse(data);
-        resetForm();
-    } catch (error) {
-        console.error('Помилка:', error);
-        showError(`Помилка з'єднання з сервером: ${error.message}`);
-        resetForm();
-    }
-}
-
-function handleUploadResponse(data) {
-    if (data.success) {
-        const uploadId = generateUploadId();
-        const uploadData = {
-            id: uploadId,
-            taskId: data.conversion_task_id,
-            azure_link: data.azure_link,
-            filename: data.filename,
-            message: data.message,
-            timestamp: Date.now()
+class VideoUploader {
+    constructor() {
+        this.elements = {
+            videoUrl: document.getElementById('video-url'),
+            metadataWhere: document.getElementById('metadata-where'),
+            metadataWhen: document.getElementById('metadata-when'),
+            uploadBtn: document.getElementById('upload-btn'),
+            result: document.getElementById('result')
         };
 
-        activeUploads.set(uploadId, uploadData);
-        saveUploadsToStorage();
-        showProgressBar(uploadData);
-        startProgressTracking(uploadId);
-    } else {
-        showError(data.message || 'Невідома помилка при реєстрації відео');
-    }
-}
-
-function showProgressBar(uploadData) {
-    const progressId = `progress-${uploadData.id}`;
-
-    const progressHTML = `
-        <div id="${progressId}" class="upload-progress-item">
-            <div class="upload-info">
-                <h3>Обробка відео</h3>
-                <p><strong>Файл:</strong> ${uploadData.filename}</p>
-                <p><strong>Azure посилання:</strong></p>
-                <p class="url-display">${uploadData.azure_link}</p>
-            </div>
-            <div class="progress-container">
-                <div class="progress-status">
-                    <span class="status-text">Ініціалізація...</span>
-                    <span class="progress-percentage">0%</span>
-                </div>
-                <div class="progress-bar">
-                    <div class="progress-fill" style="width: 0%"></div>
-                </div>
-                <div class="progress-stage">Чекаємо початку обробки...</div>
-            </div>
-            <div class="upload-actions">
-                <button class="btn btn-secondary" onclick="removeUpload('${uploadData.id}')">Приховати</button>
-            </div>
-        </div>
-    `;
-
-    if (resultDiv.children.length === 0) {
-        resultDiv.innerHTML = progressHTML;
-    } else {
-        resultDiv.insertAdjacentHTML('afterbegin', progressHTML);
+        this.activeUploads = new Map();
+        this.progressIntervals = new Map();
+        
+        this._init();
     }
 
-    resultDiv.classList.remove('hidden');
-}
-
-function startProgressTracking(uploadId) {
-    const uploadData = activeUploads.get(uploadId);
-    if (!uploadData) return;
-
-    const interval = setInterval(() => {
-        checkTaskProgress(uploadId);
-    }, 2000);
-
-    progressIntervals.set(uploadId, interval);
-}
-
-async function checkTaskProgress(uploadId) {
-    const uploadData = activeUploads.get(uploadId);
-    if (!uploadData) {
-        clearProgressInterval(uploadId);
-        return;
+    _init() {
+        this._setupEventListeners();
+        this._loadSavedUploads();
     }
 
-    try {
-        const response = await authenticatedFetch(`/task_status/${uploadData.taskId}`);
+    _setupEventListeners() {
+        this.elements.uploadBtn.addEventListener('click', () => this._handleUpload());
+        this.elements.videoUrl.addEventListener('input', () => this._validateUrl());
+    }
 
-        if (!response) {
-            removeUpload(uploadId);
+    async _handleUpload() {
+        const formData = this._getFormData();
+        
+        if (!this._validateForm(formData)) {
             return;
         }
 
-        if (!response.ok) {
-            throw new Error(`HTTP ${response.status}`);
+        UI.setButtonState(this.elements.uploadBtn, true, 'Реєструємо...');
+
+        try {
+            const data = await Auth.authenticatedRequest('/upload', {
+                method: 'POST',
+                body: JSON.stringify(formData)
+            });
+
+            if (!data) return;
+
+            this._handleUploadResponse(data);
+            this._resetForm();
+        } catch (error) {
+            const message = ErrorHandler.handleApiError(error, 'upload');
+            await showNotification(message, 'error');
+        } finally {
+            UI.setButtonState(this.elements.uploadBtn, false, 'Зареєструвати відео');
+        }
+    }
+
+    _getFormData() {
+        return {
+            video_url: this.elements.videoUrl.value.trim(),
+            where: this.elements.metadataWhere.value.trim() || null,
+            when: this.elements.metadataWhen.value.trim() || null
+        };
+    }
+
+    _validateForm(data) {
+        UI.clearFormErrors(document.querySelector('form') || document);
+
+        if (!data.video_url) {
+            UI.setFieldValidation(this.elements.videoUrl, false, 'Поле є обовʼязковим');
+            showNotification('Будь ласка, вкажіть Azure Blob URL відео', 'error');
+            return false;
         }
 
-        const data = await response.json();
-        updateProgressDisplay(uploadId, data);
+        if (!Validators.isValidAzureUrl(data.video_url)) {
+            UI.setFieldValidation(this.elements.videoUrl, false, 'Некоректний Azure URL');
+            showNotification('Некоректний Azure Blob URL. Перевірте формат посилання', 'error');
+            return false;
+        }
 
-        if (data.status === 'completed' || data.status === 'failed') {
-            clearProgressInterval(uploadId);
+        if (data.where && !Validators.isValidLocation(data.where)) {
+            UI.setFieldValidation(this.elements.metadataWhere, false, 'Тільки англійські літери');
+            showNotification('Локація може містити тільки англійські літери, пробіли, дефіси та підкреслення', 'error');
+            return false;
+        }
 
-            if (data.status === 'completed') {
-                showCompletedState(uploadId, uploadData);
-            } else {
-                showErrorState(uploadId, data.message);
+        if (data.when && !Validators.isValidDate(data.when)) {
+            UI.setFieldValidation(this.elements.metadataWhen, false, `Формат: ${CONFIG.DATE_FORMAT}`);
+            showNotification(`Дата повинна бути у форматі ${CONFIG.DATE_FORMAT} (8 цифр)`, 'error');
+            return false;
+        }
+
+        return true;
+    }
+
+    _validateUrl() {
+        const url = this.elements.videoUrl.value.trim();
+        if (!url) {
+            UI.setFieldValidation(this.elements.videoUrl, true);
+            return;
+        }
+
+        const isValid = Validators.isValidAzureUrl(url);
+        UI.setFieldValidation(this.elements.videoUrl, isValid, 
+            isValid ? '' : 'Некоректний Azure URL');
+    }
+
+    _handleUploadResponse(data) {
+        if (data.success) {
+            const uploadData = {
+                id: Utils.generateId(),
+                taskId: data.conversion_task_id,
+                azure_link: data.azure_link,
+                filename: data.filename,
+                message: data.message,
+                timestamp: Date.now()
+            };
+
+            this.activeUploads.set(uploadData.id, uploadData);
+            this._saveUploadsToStorage();
+            this._showProgressBar(uploadData);
+            this._startProgressTracking(uploadData.id);
+        } else {
+            showNotification(data.message || 'Невідома помилка при реєстрації відео', 'error');
+        }
+    }
+
+    _showProgressBar(uploadData) {
+        const progressHTML = `
+            <div id="progress-${uploadData.id}" class="upload-progress-item">
+                <div class="upload-info">
+                    <h3>Обробка відео</h3>
+                    <p><strong>Файл:</strong> ${Utils.escapeHtml(uploadData.filename)}</p>
+                    <p><strong>Azure посилання:</strong></p>
+                    <p class="url-display">${Utils.escapeHtml(uploadData.azure_link)}</p>
+                </div>
+                <div class="progress-container">
+                    <div class="progress-status">
+                        <span class="status-text">Ініціалізація...</span>
+                        <span class="progress-percentage">0%</span>
+                    </div>
+                    <div class="progress-bar">
+                        <div class="progress-fill" style="width: 0%"></div>
+                    </div>
+                    <div class="progress-stage">Чекаємо початку обробки...</div>
+                </div>
+                <div class="upload-actions">
+                    <button class="btn btn-secondary" onclick="videoUploader.removeUpload('${uploadData.id}')">Приховати</button>
+                </div>
+            </div>
+        `;
+
+        if (this.elements.result.children.length === 0) {
+            this.elements.result.innerHTML = progressHTML;
+        } else {
+            this.elements.result.insertAdjacentHTML('afterbegin', progressHTML);
+        }
+
+        this.elements.result.classList.remove('hidden');
+    }
+
+    _startProgressTracking(uploadId) {
+        const interval = setInterval(() => {
+            this._checkTaskProgress(uploadId);
+        }, 2000);
+
+        this.progressIntervals.set(uploadId, interval);
+    }
+
+    async _checkTaskProgress(uploadId) {
+        const uploadData = this.activeUploads.get(uploadId);
+        if (!uploadData) {
+            this._clearProgressInterval(uploadId);
+            return;
+        }
+
+        try {
+            const data = await Auth.authenticatedRequest(`/task_status/${uploadData.taskId}`);
+            if (!data) {
+                this.removeUpload(uploadId);
+                return;
             }
+
+            this._updateProgressDisplay(uploadId, data);
+
+            if (data.status === 'completed' || data.status === 'failed') {
+                this._clearProgressInterval(uploadId);
+
+                if (data.status === 'completed') {
+                    this._showCompletedState(uploadId, uploadData);
+                } else {
+                    this._showErrorState(uploadId, data.message);
+                }
+            }
+        } catch (error) {
+            console.error('Помилка перевірки прогресу:', error);
+            this.removeUpload(uploadId);
         }
-    } catch (error) {
-        console.error('Помилка перевірки прогресу:', error);
-        removeUpload(uploadId);
-    }
-}
-
-function updateProgressDisplay(uploadId, progressData) {
-    const progressElement = document.getElementById(`progress-${uploadId}`);
-    if (!progressElement) return;
-
-    const statusText = progressElement.querySelector('.status-text');
-    const progressPercentage = progressElement.querySelector('.progress-percentage');
-    const progressFill = progressElement.querySelector('.progress-fill');
-    const progressStage = progressElement.querySelector('.progress-stage');
-
-    const progress = progressData.progress || 0;
-    const stage = progressData.stage || 'unknown';
-    const message = progressData.message || 'Обробка...';
-
-    const stageTexts = {
-        'queued': 'В черзі',
-        'downloading': 'Завантаження',
-        'analyzing': 'Аналіз відео',
-        'converting': 'Конвертація',
-        'finalizing': 'Завершення',
-        'completed': 'Завершено',
-        'failed': 'Помилка'
-    };
-
-    statusText.textContent = stageTexts[stage] || stage;
-    progressPercentage.textContent = `${progress}%`;
-    progressFill.style.width = `${progress}%`;
-    progressStage.textContent = message;
-
-    progressFill.className = 'progress-fill';
-    if (stage === 'downloading') {
-        progressFill.classList.add('downloading');
-    } else if (stage === 'converting') {
-        progressFill.classList.add('converting');
-    } else if (stage === 'completed') {
-        progressFill.classList.add('completed');
-    } else if (stage === 'failed') {
-        progressFill.classList.add('failed');
-    }
-}
-
-function showCompletedState(uploadId, uploadData) {
-    const progressElement = document.getElementById(`progress-${uploadId}`);
-    if (!progressElement) return;
-
-    const actionsDiv = progressElement.querySelector('.upload-actions');
-    actionsDiv.innerHTML = `
-        <button class="btn btn-success" onclick="window.location.href='/annotator'">
-            Перейти до анотування
-        </button>
-        <button class="btn btn-secondary" onclick="removeUpload('${uploadId}')">Приховати</button>
-    `;
-
-    activeUploads.delete(uploadId);
-    saveUploadsToStorage();
-}
-
-function showErrorState(uploadId, errorMessage) {
-    const progressElement = document.getElementById(`progress-${uploadId}`);
-    if (!progressElement) return;
-
-    const progressStage = progressElement.querySelector('.progress-stage');
-    progressStage.innerHTML = `<span style="color: #e74c3c;">Помилка: ${errorMessage}</span>`;
-
-    activeUploads.delete(uploadId);
-    saveUploadsToStorage();
-}
-
-function removeUpload(uploadId) {
-    clearProgressInterval(uploadId);
-    activeUploads.delete(uploadId);
-    saveUploadsToStorage();
-
-    const progressElement = document.getElementById(`progress-${uploadId}`);
-    if (progressElement) {
-        progressElement.remove();
     }
 
-    if (resultDiv.children.length === 0) {
-        resultDiv.classList.add('hidden');
+    _updateProgressDisplay(uploadId, progressData) {
+        const progressElement = document.getElementById(`progress-${uploadId}`);
+        if (!progressElement) return;
+
+        const statusText = progressElement.querySelector('.status-text');
+        const progressPercentage = progressElement.querySelector('.progress-percentage');
+        const progressFill = progressElement.querySelector('.progress-fill');
+        const progressStage = progressElement.querySelector('.progress-stage');
+
+        const progress = progressData.progress || 0;
+        const stage = progressData.stage || 'unknown';
+        const message = progressData.message || 'Обробка...';
+
+        const stageTexts = {
+            'queued': 'В черзі',
+            'downloading': 'Завантаження',
+            'analyzing': 'Аналіз відео',
+            'converting': 'Конвертація',
+            'finalizing': 'Завершення',
+            'completed': 'Завершено',
+            'failed': 'Помилка'
+        };
+
+        statusText.textContent = stageTexts[stage] || stage;
+        progressPercentage.textContent = `${progress}%`;
+        progressFill.style.width = `${progress}%`;
+        progressStage.textContent = message;
+
+        progressFill.className = `progress-fill ${stage}`;
     }
-}
 
-function clearProgressInterval(uploadId) {
-    const interval = progressIntervals.get(uploadId);
-    if (interval) {
-        clearInterval(interval);
-        progressIntervals.delete(uploadId);
+    _showCompletedState(uploadId, uploadData) {
+        const progressElement = document.getElementById(`progress-${uploadId}`);
+        if (!progressElement) return;
+
+        const actionsDiv = progressElement.querySelector('.upload-actions');
+        actionsDiv.innerHTML = `
+            <button class="btn btn-success" onclick="window.location.href='${CONFIG.PAGES.ANNOTATOR}'">
+                Перейти до анотування
+            </button>
+            <button class="btn btn-secondary" onclick="videoUploader.removeUpload('${uploadId}')">Приховати</button>
+        `;
+
+        this.activeUploads.delete(uploadId);
+        this._saveUploadsToStorage();
     }
-}
 
-function generateUploadId() {
-    return 'upload_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
-}
+    _showErrorState(uploadId, errorMessage) {
+        const progressElement = document.getElementById(`progress-${uploadId}`);
+        if (!progressElement) return;
 
-function saveUploadsToStorage() {
-    const uploadsArray = Array.from(activeUploads.values());
-    localStorage.setItem('activeUploads', JSON.stringify(uploadsArray));
-}
+        const progressStage = progressElement.querySelector('.progress-stage');
+        progressStage.innerHTML = `<span style="color: #e74c3c;">Помилка: ${Utils.escapeHtml(errorMessage)}</span>`;
 
-async function validateTaskExists(taskId) {
-    try {
-        const response = await authenticatedFetch(`/task_status/${taskId}`);
-        return response && response.ok;
-    } catch (error) {
-        return false;
+        this.activeUploads.delete(uploadId);
+        this._saveUploadsToStorage();
     }
-}
 
-async function loadSavedUploads() {
-    try {
-        const saved = localStorage.getItem('activeUploads');
-        if (saved) {
+    removeUpload(uploadId) {
+        this._clearProgressInterval(uploadId);
+        this.activeUploads.delete(uploadId);
+        this._saveUploadsToStorage();
+
+        const progressElement = document.getElementById(`progress-${uploadId}`);
+        if (progressElement) {
+            progressElement.remove();
+        }
+
+        if (this.elements.result.children.length === 0) {
+            this.elements.result.classList.add('hidden');
+        }
+    }
+
+    _clearProgressInterval(uploadId) {
+        const interval = this.progressIntervals.get(uploadId);
+        if (interval) {
+            clearInterval(interval);
+            this.progressIntervals.delete(uploadId);
+        }
+    }
+
+    _saveUploadsToStorage() {
+        const uploadsArray = Array.from(this.activeUploads.values());
+        localStorage.setItem('activeUploads', JSON.stringify(uploadsArray));
+    }
+
+    async _loadSavedUploads() {
+        try {
+            const saved = localStorage.getItem('activeUploads');
+            if (!saved) return;
+
             const uploadsArray = JSON.parse(saved);
 
             for (const uploadData of uploadsArray) {
                 const hoursSinceUpload = (Date.now() - uploadData.timestamp) / (1000 * 60 * 60);
 
                 if (hoursSinceUpload < 24) {
-                    const taskExists = await validateTaskExists(uploadData.taskId);
+                    const taskExists = await this._validateTaskExists(uploadData.taskId);
                     if (taskExists) {
-                        activeUploads.set(uploadData.id, uploadData);
-                        showProgressBar(uploadData);
-                        startProgressTracking(uploadData.id);
+                        this.activeUploads.set(uploadData.id, uploadData);
+                        this._showProgressBar(uploadData);
+                        this._startProgressTracking(uploadData.id);
                     }
                 }
             }
 
-            if (activeUploads.size > 0) {
-                resultDiv.classList.remove('hidden');
+            if (this.activeUploads.size > 0) {
+                this.elements.result.classList.remove('hidden');
             }
 
-            saveUploadsToStorage();
+            this._saveUploadsToStorage();
+        } catch (error) {
+            console.error('Помилка завантаження збережених завантажень:', error);
+            localStorage.removeItem('activeUploads');
         }
-    } catch (error) {
-        console.error('Помилка завантаження збережених завантажень:', error);
-        localStorage.removeItem('activeUploads');
+    }
+
+    async _validateTaskExists(taskId) {
+        try {
+            const response = await Auth.authenticatedRequest(`/task_status/${taskId}`);
+            return !!response;
+        } catch (error) {
+            return false;
+        }
+    }
+
+    _resetForm() {
+        this.elements.videoUrl.value = '';
+        this.elements.metadataWhere.value = '';
+        this.elements.metadataWhen.value = '';
+        UI.clearFormErrors(document);
+        UI.setButtonState(this.elements.uploadBtn, false, 'Зареєструвати відео');
     }
 }
 
-function resetForm() {
-    uploadBtn.disabled = false;
-    uploadBtn.textContent = 'Зареєструвати відео';
-    videoUrlInput.style.borderColor = '';
-}
-
-function showError(message) {
-    resultDiv.innerHTML = `
-        <div class="error-message">
-            <h3>Помилка реєстрації</h3>
-            <p>${message}</p>
-        </div>
-    `;
-    resultDiv.classList.remove('hidden');
-    resetForm();
-}
+/**
+ * Ініціалізація при завантаженні сторінки
+ */
+document.addEventListener('DOMContentLoaded', () => {
+    window.videoUploader = new VideoUploader();
+});

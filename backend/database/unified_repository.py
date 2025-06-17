@@ -134,7 +134,12 @@ class UnifiedRepository(BaseRepository):
         required_fields = self.validation_rules.get("required_fields", [])
 
         for field in required_fields:
-            if field not in data or not data[field]:
+            if field not in data:
+                raise ValueError(f"Обов'язкове поле '{field}' відсутнє або порожнє")
+
+            value = data[field]
+
+            if value is None or (isinstance(value, str) and not value.strip()):
                 raise ValueError(f"Обов'язкове поле '{field}' відсутнє або порожнє")
 
     def save_document(self, data: Dict, update_mode: str = "replace") -> str:

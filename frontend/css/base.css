@@ -363,3 +363,103 @@ select.form-control option:hover {
 .action-buttons .btn {
     flex: 1;
 }
+
+/* Modal notification system */
+.notification-modal {
+    display: none;
+    position: fixed;
+    z-index: 1000;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.7);
+    animation: fadeIn 0.3s ease-out;
+}
+
+.notification-modal-content {
+    background-color: var(--card-bg);
+    margin: 15% auto;
+    padding: 30px;
+    border-radius: 12px;
+    width: 90%;
+    max-width: 400px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+    border: 1px solid var(--border-color);
+    text-align: center;
+    animation: slideIn 0.3s ease-out;
+}
+
+.notification-modal h3 {
+    margin: 0 0 20px 0;
+    color: var(--text-light);
+    font-size: 20px;
+}
+
+.notification-modal p {
+    margin: 0 0 25px 0;
+    color: var(--text-muted);
+    line-height: 1.5;
+}
+
+.notification-modal .btn {
+    min-width: 100px;
+    margin: 0 5px;
+}
+
+.notification-modal.success h3 {
+    color: var(--secondary-color);
+}
+
+.notification-modal.error h3 {
+    color: var(--danger-color);
+}
+
+.notification-modal.warning h3 {
+    color: #f39c12;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@keyframes slideIn {
+    from {
+        opacity: 0;
+        transform: translateY(-50px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Error fields */
+.field-error {
+    color: var(--danger-color);
+    font-size: 12px;
+    margin-top: 5px;
+    display: block;
+}
+
+/* Loading button state */
+.btn.loading {
+    position: relative;
+    color: transparent;
+}
+
+.btn.loading::after {
+    content: '';
+    position: absolute;
+    width: 16px;
+    height: 16px;
+    top: 50%;
+    left: 50%;
+    margin-left: -8px;
+    margin-top: -8px;
+    border: 2px solid transparent;
+    border-top-color: #ffffff;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}

@@ -1,76 +1,101 @@
-document.addEventListener('DOMContentLoaded', function() {
-    const loginForm = document.getElementById('login-form');
-    const emailInput = document.getElementById('email');
-    const passwordInput = document.getElementById('password');
-    const loginBtn = document.getElementById('login-btn');
-    const errorMessage = document.getElementById('error-message');
+/**
+ * Модуль логіна
+ */
 
-    loginForm.addEventListener('submit', handleLogin);
+class LoginManager {
+    constructor() {
+        this.elements = {
+            form: document.getElementById('login-form'),
+            email: document.getElementById('email'),
+            password: document.getElementById('password'),
+            loginBtn: document.getElementById('login-btn'),
+            errorMessage: document.getElementById('error-message')
+        };
 
-    async function handleLogin(e) {
+        this._init();
+    }
+
+    _init() {
+        this._setupEventListeners();
+        this.elements.email.focus();
+    }
+
+    _setupEventListeners() {
+        this.elements.form.addEventListener('submit', (e) => this._handleLogin(e));
+    }
+
+    async _handleLogin(e) {
         e.preventDefault();
 
-        const email = emailInput.value.trim();
-        const password = passwordInput.value;
+        const formData = this._getFormData();
 
-        if (!email || !password) {
-            showError('Будь ласка, заповніть всі поля');
+        if (!this._validateForm(formData)) {
             return;
         }
 
-        setLoading(true);
-        hideError();
+        UI.setButtonState(this.elements.loginBtn, true);
+        this._hideError();
 
         try {
-            const response = await fetch('/auth/login', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    email: email,
-                    password: password
-                }),
-            });
+            const data = await HTTP.post('/auth/login', formData);
 
-            const data = await response.json();
+            Auth.setTokens(data.access_token, data.refresh_token);
 
-            if (response.ok) {
-                // Зберігаємо токени
-                localStorage.setItem('access_token', data.access_token);
-                localStorage.setItem('refresh_token', data.refresh_token);
-
-                // Перенаправляємо на головну сторінку
-                window.location.href = '/';
-            } else {
-                showError(data.message || 'Помилка входу');
-            }
+            const role = Auth.getCurrentUserRole();
+            const homePage = Auth.getRoleBasedHomePage(role);
+            window.location.href = homePage;
         } catch (error) {
-            console.error('Помилка логіна:', error);
-            showError('Помилка з\'єднання з сервером');
+            const message = ErrorHandler.handleApiError(error, 'login');
+            this._showError(message);
         } finally {
-            setLoading(false);
+            UI.setButtonState(this.elements.loginBtn, false, 'Увійти');
         }
     }
 
-    function setLoading(loading) {
-        loginBtn.disabled = loading;
-        if (loading) {
-            loginBtn.textContent = '';
-        } else {
-            loginBtn.textContent = 'Увійти';
+    _getFormData() {
+        return {
+            email: this.elements.email.value.trim(),
+            password: this.elements.password.value
+        };
+    }
+
+    _validateForm(data) {
+        UI.clearFormErrors(this.elements.form);
+
+        if (!data.email) {
+            UI.setFieldValidation(this.elements.email, false, 'Email є обовʼязковим');
+            this._showError('Будь ласка, заповніть всі поля');
+            return false;
         }
+
+        if (!Validators.isValidEmail(data.email)) {
+            UI.setFieldValidation(this.elements.email, false, 'Некоректний email');
+            this._showError('Некоректний формат email');
+            return false;
+        }
+
+        if (!data.password) {
+            UI.setFieldValidation(this.elements.password, false, 'Пароль є обовʼязковим');
+            this._showError('Будь ласка, заповніть всі поля');
+            return false;
+        }
+
+        return true;
     }
 
-    function showError(message) {
-        errorMessage.textContent = message;
-        errorMessage.classList.remove('hidden');
+    _showError(message) {
+        this.elements.errorMessage.textContent = message;
+        this.elements.errorMessage.classList.remove('hidden');
     }
 
-    function hideError() {
-        errorMessage.classList.add('hidden');
+    _hideError() {
+        this.elements.errorMessage.classList.add('hidden');
     }
+}
 
-    // Автофокус на email
-    emailInput.focus();
+/**
+ * Ініціалізація при завантаженні сторінки
+ */
+document.addEventListener('DOMContentLoaded', () => {
+    new LoginManager();
 });

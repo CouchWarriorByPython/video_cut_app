@@ -18,14 +18,14 @@ ENDPOINT_PERMISSIONS = {
     "/favicon.png": None,
     "/get_video": None,
 
-    # HTML сторінки
-    "/": ["admin", "super_admin"],  # Тільки адміни можуть завантажувати відео
-    "/annotator": ["annotator", "admin", "super_admin"],
-    "/faq": ["annotator", "admin", "super_admin"],
+    # HTML сторінки (JavaScript сам перевіряє)
+    "/": "html",
+    "/annotator": "html",
+    "/faq": "html",
 
     # API ендпоінти з ролями
-    "/upload": ["admin", "super_admin"],  # Тільки адміни можуть завантажувати
-    "/task_status": ["admin", "super_admin"],  # Тільки адміни можуть перевіряти статус
+    "/upload": ["admin", "super_admin"],
+    "/task_status": ["admin", "super_admin"],
     "/video_status": ["annotator", "admin", "super_admin"],
     "/get_videos": ["annotator", "admin", "super_admin"],
     "/get_annotation": ["annotator", "admin", "super_admin"],

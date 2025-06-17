@@ -1,214 +1,249 @@
-function getAuthToken() {
-    return localStorage.getItem('access_token');
-}
+/**
+ * Модуль авторизації та управління сесіями
+ */
 
-function getRefreshToken() {
-    return localStorage.getItem('refresh_token');
-}
+const Auth = {
+    /**
+     * Токени доступу
+     */
+    getAccessToken() {
+        return localStorage.getItem('access_token');
+    },
 
-function setTokens(accessToken, refreshToken) {
-    localStorage.setItem('access_token', accessToken);
-    localStorage.setItem('refresh_token', refreshToken);
-}
+    getRefreshToken() {
+        return localStorage.getItem('refresh_token');
+    },
 
-function clearTokens() {
-    localStorage.removeItem('access_token');
-    localStorage.removeItem('refresh_token');
-}
+    setTokens(accessToken, refreshToken) {
+        localStorage.setItem('access_token', accessToken);
+        localStorage.setItem('refresh_token', refreshToken);
+    },
 
-function logout() {
-    clearTokens();
-    window.location.href = '/login';
-}
+    clearTokens() {
+        localStorage.removeItem('access_token');
+        localStorage.removeItem('refresh_token');
+    },
 
-function isAuthenticated() {
-    return !!getAuthToken();
-}
+    /**
+     * Стан авторизації
+     */
+    isAuthenticated() {
+        return !!this.getAccessToken();
+    },
 
-function getCurrentUserRole() {
-    const token = getAuthToken();
-    if (!token) return null;
+    getCurrentUserRole() {
+        const token = this.getAccessToken();
+        if (!token) return null;
 
-    try {
-        const payload = JSON.parse(atob(token.split('.')[1]));
-        return payload.role;
-    } catch (error) {
-        console.error('Помилка декодування токена:', error);
-        return null;
-    }
-}
+        try {
+            const payload = JSON.parse(atob(token.split('.')[1]));
+            return payload.role;
+        } catch (error) {
+            console.error('Помилка декодування токена:', error);
+            return null;
+        }
+    },
 
-function isAdminRole() {
-    const role = getCurrentUserRole();
-    return ['admin', 'super_admin'].includes(role);
-}
+    isAdminRole() {
+        const role = this.getCurrentUserRole();
+        return [CONFIG.ROLES.ADMIN, CONFIG.ROLES.SUPER_ADMIN].includes(role);
+    },
 
-async function checkAuthAndRedirect() {
-    const currentPath = window.location.pathname;
+    /**
+     * Редиректи залежно від ролі
+     */
+    getRoleBasedHomePage(role) {
+        const rolePages = {
+            [CONFIG.ROLES.ANNOTATOR]: CONFIG.PAGES.ANNOTATOR,
+            [CONFIG.ROLES.ADMIN]: CONFIG.PAGES.UPLOAD,
+            [CONFIG.ROLES.SUPER_ADMIN]: CONFIG.PAGES.UPLOAD
+        };
+        return rolePages[role] || CONFIG.PAGES.LOGIN;
+    },
 
-    if (currentPath === '/login' && isAuthenticated()) {
-        const isValid = await validateToken();
-        if (isValid) {
-            window.location.href = '/';
+    hasAccessToPage(path, role) {
+        const rolePermissions = {
+            [CONFIG.ROLES.ANNOTATOR]: [CONFIG.PAGES.ANNOTATOR, CONFIG.PAGES.FAQ],
+            [CONFIG.ROLES.ADMIN]: [CONFIG.PAGES.UPLOAD, CONFIG.PAGES.ANNOTATOR, CONFIG.PAGES.FAQ, CONFIG.PAGES.ADMIN],
+            [CONFIG.ROLES.SUPER_ADMIN]: [CONFIG.PAGES.UPLOAD, CONFIG.PAGES.ANNOTATOR, CONFIG.PAGES.FAQ, CONFIG.PAGES.ADMIN]
+        };
+
+        const allowedPaths = rolePermissions[role] || [];
+        return allowedPaths.includes(path);
+    },
+
+    /**
+     * Валідація токена
+     */
+    async validateToken() {
+        const token = this.getAccessToken();
+        if (!token) return false;
+
+        try {
+            const response = await HTTP.get('/get_videos', {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            return true;
+        } catch (error) {
+            if (error.message.includes('401')) {
+                const newToken = await this.refreshAccessToken();
+                return !!newToken;
+            }
+            return false;
+        }
+    },
+
+    async refreshAccessToken() {
+        const refreshToken = this.getRefreshToken();
+        if (!refreshToken) return null;
+
+        try {
+            const data = await HTTP.post('/auth/refresh', {
+                refresh_token: refreshToken
+            });
+
+            this.setTokens(data.access_token, data.refresh_token);
+            return data.access_token;
+        } catch (error) {
+            this.clearTokens();
+            return null;
+        }
+    },
+
+    /**
+     * Автентифіковані запити
+     */
+    async authenticatedRequest(url, options = {}) {
+        let token = this.getAccessToken();
+        if (!token) {
+            window.location.href = CONFIG.PAGES.LOGIN;
+            return null;
+        }
+
+        const makeRequest = async (authToken) => {
+            return HTTP.request(url, {
+                ...options,
+                headers: {
+                    ...options.headers,
+                    'Authorization': `Bearer ${authToken}`
+                }
+            });
+        };
+
+        try {
+            return await makeRequest(token);
+        } catch (error) {
+            if (error.message.includes('401')) {
+                token = await this.refreshAccessToken();
+                if (token) {
+                    return await makeRequest(token);
+                } else {
+                    window.location.href = CONFIG.PAGES.LOGIN;
+                    return null;
+                }
+            }
+            throw error;
+        }
+    },
+
+    /**
+     * Перевірка доступу та редиректи
+     */
+    async checkAuthAndRedirect() {
+        const currentPath = window.location.pathname;
+        const isAuthenticated = this.isAuthenticated();
+
+        if (currentPath === CONFIG.PAGES.LOGIN && isAuthenticated) {
+            const isValid = await this.validateToken();
+            if (isValid) {
+                const role = this.getCurrentUserRole();
+                const homePage = this.getRoleBasedHomePage(role);
+                window.location.href = homePage;
+                return;
+            }
+        }
+
+        if (currentPath !== CONFIG.PAGES.LOGIN && !isAuthenticated) {
+            window.location.href = CONFIG.PAGES.LOGIN;
             return;
         }
-    }
 
-    if (currentPath !== '/login' && !isAuthenticated()) {
-        window.location.href = '/login';
-        return;
-    }
+        if (currentPath !== CONFIG.PAGES.LOGIN && isAuthenticated) {
+            const isValid = await this.validateToken();
+            if (!isValid) {
+                this.clearTokens();
+                window.location.href = CONFIG.PAGES.LOGIN;
+                return;
+            }
 
-    if (currentPath !== '/login' && isAuthenticated()) {
-        const isValid = await validateToken();
-        if (!isValid) {
-            clearTokens();
-            window.location.href = '/login';
+            const role = this.getCurrentUserRole();
+            if (!this.hasAccessToPage(currentPath, role)) {
+                const homePage = this.getRoleBasedHomePage(role);
+                window.location.href = homePage;
+                return;
+            }
         }
-    }
-}
+    },
 
-async function validateToken() {
-    const token = getAuthToken();
-    if (!token) return false;
+    /**
+     * Вихід з системи
+     */
+    logout() {
+        this.clearTokens();
+        window.location.href = CONFIG.PAGES.LOGIN;
+    },
 
-    try {
-        const response = await fetch('/get_videos', {
-            method: 'GET',
-            headers: {
-                'Authorization': `Bearer ${token}`,
-            },
+    /**
+     * Додавання кнопок навігації
+     */
+    addNavigationButtons() {
+        const navbar = document.querySelector('.navbar-menu');
+        if (!navbar) return;
+
+        const existingAdminBtn = document.querySelector('.navbar-item.admin-link');
+        const existingLogoutBtn = document.getElementById('logout-btn');
+
+        if (existingAdminBtn) existingAdminBtn.remove();
+        if (existingLogoutBtn) existingLogoutBtn.remove();
+
+        if (this.isAdminRole()) {
+            const adminBtn = document.createElement('a');
+            adminBtn.href = CONFIG.PAGES.ADMIN;
+            adminBtn.className = 'navbar-item admin-link';
+            adminBtn.textContent = 'Адмінка';
+
+            if (window.location.pathname === CONFIG.PAGES.ADMIN) {
+                adminBtn.classList.add('active');
+            }
+
+            navbar.appendChild(adminBtn);
+        }
+
+        const logoutBtn = document.createElement('a');
+        logoutBtn.id = 'logout-btn';
+        logoutBtn.href = '#';
+        logoutBtn.className = 'navbar-item';
+        logoutBtn.textContent = 'Вийти';
+        logoutBtn.addEventListener('click', async (e) => {
+            e.preventDefault();
+            const confirmed = await showConfirm('Ви впевнені, що хочете вийти?');
+            if (confirmed) {
+                this.logout();
+            }
         });
-
-        if (response.status === 401) {
-            const newToken = await refreshAccessToken();
-            return !!newToken;
-        }
-
-        return response.ok;
-    } catch (error) {
-        console.error('Помилка валідації токена:', error);
-        return false;
+        navbar.appendChild(logoutBtn);
     }
-}
+};
 
-async function refreshAccessToken() {
-    const refreshToken = getRefreshToken();
-    if (!refreshToken) {
-        return null;
-    }
+/**
+ * Ініціалізація при завантаженні сторінки
+ */
+document.addEventListener('DOMContentLoaded', async () => {
+    await Auth.checkAuthAndRedirect();
 
-    try {
-        const response = await fetch('/auth/refresh', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                refresh_token: refreshToken
-            }),
-        });
-
-        if (response.ok) {
-            const data = await response.json();
-            setTokens(data.access_token, data.refresh_token);
-            return data.access_token;
-        } else {
-            clearTokens();
-            return null;
-        }
-    } catch (error) {
-        console.error('Помилка оновлення токена:', error);
-        clearTokens();
-        return null;
-    }
-}
-
-async function authenticatedFetch(url, options = {}) {
-    let token = getAuthToken();
-    if (!token) {
-        console.error('Відсутній токен авторизації');
-        window.location.href = '/login';
-        return null;
-    }
-
-    const makeRequest = async (authToken) => {
-        return fetch(url, {
-            ...options,
-            headers: {
-                ...options.headers,
-                'Authorization': `Bearer ${authToken}`,
-            },
-        });
-    };
-
-    let response = await makeRequest(token);
-
-    if (response.status === 401) {
-        console.log('Токен прострочений, спробуємо оновити...');
-        token = await refreshAccessToken();
-        if (token) {
-            console.log('Токен оновлено, повторюємо запит...');
-            response = await makeRequest(token);
-        } else {
-            console.error('Не вдалося оновити токен');
-            window.location.href = '/login';
-            return null;
-        }
-    }
-
-    return response;
-}
-
-function addAdminAndLogoutButtons() {
-    const navbar = document.querySelector('.navbar-menu');
-    if (!navbar) return;
-
-    // Видаляємо існуючі динамічні кнопки щоб уникнути дублювання
-    const existingAdminBtn = document.querySelector('.navbar-item.admin-link');
-    const existingLogoutBtn = document.getElementById('logout-btn');
-
-    if (existingAdminBtn) existingAdminBtn.remove();
-    if (existingLogoutBtn) existingLogoutBtn.remove();
-
-    // Додаємо кнопку адмінки для привілейованих користувачів
-    if (isAdminRole()) {
-        const adminBtn = document.createElement('a');
-        adminBtn.href = '/admin';
-        adminBtn.className = 'navbar-item admin-link';
-        adminBtn.textContent = 'Адмінка';
-
-        if (window.location.pathname === '/admin') {
-            adminBtn.classList.add('active');
-        }
-
-        navbar.appendChild(adminBtn);
-    }
-
-    // Додаємо кнопку виходу
-    const logoutBtn = document.createElement('a');
-    logoutBtn.id = 'logout-btn';
-    logoutBtn.href = '#';
-    logoutBtn.className = 'navbar-item';
-    logoutBtn.textContent = 'Вийти';
-    logoutBtn.addEventListener('click', function(e) {
-        e.preventDefault();
-        if (confirm('Ви впевнені, що хочете вийти?')) {
-            logout();
-        }
-    });
-    navbar.appendChild(logoutBtn);
-}
-
-// Зберігаємо стару функцію для зворотної сумісності
-function addLogoutButton() {
-    addAdminAndLogoutButtons();
-}
-
-document.addEventListener('DOMContentLoaded', async function() {
-    await checkAuthAndRedirect();
-
-    if (isAuthenticated() && window.location.pathname !== '/login') {
-        addAdminAndLogoutButtons();
+    if (Auth.isAuthenticated() && window.location.pathname !== CONFIG.PAGES.LOGIN) {
+        Auth.addNavigationButtons();
     }
 });
+
+window.Auth = Auth;

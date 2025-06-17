@@ -27,12 +27,10 @@ async def get_admin_stats(request: Request) -> AdminStatsResponse:
         user_repo = create_repository("users", async_mode=False)
         video_repo = create_repository("source_videos", async_mode=False)
 
-        # Статистика користувачів
         all_users = user_repo.find_all()
         total_users = len(all_users)
         active_users = len([u for u in all_users if u.get("is_active", True)])
 
-        # Статистика відео
         all_videos = video_repo.find_all()
         total_videos = len(all_videos)
         processing_videos = len(
@@ -78,7 +76,6 @@ async def create_user_admin(user_data: UserCreate, request: Request) -> UserCrea
     """Створення користувача через адмін панель"""
     current_user = get_current_user(request)
 
-    # Перевіряємо права на створення адміна
     if user_data.role == "admin" and current_user["role"] != "super_admin":
         raise HTTPException(
             status_code=403,
@@ -114,15 +111,12 @@ async def update_user_admin(user_id: str, user_data: UserUpdateRequest, request:
 
     updates = {}
 
-    # Оновлення email
     if user_data.email and user_data.email != user_to_update["email"]:
-        # Перевіряємо унікальність email
         existing_user = user_repo.find_by_field("email", user_data.email)
         if existing_user and existing_user["_id"] != user_id:
             raise HTTPException(status_code=400, detail="Користувач з таким email вже існує")
         updates["email"] = user_data.email
 
-    # Оновлення ролі
     if user_data.role and user_data.role != user_to_update["role"]:
         if user_data.role not in ["annotator", "admin"]:
             raise HTTPException(status_code=400, detail="Невірна роль")
@@ -134,7 +128,6 @@ async def update_user_admin(user_id: str, user_data: UserUpdateRequest, request:
             )
         updates["role"] = user_data.role
 
-    # Оновлення пароля
     if user_data.password:
         if len(user_data.password) < 8:
             raise HTTPException(status_code=400, detail="Пароль повинен містити мінімум 8 символів")
@@ -143,7 +136,6 @@ async def update_user_admin(user_id: str, user_data: UserUpdateRequest, request:
     if not updates:
         return {"success": True, "message": "Немає змін для оновлення"}
 
-    # Оновлюємо документ
     user_repo.update_by_id(user_id, updates)
 
     logger.info(f"Користувач {user_to_update['email']} оновлений адміністратором {current_user['email']}")
@@ -218,9 +210,7 @@ async def get_cvat_settings(request: Request) -> List[CVATSettingsResponse]:
 
     try:
         settings_repo = create_repository("cvat_project_settings", async_mode=False)
-        settings_repo.create_indexes()
 
-        # Ініціалізуємо дефолтні налаштування якщо їх немає
         from backend.utils.cvat_setup import initialize_default_cvat_settings
         initialize_default_cvat_settings()
 
@@ -259,13 +249,10 @@ async def update_cvat_settings(
 
     try:
         settings_repo = create_repository("cvat_project_settings", async_mode=False)
-        settings_repo.create_indexes()
 
-        # Шукаємо існуючий документ
         existing_settings = settings_repo.find_by_field("project_name", project_name)
 
         if existing_settings:
-            # Використовуємо новий метод оновлення
             success = settings_repo.update_by_field(
                 "project_name",
                 project_name,
@@ -282,7 +269,6 @@ async def update_cvat_settings(
             else:
                 raise Exception("Документ не було оновлено")
         else:
-            # Створюємо новий документ
             from backend.models.cvat_settings import CVATProjectSettings
             settings = CVATProjectSettings(
                 project_name=project_name,

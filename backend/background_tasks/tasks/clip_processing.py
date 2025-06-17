@@ -37,7 +37,7 @@ def process_video_clip(
     azure_service = None
 
     try:
-        source_annotation = self.source_repo.get_annotation(azure_link)
+        source_annotation = self.source_repo.find_by_field("azure_link", azure_link)
         if not source_annotation:
             logger.error(f"Не вдалося знайти соурс відео за azure_link: {azure_link}")
             return {
@@ -130,7 +130,7 @@ def process_video_clip(
             "updated_at": datetime.now().isoformat(sep=" ", timespec="seconds")
         }
 
-        clip_id_db = self.clips_repo.save_annotation(clip_data)
+        clip_id_db = self.clips_repo.save_document(clip_data)
 
         logger.debug(f"Кліп оброблено: {clip_filename} (FPS: {fps})")
 

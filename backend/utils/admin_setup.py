@@ -17,38 +17,35 @@ def create_super_admin() -> None:
         existing_admin = user_repo.find_by_field("email", Settings.admin_email)
 
         if existing_admin:
-            needs_update = False
             current_time = datetime.now().isoformat(sep=" ", timespec="seconds")
+            updates = {}
 
-            # Перевірка та оновлення відсутніх полів
+            # Перевірка та підготовка оновлень відсутніх полів
             if "created_at" not in existing_admin:
-                existing_admin["created_at"] = current_time
-                needs_update = True
+                updates["created_at"] = current_time
 
             if "updated_at" not in existing_admin:
-                existing_admin["updated_at"] = current_time
-                needs_update = True
+                updates["updated_at"] = current_time
 
             if "is_active" not in existing_admin or not existing_admin["is_active"]:
-                existing_admin["is_active"] = True
-                needs_update = True
+                updates["is_active"] = True
 
             # Критично важливо: перевірка ролі супер адміна
             if existing_admin["role"] != "super_admin":
-                existing_admin["role"] = "super_admin"
-                needs_update = True
+                updates["role"] = "super_admin"
                 logger.warning(f"Виправлено роль супер адміна з '{existing_admin['role']}' на 'super_admin'")
 
             # Оновлення пароля якщо змінився в конфігурації
             if not verify_password(Settings.admin_password, existing_admin["hashed_password"]):
-                existing_admin["hashed_password"] = hash_password(Settings.admin_password)
-                needs_update = True
+                updates["hashed_password"] = hash_password(Settings.admin_password)
                 logger.info("Оновлено пароль супер адміна згідно з поточними налаштуваннями")
 
-            if needs_update:
-                existing_admin["updated_at"] = current_time
-                user_repo.save_document(existing_admin, update_mode="replace")
-                logger.info(f"Оновлено поля супер адміна: {Settings.admin_email}")
+            if updates:
+                success = user_repo.update_by_id(existing_admin["_id"], updates)
+                if success:
+                    logger.info(f"Оновлено поля супер адміна: {Settings.admin_email}")
+                else:
+                    logger.error(f"Не вдалося оновити супер адміна: {Settings.admin_email}")
             else:
                 logger.info(f"Супер адмін {Settings.admin_email} вже існує та актуальний")
             return

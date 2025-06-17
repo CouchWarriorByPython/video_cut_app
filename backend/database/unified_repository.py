@@ -400,3 +400,129 @@ class UnifiedRepository(BaseRepository):
         except Exception as e:
             self.logger.error(f"Помилка деактивації документа {doc_id}: {str(e)}")
             raise
+
+    def update_by_id(self, doc_id: str, update_data: Dict, mode: str = "set") -> bool:
+        """Оновлення документа за ID"""
+        if self.async_mode:
+            raise RuntimeError("Використовуйте update_by_id_async() для асинхронного режиму")
+
+        try:
+            from datetime import datetime
+            from bson import ObjectId
+
+            update_data["updated_at"] = datetime.now().isoformat(sep=" ", timespec="seconds")
+
+            if mode == "set":
+                update_operation = {"$set": update_data}
+            elif mode == "unset":
+                update_operation = {"$unset": update_data}
+            else:
+                update_operation = {"$set": update_data}
+
+            result = self.collection.update_one(
+                {"_id": ObjectId(doc_id)},
+                update_operation
+            )
+
+            success = result.modified_count > 0
+            if success:
+                self.logger.debug(f"Документ оновлено в {self.collection_name}: {doc_id}")
+            return success
+
+        except Exception as e:
+            self.logger.error(f"Помилка оновлення документа {doc_id}: {str(e)}")
+            raise
+
+    def update_by_field(self, field: str, value: Any, update_data: Dict, mode: str = "set") -> bool:
+        """Оновлення документа за полем"""
+        if self.async_mode:
+            raise RuntimeError("Використовуйте update_by_field_async() для асинхронного режиму")
+
+        try:
+            from datetime import datetime
+
+            update_data["updated_at"] = datetime.now().isoformat(sep=" ", timespec="seconds")
+
+            if mode == "set":
+                update_operation = {"$set": update_data}
+            elif mode == "unset":
+                update_operation = {"$unset": update_data}
+            else:
+                update_operation = {"$set": update_data}
+
+            result = self.collection.update_one(
+                {field: value},
+                update_operation
+            )
+
+            success = result.modified_count > 0
+            if success:
+                self.logger.debug(f"Документ оновлено в {self.collection_name} за {field}={value}")
+            return success
+
+        except Exception as e:
+            self.logger.error(f"Помилка оновлення документа за {field}={value}: {str(e)}")
+            raise
+
+    async def update_by_id_async(self, doc_id: str, update_data: Dict, mode: str = "set") -> bool:
+        """Асинхронне оновлення документа за ID"""
+        if not self.async_mode:
+            raise RuntimeError("Використовуйте update_by_id() для синхронного режиму")
+
+        try:
+            from datetime import datetime
+            from bson import ObjectId
+
+            update_data["updated_at"] = datetime.now().isoformat(sep=" ", timespec="seconds")
+
+            if mode == "set":
+                update_operation = {"$set": update_data}
+            elif mode == "unset":
+                update_operation = {"$unset": update_data}
+            else:
+                update_operation = {"$set": update_data}
+
+            result = await self.collection.update_one(
+                {"_id": ObjectId(doc_id)},
+                update_operation
+            )
+
+            success = result.modified_count > 0
+            if success:
+                self.logger.debug(f"Документ оновлено в {self.collection_name}: {doc_id}")
+            return success
+
+        except Exception as e:
+            self.logger.error(f"Помилка оновлення документа {doc_id}: {str(e)}")
+            raise
+
+    async def update_by_field_async(self, field: str, value: Any, update_data: Dict, mode: str = "set") -> bool:
+        """Асинхронне оновлення документа за полем"""
+        if not self.async_mode:
+            raise RuntimeError("Використовуйте update_by_field() для синхронного режиму")
+
+        try:
+            from datetime import datetime
+
+            update_data["updated_at"] = datetime.now().isoformat(sep=" ", timespec="seconds")
+
+            if mode == "set":
+                update_operation = {"$set": update_data}
+            elif mode == "unset":
+                update_operation = {"$unset": update_data}
+            else:
+                update_operation = {"$set": update_data}
+
+            result = await self.collection.update_one(
+                {field: value},
+                update_operation
+            )
+
+            success = result.modified_count > 0
+            if success:
+                self.logger.debug(f"Документ оновлено в {self.collection_name} за {field}={value}")
+            return success
+
+        except Exception as e:
+            self.logger.error(f"Помилка оновлення документа за {field}={value}: {str(e)}")
+            raise

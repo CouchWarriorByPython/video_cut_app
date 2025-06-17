@@ -6,13 +6,13 @@ from backend.models.cvat_settings import (
     CVATSettingsRequest, CVATSettingsResponse, AdminStatsResponse
 )
 from backend.services.auth_service import AuthService
-from backend.database.repositories.user import UserRepository
-from backend.database.repositories.cvat_settings import CVATSettingsRepository
-from backend.database.repositories.source_video import SyncSourceVideoRepository
+from backend.database import create_repository
 from backend.api.dependencies import get_current_user
 from backend.utils.logger import get_logger
+from passlib.context import CryptContext
 
 logger = get_logger(__name__, "api.log")
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -24,16 +24,16 @@ async def get_admin_stats(request: Request) -> AdminStatsResponse:
     logger.info(f"Адмін {current_user['email']} запросив статистику")
 
     try:
-        user_repo = UserRepository()
-        video_repo = SyncSourceVideoRepository()
+        user_repo = create_repository("users", async_mode=False)
+        video_repo = create_repository("source_videos", async_mode=False)
 
         # Статистика користувачів
-        all_users = user_repo.get_all_users()
+        all_users = user_repo.find_all()
         total_users = len(all_users)
         active_users = len([u for u in all_users if u.get("is_active", True)])
 
         # Статистика відео
-        all_videos = video_repo.get_all_annotations()
+        all_videos = video_repo.find_all()
         total_videos = len(all_videos)
         processing_videos = len(
             [v for v in all_videos if v.get("status") not in ["ready", "not_annotated", "annotated"]])
@@ -58,8 +58,8 @@ async def get_all_users_admin(request: Request) -> List[UserResponse]:
     current_user = get_current_user(request)
     logger.info(f"Адмін {current_user['email']} запросив список користувачів")
 
-    user_repo = UserRepository()
-    users = user_repo.get_all_users()
+    user_repo = create_repository("users", async_mode=False)
+    users = user_repo.find_all()
 
     return [
         UserResponse(
@@ -103,9 +103,9 @@ async def create_user_admin(user_data: UserCreate, request: Request) -> UserCrea
 async def update_user_admin(user_id: str, user_data: UserUpdateRequest, request: Request):
     """Оновлення користувача через адмін панель"""
     current_user = get_current_user(request)
-    user_repo = UserRepository()
+    user_repo = create_repository("users", async_mode=False)
 
-    user_to_update = user_repo.get_user_by_id(user_id)
+    user_to_update = user_repo.find_by_id(user_id)
     if not user_to_update:
         raise HTTPException(status_code=404, detail="Користувача не знайдено")
 
@@ -117,7 +117,7 @@ async def update_user_admin(user_id: str, user_data: UserUpdateRequest, request:
     # Оновлення email
     if user_data.email and user_data.email != user_to_update["email"]:
         # Перевіряємо унікальність email
-        existing_user = user_repo.get_user_by_email(user_data.email)
+        existing_user = user_repo.find_by_field("email", user_data.email)
         if existing_user and existing_user["_id"] != user_id:
             raise HTTPException(status_code=400, detail="Користувач з таким email вже існує")
         updates["email"] = user_data.email
@@ -138,14 +138,13 @@ async def update_user_admin(user_id: str, user_data: UserUpdateRequest, request:
     if user_data.password:
         if len(user_data.password) < 8:
             raise HTTPException(status_code=400, detail="Пароль повинен містити мінімум 8 символів")
-        updates["hashed_password"] = user_repo.hash_password(user_data.password)
+        updates["hashed_password"] = pwd_context.hash(user_data.password)
 
     if not updates:
         return {"success": True, "message": "Немає змін для оновлення"}
 
-    success = user_repo.update_user(user_id, updates)
-    if not success:
-        raise HTTPException(status_code=400, detail="Помилка оновлення користувача")
+    # Оновлюємо документ
+    user_repo.update_by_id(user_id, updates)
 
     logger.info(f"Користувач {user_to_update['email']} оновлений адміністратором {current_user['email']}")
     return {"success": True, "message": "Користувача успішно оновлено"}
@@ -165,8 +164,8 @@ async def update_user_role(user_id: str, new_role: str, request: Request):
             detail="Тільки super_admin може призначати роль admin"
         )
 
-    user_repo = UserRepository()
-    user_to_update = user_repo.get_user_by_id(user_id)
+    user_repo = create_repository("users", async_mode=False)
+    user_to_update = user_repo.find_by_id(user_id)
 
     if not user_to_update:
         raise HTTPException(status_code=404, detail="Користувача не знайдено")
@@ -174,9 +173,7 @@ async def update_user_role(user_id: str, new_role: str, request: Request):
     if user_to_update["_id"] == current_user["user_id"]:
         raise HTTPException(status_code=400, detail="Не можна змінити власну роль")
 
-    success = user_repo.update_user(user_id, {"role": new_role})
-    if not success:
-        raise HTTPException(status_code=400, detail="Помилка оновлення ролі")
+    user_repo.update_by_id(user_id, {"role": new_role})
 
     logger.info(
         f"Роль користувача {user_to_update['email']} змінена на {new_role} адміністратором {current_user['email']}")
@@ -187,9 +184,9 @@ async def update_user_role(user_id: str, new_role: str, request: Request):
 async def delete_user_admin(user_id: str, request: Request) -> UserDeleteResponse:
     """Видалення користувача через адмін панель"""
     current_user = get_current_user(request)
-    user_repo = UserRepository()
+    user_repo = create_repository("users", async_mode=False)
 
-    user_to_delete = user_repo.get_user_by_id(user_id)
+    user_to_delete = user_repo.find_by_id(user_id)
     if not user_to_delete:
         raise HTTPException(status_code=404, detail="Користувача не знайдено")
 
@@ -205,7 +202,7 @@ async def delete_user_admin(user_id: str, request: Request) -> UserDeleteRespons
     if user_to_delete["_id"] == current_user["user_id"]:
         raise HTTPException(status_code=400, detail="Не можна видалити самого себе")
 
-    success = user_repo.delete_user(user_id)
+    success = user_repo.delete_by_id(user_id)
     if not success:
         raise HTTPException(status_code=400, detail="Помилка видалення користувача")
 
@@ -220,13 +217,14 @@ async def get_cvat_settings(request: Request) -> List[CVATSettingsResponse]:
     logger.info(f"Адмін {current_user['email']} запросив налаштування CVAT")
 
     try:
-        settings_repo = CVATSettingsRepository()
+        settings_repo = create_repository("cvat_project_settings", async_mode=False)
         settings_repo.create_indexes()
 
         # Ініціалізуємо дефолтні налаштування якщо їх немає
-        settings_repo.initialize_default_settings()
+        from backend.utils.cvat_setup import initialize_default_cvat_settings
+        initialize_default_cvat_settings()
 
-        all_settings = settings_repo.get_all_settings()
+        all_settings = settings_repo.find_all()
 
         return [
             CVATSettingsResponse(
@@ -260,18 +258,41 @@ async def update_cvat_settings(
         raise HTTPException(status_code=400, detail="Невірна назва проєкту")
 
     try:
-        from backend.models.cvat_settings import CVATProjectSettings
+        settings_repo = create_repository("cvat_project_settings", async_mode=False)
+        settings_repo.create_indexes()
 
-        settings = CVATProjectSettings(
-            project_name=project_name,
-            project_id=settings_data.project_id,
-            overlap=settings_data.overlap,
-            segment_size=settings_data.segment_size,
-            image_quality=settings_data.image_quality
-        )
+        # Шукаємо існуючий документ
+        existing_settings = settings_repo.find_by_field("project_name", project_name)
 
-        settings_repo = CVATSettingsRepository()
-        settings_id = settings_repo.save_settings(settings)
+        if existing_settings:
+            # Використовуємо новий метод оновлення
+            success = settings_repo.update_by_field(
+                "project_name",
+                project_name,
+                {
+                    "project_id": settings_data.project_id,
+                    "overlap": settings_data.overlap,
+                    "segment_size": settings_data.segment_size,
+                    "image_quality": settings_data.image_quality
+                }
+            )
+
+            if success:
+                settings_id = existing_settings["_id"]
+            else:
+                raise Exception("Документ не було оновлено")
+        else:
+            # Створюємо новий документ
+            from backend.models.cvat_settings import CVATProjectSettings
+            settings = CVATProjectSettings(
+                project_name=project_name,
+                project_id=settings_data.project_id,
+                overlap=settings_data.overlap,
+                segment_size=settings_data.segment_size,
+                image_quality=settings_data.image_quality
+            )
+            settings_dict = settings.model_dump()
+            settings_id = settings_repo.save_document(settings_dict)
 
         logger.info(f"Налаштування проєкту {project_name} оновлені адміністратором {current_user['email']}")
 

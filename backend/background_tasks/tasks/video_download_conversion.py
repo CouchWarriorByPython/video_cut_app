@@ -5,7 +5,7 @@ from typing import Dict, Any, Optional
 from datetime import datetime
 
 from backend.background_tasks.app import app
-from backend.database.repositories.source_video import SyncSourceVideoRepository
+from backend.database import create_repository
 from backend.services.azure_service import AzureService
 from backend.utils.video_utils import get_local_video_path, cleanup_file
 from backend.config.settings import Settings
@@ -19,7 +19,7 @@ def download_and_convert_video(self, azure_link: str) -> Dict[str, Any]:
     """Завантажує відео з Azure Storage та конвертує його для веб-перегляду"""
     logger.info(f"Початок завантаження та конвертації відео: {azure_link}")
 
-    repo = SyncSourceVideoRepository()
+    repo = create_repository("source_videos", async_mode=False)
     azure_service = AzureService()
 
     def update_download_progress(downloaded_bytes: int, total_bytes: int) -> None:
@@ -49,7 +49,7 @@ def download_and_convert_video(self, azure_link: str) -> Dict[str, Any]:
 
     try:
         # Отримуємо анотацію з БД
-        annotation = repo.get_annotation(azure_link)
+        annotation = repo.find_by_field("azure_link", azure_link)
         if not annotation:
             self.update_state(
                 state='FAILURE',
@@ -61,8 +61,7 @@ def download_and_convert_video(self, azure_link: str) -> Dict[str, Any]:
         local_path = get_local_video_path(filename)
 
         # Оновлюємо статус на downloading
-        annotation["status"] = "downloading"
-        repo.save_annotation(annotation)
+        repo.update_by_field("azure_link", azure_link, {"status": "downloading"})
 
         # Етап 1: Завантаження з Azure Storage (0-50%)
         self.update_state(
@@ -79,8 +78,7 @@ def download_and_convert_video(self, azure_link: str) -> Dict[str, Any]:
         )
 
         if not download_result["success"]:
-            annotation["status"] = "download_failed"
-            repo.save_annotation(annotation)
+            repo.update_by_field("azure_link", azure_link, {"status": "download_failed"})
             self.update_state(
                 state='FAILURE',
                 meta={
@@ -105,8 +103,8 @@ def download_and_convert_video(self, azure_link: str) -> Dict[str, Any]:
 
         video_info = get_video_info(local_path)
         if not video_info:
-            annotation["status"] = "analysis_failed"
-            repo.save_annotation(annotation)
+            repo.update_by_field("azure_link", azure_link, {"status": "analysis_failed"})
+
             cleanup_file(local_path)
             self.update_state(
                 state='FAILURE',
@@ -118,8 +116,7 @@ def download_and_convert_video(self, azure_link: str) -> Dict[str, Any]:
             return {"status": "error", "message": "Не вдалося проаналізувати відео"}
 
         # Етап 3: Конвертація (60-95%)
-        annotation["status"] = "converting"
-        repo.save_annotation(annotation)
+        repo.update_by_field("azure_link", azure_link, {"status": "converting"})
 
         self.update_state(
             state='PROGRESS',
@@ -150,8 +147,8 @@ def download_and_convert_video(self, azure_link: str) -> Dict[str, Any]:
             )
 
             if not success:
-                annotation["status"] = "conversion_failed"
-                repo.save_annotation(annotation)
+                repo.update_by_field("azure_link", azure_link, {"status": "conversion_failed"})
+
                 cleanup_file(local_path)
                 self.update_state(
                     state='FAILURE',
@@ -176,9 +173,9 @@ def download_and_convert_video(self, azure_link: str) -> Dict[str, Any]:
             }
         )
 
-        annotation["status"] = "ready"
-        annotation["updated_at"] = datetime.now().isoformat(sep=" ", timespec="seconds")
-        repo.save_annotation(annotation)
+        repo.update_by_field("azure_link", azure_link, {
+            "status": "ready", "updated_at": datetime.now().isoformat(sep=" ", timespec="seconds")
+        })
 
         self.update_state(
             state='SUCCESS',
@@ -199,10 +196,9 @@ def download_and_convert_video(self, azure_link: str) -> Dict[str, Any]:
     except Exception as e:
         logger.error(f"Помилка при обробці відео {azure_link}: {str(e)}")
         try:
-            annotation = repo.get_annotation(azure_link)
+            annotation = repo.find_by_field("azure_link", azure_link)
             if annotation:
-                annotation["status"] = "processing_failed"
-                repo.save_annotation(annotation)
+                repo.update_by_field("azure_link", azure_link, {"status": "processing_failed"})
 
             # Очищаємо файл при помилці
             if 'local_path' in locals():

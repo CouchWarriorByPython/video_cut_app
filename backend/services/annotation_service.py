@@ -38,22 +38,30 @@ class AnnotationService:
                     "error": validation_error
                 }
 
-            # Оновлення анотації
-            existing.update({
+            # Підготовка даних для оновлення
+            update_data = {
                 "metadata": annotation_data.get("metadata"),
                 "clips": annotation_data.get("clips"),
-                "status": "annotated",
-                "updated_at": datetime.now().isoformat(sep=" ", timespec="seconds")
-            })
+                "status": "annotated"
+            }
 
             # Додавання CVAT параметрів якщо відсутні
             if "cvat_params" not in existing or not existing["cvat_params"]:
                 cvat_params = {}
                 for clip_type in annotation_data.get("clips", {}).keys():
                     cvat_params[clip_type] = self.cvat_service.get_default_project_params(clip_type)
-                existing["cvat_params"] = cvat_params
+                update_data["cvat_params"] = cvat_params
 
-            record_id = self.source_repo.save_document(existing)
+            # Оновлення документа через новий метод
+            success = self.source_repo.update_by_id(existing["_id"], update_data)
+
+            if not success:
+                return {
+                    "success": False,
+                    "error": "Не вдалося оновити документ"
+                }
+
+            record_id = existing["_id"]
 
             if skip_processing:
                 success_message = "Дані успішно збережено. Обробку пропущено (skip)."

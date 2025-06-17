@@ -4,8 +4,7 @@ import os
 from datetime import datetime
 
 from backend.background_tasks.app import app
-from backend.database.repositories.source_video import SyncSourceVideoRepository
-from backend.database.repositories.video_clip import SyncVideoClipRepository
+from backend.database import create_repository
 from backend.utils.azure_utils import get_blob_service_client, get_blob_container_client
 from backend.utils.video_utils import get_local_video_path, cleanup_file
 from backend.services.cvat_service import CVATService
@@ -26,13 +25,13 @@ class VideoProcessingTask(Task):
     @property
     def source_repo(self):
         if self._source_repo is None:
-            self._source_repo = SyncSourceVideoRepository()
+            self._source_repo = create_repository("source_videos", async_mode=False)
         return self._source_repo
 
     @property
     def clips_repo(self):
         if self._clips_repo is None:
-            self._clips_repo = SyncVideoClipRepository()
+            self._clips_repo = create_repository("video_clips", async_mode=False)
             self._clips_repo.create_indexes()
         return self._clips_repo
 
@@ -61,7 +60,7 @@ def process_video_annotation(self, azure_link: str) -> Dict[str, Any]:
     logger.info(f"Початок обробки відео: {azure_link}")
 
     try:
-        annotation = self.source_repo.get_annotation(azure_link)
+        annotation = self.source_repo.find_by_field("azure_link", azure_link)
 
         if not annotation:
             logger.error(f"Анотацію не знайдено: {azure_link}")
@@ -162,8 +161,8 @@ def finalize_video_processing(results: List[Dict], azure_link: str) -> Dict[str,
 
     repo = None
     try:
-        repo = SyncSourceVideoRepository()
-        annotation = repo.get_annotation(azure_link)
+        repo = create_repository("source_videos", async_mode=False)
+        annotation = repo.find_by_field("azure_link", azure_link)
 
         if not annotation:
             logger.error(f"Source відео не знайдено: {azure_link}")
@@ -201,9 +200,7 @@ def finalize_video_processing(results: List[Dict], azure_link: str) -> Dict[str,
                     logger.warning(f"Локальний файл не знайдено або вже видалено: {local_path}")
 
             # Оновлюємо статус source відео на "annotated"
-            annotation["status"] = "annotated"
-            annotation["updated_at"] = datetime.now().isoformat(sep=" ", timespec="seconds")
-            repo.save_annotation(annotation)
+            repo.update_by_field("azure_link", azure_link, {"status": "annotated"})
 
             logger.info(f"Обробку відео {azure_link} повністю завершено")
 

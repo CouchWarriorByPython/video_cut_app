@@ -1,7 +1,3 @@
-/**
- * Модуль завантаження відео
- */
-
 class VideoUploader {
     constructor() {
         this.elements = {
@@ -14,7 +10,7 @@ class VideoUploader {
 
         this.activeUploads = new Map();
         this.progressIntervals = new Map();
-        
+
         this._init();
     }
 
@@ -30,7 +26,7 @@ class VideoUploader {
 
     async _handleUpload() {
         const formData = this._getFormData();
-        
+
         if (!this._validateForm(formData)) {
             return;
         }
@@ -101,7 +97,7 @@ class VideoUploader {
         }
 
         const isValid = Validators.isValidAzureUrl(url);
-        UI.setFieldValidation(this.elements.videoUrl, isValid, 
+        UI.setFieldValidation(this.elements.videoUrl, isValid,
             isValid ? '' : 'Некоректний Azure URL');
     }
 

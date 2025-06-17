@@ -1,7 +1,3 @@
-/**
- * Модуль анотування відео
- */
-
 class VideoAnnotator {
     constructor() {
         this.elements = this._initializeElements();
@@ -221,11 +217,17 @@ class VideoAnnotator {
                 <div class="loading-spinner"></div>
                 <div style="margin-top: 20px;">
                     <button class="btn btn-secondary" onclick="location.reload()">Оновити сторінку</button>
-                    <button class="btn" onclick="videoAnnotator.goBackToVideoList()">Вибрати інше відео</button>
+                    <button id="back-to-list-btn" class="btn">Вибрати інше відео</button>
                 </div>
             </div>
         `;
         this.elements.videoEditor.classList.remove('hidden');
+
+        // Додати обробник події
+        const backBtn = document.getElementById('back-to-list-btn');
+        if (backBtn) {
+            backBtn.addEventListener('click', () => this.goBackToVideoList());
+        }
 
         this.state.currentAzureLink = azureLink;
         this._startVideoStatusChecking(azureLink);

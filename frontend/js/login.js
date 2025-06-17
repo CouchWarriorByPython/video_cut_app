@@ -1,7 +1,3 @@
-/**
- * Модуль логіна
- */
-
 class LoginManager {
     constructor() {
         this.elements = {

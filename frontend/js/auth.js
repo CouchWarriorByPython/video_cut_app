@@ -1,7 +1,3 @@
-/**
- * Модуль авторизації та управління сесіями
- */
-
 const Auth = {
     /**
      * Токени доступу
@@ -194,17 +190,32 @@ const Auth = {
     },
 
     /**
-     * Додавання кнопок навігації
+     * Створення динамічної навігації
      */
-    addNavigationButtons() {
+    createNavigation() {
         const navbar = document.querySelector('.navbar-menu');
         if (!navbar) return;
 
-        const existingAdminBtn = document.querySelector('.navbar-item.admin-link');
-        const existingLogoutBtn = document.getElementById('logout-btn');
+        const role = this.getCurrentUserRole();
+        if (!role) return;
 
-        if (existingAdminBtn) existingAdminBtn.remove();
-        if (existingLogoutBtn) existingLogoutBtn.remove();
+        const navigationItems = this._getNavigationItemsForRole(role);
+        const currentPath = window.location.pathname;
+
+        navbar.innerHTML = '';
+
+        navigationItems.forEach(item => {
+            const navItem = document.createElement('a');
+            navItem.href = item.path;
+            navItem.className = 'navbar-item';
+            navItem.textContent = item.label;
+
+            if (currentPath === item.path) {
+                navItem.classList.add('active');
+            }
+
+            navbar.appendChild(navItem);
+        });
 
         if (this.isAdminRole()) {
             const adminBtn = document.createElement('a');
@@ -212,7 +223,7 @@ const Auth = {
             adminBtn.className = 'navbar-item admin-link';
             adminBtn.textContent = 'Адмінка';
 
-            if (window.location.pathname === CONFIG.PAGES.ADMIN) {
+            if (currentPath === CONFIG.PAGES.ADMIN) {
                 adminBtn.classList.add('active');
             }
 
@@ -220,7 +231,6 @@ const Auth = {
         }
 
         const logoutBtn = document.createElement('a');
-        logoutBtn.id = 'logout-btn';
         logoutBtn.href = '#';
         logoutBtn.className = 'navbar-item';
         logoutBtn.textContent = 'Вийти';
@@ -232,6 +242,23 @@ const Auth = {
             }
         });
         navbar.appendChild(logoutBtn);
+    },
+
+    _getNavigationItemsForRole(role) {
+        const allItems = [
+            { path: CONFIG.PAGES.UPLOAD, label: 'Завантажити відео' },
+            { path: CONFIG.PAGES.ANNOTATOR, label: 'Анотувати відео' },
+            { path: CONFIG.PAGES.FAQ, label: 'FAQ' }
+        ];
+
+        return allItems.filter(item => this.hasAccessToPage(item.path, role));
+    },
+
+    /**
+     * Додавання кнопок навігації (deprecated - використовується createNavigation)
+     */
+    addNavigationButtons() {
+        this.createNavigation();
     }
 };
 
@@ -242,7 +269,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     await Auth.checkAuthAndRedirect();
 
     if (Auth.isAuthenticated() && window.location.pathname !== CONFIG.PAGES.LOGIN) {
-        Auth.addNavigationButtons();
+        Auth.createNavigation();
     }
 });
 

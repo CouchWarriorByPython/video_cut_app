@@ -1,7 +1,3 @@
-/**
- * Модуль FAQ з типами дронів
- */
-
 class FAQManager {
     constructor() {
         this.droneTypes = this._initializeDroneTypes();

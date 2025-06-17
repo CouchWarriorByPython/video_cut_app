@@ -1,7 +1,3 @@
-/**
- * Модуль адміністративної панелі
- */
-
 class AdminPanel {
     constructor() {
         this.state = this._initializeState();

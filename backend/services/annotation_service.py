@@ -68,7 +68,7 @@ class AnnotationService:
                 logger.info(f"Відео пропущено (skip): {azure_link}")
                 task_id = None
             else:
-                success_message = "Дані успішно збережено. Готово до запуску обробки."
+                success_message = "Дані успішно збережено. Обробку запущено."
                 task_id = None  # Task ID буде встановлено в API layer
 
             return {

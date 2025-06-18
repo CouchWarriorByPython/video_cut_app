@@ -1,69 +1,49 @@
-<!DOCTYPE html>
-<html lang="uk">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Реєстрація відео</title>
-    <link rel="icon" type="image/png" href="/favicon.png">
-    <link rel="stylesheet" href="/css/base.css">
-    <link rel="stylesheet" href="/css/upload.css">
-</head>
-<body>
-    <nav class="navbar">
-        <div class="navbar-container">
-            <div class="navbar-brand">
-                <h2>Video Annotator</h2>
-            </div>
-            <div class="navbar-menu">
-                <a href="/" class="navbar-item active">Завантажити відео</a>
-                <a href="/annotator" class="navbar-item">Анотувати відео</a>
-                <a href="/faq" class="navbar-item">FAQ</a>
-                <!-- Динамічні кнопки додаються через JavaScript -->
-            </div>
-        </div>
-    </nav>
+{% extends "base.html" %}
 
-    <div class="container">
-        <h1>Реєстрація відео з Azure Storage</h1>
+{% block title %}Реєстрація відео - Video Annotator{% endblock %}
 
-        <div class="card">
-            <div class="form-group">
-                <label for="video-url">Azure Blob URL відео:</label>
-                <input type="text" id="video-url" class="form-control"
-                       placeholder="https://storage-account.blob.core.windows.net/container/path/video.mp4">
-                <small class="form-text">Введіть повне посилання на відео в Azure Blob Storage</small>
-            </div>
+{% block extra_css %}
+<link rel="stylesheet" href="/css/upload.css">
+{% endblock %}
 
-            <div class="form-group">
-                <label for="metadata-where">Локація (опційно):</label>
-                <input type="text" id="metadata-where" class="form-control"
-                       pattern="[A-Za-z\s\-_]+" title="Тільки англійські літери"
-                       placeholder="Наприклад: Kyiv, Kharkiv">
-            </div>
+{% block content %}
+<h1>Реєстрація відео з Azure Storage</h1>
 
-            <div class="form-group">
-                <label for="metadata-when">Дата зйомки (опційно):</label>
-                <input type="text" id="metadata-when" class="form-control"
-                       pattern="[0-9]{8}" title="Формат: РРРРММДД (наприклад, 20250508)"
-                       placeholder="РРРРММДД (наприклад: 20250527)">
-            </div>
-
-            <button id="upload-btn" class="btn btn-success full-width">Зареєструвати відео</button>
-        </div>
-
-        <div class="card">
-            <h3>Інформація</h3>
-            <p>Система перевірить доступність відео в Azure Storage перед реєстрацією.</p>
-            <p>Підтримувані формати: MP4, AVI, MOV, MKV</p>
-            <p>Максимальний розмір: без обмежень (залежить від Azure Storage)</p>
-        </div>
-
-        <div id="result" class="hidden"></div>
+<div class="card">
+    <div class="form-group">
+        <label for="video-url">Azure Blob URL відео:</label>
+        <input type="text" id="video-url" name="video_url" class="form-control"
+               placeholder="https://storage-account.blob.core.windows.net/container/path/video.mp4">
+        <small class="form-text">Введіть повне посилання на відео в Azure Blob Storage</small>
     </div>
 
-    <script src="/js/core.js"></script>
-    <script src="/js/notifications.js"></script>
-    <script src="/js/auth.js"></script>
-    <script src="/js/upload.js"></script>
-</body>
-</html>
+    <div class="form-group">
+        <label for="metadata-where">Локація (опційно):</label>
+        <input type="text" id="metadata-where" name="where" class="form-control"
+               placeholder="Наприклад: Kyiv, Kharkiv">
+    </div>
+
+    <div class="form-group">
+        <label for="metadata-when">Дата зйомки (опційно):</label>
+        <input type="text" id="metadata-when" name="when" class="form-control"
+               placeholder="РРРРММДД (наприклад: 20250527)">
+    </div>
+
+    <button id="upload-btn" class="btn btn-success full-width">Зареєструвати відео</button>
+</div>
+
+<div class="card">
+    <h3>Інформація</h3>
+    <p>Система перевірить доступність відео в Azure Storage перед реєстрацією.</p>
+    <p>Підтримувані формати: MP4, AVI, MOV, MKV</p>
+    <p>Максимальний розмір: без обмежень (залежить від Azure Storage)</p>
+</div>
+
+<div id="result" class="hidden">
+    <!-- Результати завантаження відображаються тут -->
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="/js/upload.js"></script>
+{% endblock %}

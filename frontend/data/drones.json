@@ -1,0 +1,33 @@
+{
+  "autel": {
+    "name": "Autel",
+    "images": [
+      { "src": "autel_1.jpeg" },
+      { "src": "autel_2.jpeg" }
+    ]
+  },
+  "dji": {
+    "name": "DJI",
+    "images": [
+      { "src": "dji_1.jpeg", "modification": "DJI Fly" },
+      { "src": "dji_2.jpeg", "modification": "DJI Pilot" },
+      { "src": "dji_3.jpeg", "modification": "DJI Pilot" }
+    ]
+  },
+  "fpv": {
+    "name": "FPV",
+    "description": "В цю категорію входять FPV-камікадзе або (рідше) саморобні FPV-бомбери. Note: інколи відео може бути не тільки аналоговим, а і цифровим!",
+    "images": [
+      { "src": "fpv_1.png" },
+      { "src": "fpv_2.png" }
+    ]
+  },
+  "other_bomber": {
+    "name": "Other Bomber",
+    "description": "У дронів можуть бути інші довільні інтерфейси або може взагалі не бути OSD, але видно скид боєприпасу (і це не DJI/Autel).",
+    "images": [
+      { "src": "nemezis.jpeg", "modification": "Nemezis" },
+      { "src": "vampire.jpeg", "modification": "Vampire" }
+    ]
+  }
+}

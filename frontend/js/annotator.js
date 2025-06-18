@@ -4,6 +4,10 @@ class VideoAnnotator {
         this.state = this._initializeState();
         this.statusCheckInterval = null;
 
+        // Використовуємо BaseModal замість власної логіки модалок
+        this.jsonModal = new BaseModal('json-modal');
+        this.projectModal = new BaseModal('project-modal');
+
         this._init();
     }
 
@@ -36,14 +40,6 @@ class VideoAnnotator {
                 multipleStreams: document.getElementById('multiple-streams'),
                 hasInfantry: document.getElementById('has-infantry'),
                 hasExplosions: document.getElementById('has-explosions')
-            },
-            modals: {
-                viewJson: document.getElementById('view-json'),
-                jsonModal: document.getElementById('json-modal'),
-                jsonContent: document.getElementById('json-content'),
-                projectModal: document.getElementById('project-modal'),
-                projectOptions: document.getElementById('project-options'),
-                modalCloses: document.querySelectorAll('.modal-close')
             }
         };
     }
@@ -77,16 +73,17 @@ class VideoAnnotator {
 
     _setupEventListeners() {
         this.elements.loadVideoBtn.addEventListener('click', () => this._handleLoadVideo());
-
-        const backBtn = document.getElementById('back-to-list-btn');
-        if (backBtn) {
-            backBtn.addEventListener('click', () => this.goBackToVideoList());
-        }
+        this.elements.backToListBtn?.addEventListener('click', () => this.goBackToVideoList());
         this.elements.startFragmentBtn.addEventListener('click', () => this._handleStartFragment());
         this.elements.endFragmentBtn.addEventListener('click', () => this._handleEndFragment());
         this.elements.cancelFragmentBtn.addEventListener('click', () => this._handleCancelFragment());
         this.elements.saveFragmentsBtn.addEventListener('click', () => this._saveFragments());
-        this.elements.modals.viewJson.addEventListener('click', () => this._showJsonModal());
+
+        // Використовуємо спрощену версію показу JSON модалки
+        document.getElementById('view-json').addEventListener('click', () => {
+            document.getElementById('json-content').textContent = JSON.stringify(this._prepareJsonData(), null, 2);
+            this.jsonModal.open();
+        });
 
         this.elements.videoPlayer.addEventListener('timeupdate', () => this._updateTimelineProgress());
         this.elements.videoPlayer.addEventListener('loadedmetadata', () => this._initVideoPlayer());
@@ -99,12 +96,6 @@ class VideoAnnotator {
         });
 
         this.elements.metadataForm.skipVideo.addEventListener('change', () => this._handleSkipChange());
-
-        this.elements.modals.modalCloses.forEach(closeBtn => {
-            closeBtn.addEventListener('click', () => this._closeModals());
-        });
-
-        window.addEventListener('click', (e) => this._handleWindowClick(e));
     }
 
     _checkUrlParams() {
@@ -117,7 +108,8 @@ class VideoAnnotator {
 
     async _loadVideoList() {
         try {
-            const data = await Auth.authenticatedRequest('/get_videos');
+            // Використовуємо спрощений API клієнт
+            const data = await api.get('/get_videos');
             if (!data) return;
 
             if (data.success && data.videos && data.videos.length > 0) {
@@ -196,7 +188,7 @@ class VideoAnnotator {
     async _handleLoadVideo() {
         const selectedVideo = this.elements.videoSelect.value;
         if (!selectedVideo) {
-            await showNotification('Будь ласка, виберіть відео', 'warning');
+            await notify('Будь ласка, виберіть відео', 'warning');
             return;
         }
 
@@ -218,7 +210,7 @@ class VideoAnnotator {
         this.elements.videoEditor.innerHTML = `
             <div class="card">
                 <h3>Відео обробляється</h3>
-                <p><strong>Файл:</strong> ${Utils.escapeHtml(filename)}</p>
+                <p><strong>Файл:</strong> ${utils.escapeHtml(filename)}</p>
                 <p class="status-text">Статус: ${this._getStatusMessage(status)}</p>
                 <div class="loading-spinner"></div>
                 <div style="margin-top: 20px;">
@@ -264,7 +256,7 @@ class VideoAnnotator {
 
     async _checkVideoStatus(azureLink) {
         try {
-            const data = await Auth.authenticatedRequest(`/video_status?azure_link=${encodeURIComponent(azureLink)}`);
+            const data = await api.get(`/video_status?azure_link=${encodeURIComponent(azureLink)}`);
             if (!data) {
                 clearInterval(this.statusCheckInterval);
                 return;
@@ -330,8 +322,7 @@ class VideoAnnotator {
         this.elements.videoSelector.style.display = 'none';
         this.elements.videoEditor.classList.remove('hidden');
 
-        const token = Auth.getAccessToken();
-        const videoUrl = `/get_video?azure_link=${encodeURIComponent(azureLink)}&token=${encodeURIComponent(token)}`;
+        const videoUrl = `/get_video?azure_link=${encodeURIComponent(azureLink)}&token=${encodeURIComponent(auth.token)}`;
         this.elements.videoPlayer.src = videoUrl;
         this.elements.videoPlayer.load();
 
@@ -365,7 +356,7 @@ class VideoAnnotator {
 
     async _loadExistingAnnotations(azureLink) {
         try {
-            const data = await Auth.authenticatedRequest(`/get_annotation?azure_link=${encodeURIComponent(azureLink)}`);
+            const data = await api.get(`/get_annotation?azure_link=${encodeURIComponent(azureLink)}`);
             if (!data) return;
 
             if (data.success && data.annotation) {
@@ -400,8 +391,8 @@ class VideoAnnotator {
             for (const projectType in annotation.clips) {
                 if (Array.isArray(annotation.clips[projectType])) {
                     this.state.projectFragments[projectType] = annotation.clips[projectType].map(clip => {
-                        const startSeconds = Utils.timeToSeconds(clip.start_time);
-                        const endSeconds = Utils.timeToSeconds(clip.end_time);
+                        const startSeconds = utils.timeToSeconds(clip.start_time);
+                        const endSeconds = utils.timeToSeconds(clip.end_time);
 
                         return {
                             id: clip.id,
@@ -433,7 +424,7 @@ class VideoAnnotator {
         errorDiv.className = 'error-message video-error';
         errorDiv.innerHTML = `
             <h3>Помилка відтворення відео</h3>
-            <p>Не вдалося завантажити відео: ${Utils.escapeHtml(errorMessage)}</p>
+            <p>Не вдалося завантажити відео: ${utils.escapeHtml(errorMessage)}</p>
             <p>Можливо, відео ще обробляється або має несумісний формат.</p>
             <div style="margin-top: 15px;">
                 <button class="btn btn-secondary" onclick="videoAnnotator.retryVideoLoad()">Спробувати ще раз</button>
@@ -470,7 +461,7 @@ class VideoAnnotator {
 
     async _handleStartFragment() {
         if (this.state.activeProjects.length === 0) {
-            await showNotification('Необхідно вибрати хоча б один проєкт', 'warning');
+            await notify('Необхідно вибрати хоча б один проєкт', 'warning');
             return;
         }
         this._setFragmentStart();
@@ -478,7 +469,7 @@ class VideoAnnotator {
 
     async _handleEndFragment() {
         if (this.state.activeProjects.length === 0) {
-            await showNotification('Необхідно вибрати хоча б один проєкт', 'warning');
+            await notify('Необхідно вибрати хоча б один проєкт', 'warning');
             return;
         }
         this._showEndFragmentModal();
@@ -486,7 +477,7 @@ class VideoAnnotator {
 
     async _handleCancelFragment() {
         if (this.state.activeProjects.length === 0) {
-            await showNotification('Необхідно вибрати хоча б один проєкт', 'warning');
+            await notify('Необхідно вибрати хоча б один проєкт', 'warning');
             return;
         }
         this._showCancelFragmentModal();
@@ -497,7 +488,7 @@ class VideoAnnotator {
 
         for (const project of this.state.activeProjects) {
             if (this.state.unfinishedFragments[project]) {
-                const confirmed = await showConfirm(`Для проєкту "${this._getProjectName(project)}" вже встановлена початкова мітка. Замінити її?`);
+                const confirmed = await confirm(`Для проєкту "${this._getProjectName(project)}" вже встановлена початкова мітка. Замінити її?`);
                 if (!confirmed) {
                     continue;
                 }
@@ -512,12 +503,12 @@ class VideoAnnotator {
             marker.className = `fragment-marker start ${project}`;
             marker.dataset.project = project;
             marker.style.left = `${(startTime / this.elements.videoPlayer.duration) * 100}%`;
-            marker.title = `${this._getProjectName(project)}: ${Utils.formatTime(startTime)}`;
+            marker.title = `${this._getProjectName(project)}: ${utils.formatTime(startTime)}`;
             this.elements.timeline.appendChild(marker);
 
             this.state.unfinishedFragments[project] = {
                 start: startTime,
-                start_formatted: Utils.formatTime(startTime)
+                start_formatted: utils.formatTime(startTime)
             };
         }
 
@@ -530,7 +521,7 @@ class VideoAnnotator {
         );
 
         if (unfinishedProjects.length === 0) {
-            showNotification('Немає незавершених фрагментів', 'warning');
+            notify('Немає незавершених фрагментів', 'warning');
             return;
         }
 
@@ -548,7 +539,7 @@ class VideoAnnotator {
         );
 
         if (unfinishedProjects.length === 0) {
-            showNotification('Немає незавершених фрагментів', 'warning');
+            notify('Немає незавершених фрагментів', 'warning');
             return;
         }
 
@@ -561,19 +552,20 @@ class VideoAnnotator {
     }
 
     _showProjectModal(projects, callback) {
-        this.elements.modals.projectOptions.innerHTML = '';
+        const projectOptions = document.getElementById('project-options');
+        projectOptions.innerHTML = '';
         projects.forEach(project => {
             const option = document.createElement('div');
             option.className = `project-option ${project}`;
             option.textContent = `${this._getProjectName(project)} (початок: ${this.state.unfinishedFragments[project].start_formatted})`;
             option.addEventListener('click', () => {
-                this.elements.modals.projectModal.style.display = 'none';
+                this.projectModal.close();
                 callback(project);
             });
-            this.elements.modals.projectOptions.appendChild(option);
+            projectOptions.appendChild(option);
         });
 
-        this.elements.modals.projectModal.style.display = 'block';
+        this.projectModal.open();
     }
 
     async _setFragmentEnd(project) {
@@ -584,14 +576,14 @@ class VideoAnnotator {
         }
 
         const duration = endTime - this.state.unfinishedFragments[project].start;
-        if (duration < CONFIG.MIN_CLIP_DURATION) {
-            const adjustedEndTime = this.state.unfinishedFragments[project].start + CONFIG.MIN_CLIP_DURATION;
+        if (duration < 1) {
+            const adjustedEndTime = this.state.unfinishedFragments[project].start + 1;
             if (adjustedEndTime > this.elements.videoPlayer.duration) {
-                await showNotification(`Неможливо створити кліп мінімальної тривалості ${CONFIG.MIN_CLIP_DURATION} сек. Недостатньо відео.`, 'error');
+                await notify('Неможливо створити кліп мінімальної тривалості 1 сек. Недостатньо відео.', 'error');
                 return;
             }
 
-            const confirmed = await showConfirm(`Мінімальна тривалість кліпу - ${CONFIG.MIN_CLIP_DURATION} секунда. Автоматично збільшити до ${CONFIG.MIN_CLIP_DURATION} сек?`);
+            const confirmed = await confirm('Мінімальна тривалість кліпу - 1 секунда. Автоматично збільшити до 1 сек?');
             if (confirmed) {
                 this.elements.videoPlayer.currentTime = adjustedEndTime;
                 this._setFragmentEnd(project);
@@ -604,7 +596,7 @@ class VideoAnnotator {
         const completeFragment = {
             ...this.state.unfinishedFragments[project],
             end: endTime,
-            end_formatted: Utils.formatTime(endTime),
+            end_formatted: utils.formatTime(endTime),
             id: Date.now() + Math.floor(Math.random() * 1000),
             project: project
         };
@@ -799,25 +791,13 @@ class VideoAnnotator {
 
         if (!form.uavType.value.trim()) {
             errors.push('UAV (тип дрона)');
-            UI.setFieldValidation(form.uavType, false, 'Поле є обовʼязковим');
-        } else {
-            UI.setFieldValidation(form.uavType, true);
         }
 
         if (!form.videoContent.value.trim()) {
             errors.push('Контент відео');
-            UI.setFieldValidation(form.videoContent, false, 'Поле є обовʼязковим');
-        } else {
-            UI.setFieldValidation(form.videoContent, true);
         }
 
         return errors;
-    }
-
-    _showJsonModal() {
-        const jsonData = this._prepareJsonData();
-        this.elements.modals.jsonContent.textContent = JSON.stringify(jsonData, null, 2);
-        this.elements.modals.jsonModal.style.display = 'block';
     }
 
     _prepareJsonData() {
@@ -858,7 +838,7 @@ class VideoAnnotator {
             const validationErrors = this._validateRequiredFields();
 
             if (validationErrors.length > 0) {
-                await showNotification(`Необхідно заповнити обовʼязкові поля:\n• ${validationErrors.join('\n• ')}`, 'error');
+                await notify(`Необхідно заповнити обов'язкові поля:\n• ${validationErrors.join('\n• ')}`, 'error');
                 return;
             }
         }
@@ -869,7 +849,7 @@ class VideoAnnotator {
         }
 
         if (totalFragments === 0 && !this.elements.metadataForm.skipVideo.checked) {
-            await showNotification('Немає фрагментів для збереження і відео не помічено як Skip', 'warning');
+            await notify('Немає фрагментів для збереження і відео не помічено як Skip', 'warning');
             return;
         }
 
@@ -878,7 +858,7 @@ class VideoAnnotator {
         );
 
         if (unfinishedProjects.length > 0) {
-            const confirmed = await showConfirm('У вас є незавершені фрагменти, які не будуть збережені. Продовжити?');
+            const confirmed = await confirm('У вас є незавершені фрагменти, які не будуть збережені. Продовжити?');
             if (!confirmed) {
                 return;
             }
@@ -887,38 +867,23 @@ class VideoAnnotator {
         const jsonData = this._prepareJsonData();
 
         try {
-            const data = await Auth.authenticatedRequest('/save_fragments', {
-                method: 'POST',
-                body: JSON.stringify({
-                    azure_link: this.state.currentAzureLink,
-                    data: jsonData
-                })
+            const data = await api.post('/save_fragments', {
+                azure_link: this.state.currentAzureLink,
+                data: jsonData
             });
 
             if (!data) return;
 
             if (data.success) {
-                await showNotification(data.message || 'Дані успішно збережено в MongoDB.', 'success');
+                await notify(data.message || 'Дані успішно збережено в MongoDB.', 'success');
                 if (data.task_id) {
                     console.log('Task ID:', data.task_id);
                 }
             } else {
-                await showNotification('Помилка: ' + data.error, 'error');
+                await notify('Помилка: ' + data.error, 'error');
             }
         } catch (error) {
-            const message = ErrorHandler.handleApiError(error, 'save_fragments');
-            await showNotification(message, 'error');
-        }
-    }
-
-    _closeModals() {
-        this.elements.modals.jsonModal.style.display = 'none';
-        this.elements.modals.projectModal.style.display = 'none';
-    }
-
-    _handleWindowClick(e) {
-        if (e.target === this.elements.modals.jsonModal || e.target === this.elements.modals.projectModal) {
-            this._closeModals();
+            await notify(error.message, 'error');
         }
     }
 
@@ -933,9 +898,6 @@ class VideoAnnotator {
     }
 }
 
-/**
- * Ініціалізація при завантаженні сторінки
- */
 document.addEventListener('DOMContentLoaded', () => {
     window.videoAnnotator = new VideoAnnotator();
 });

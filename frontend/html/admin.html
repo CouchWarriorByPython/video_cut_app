@@ -1,213 +1,195 @@
-<!DOCTYPE html>
-<html lang="uk">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Адміністративна панель</title>
-    <link rel="icon" type="image/png" href="/favicon.png">
-    <link rel="stylesheet" href="/css/base.css">
-    <link rel="stylesheet" href="/css/admin.css">
-</head>
-<body>
-    <nav class="navbar">
-        <div class="navbar-container">
-            <div class="navbar-brand">
-                <h2>Video Annotator</h2>
-            </div>
-            <div class="navbar-menu">
-                <a href="/" class="navbar-item">Завантажити відео</a>
-                <a href="/annotator" class="navbar-item">Анотувати відео</a>
-                <a href="/faq" class="navbar-item">FAQ</a>
-                <!-- Кнопка "Адмінка" та "Вийти" додаються динамічно через JavaScript -->
-            </div>
+{% extends "base.html" %}
+
+{% block title %}Адміністративна панель - Video Annotator{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="/css/admin.css">
+{% endblock %}
+
+{% block content %}
+<h1>Адміністративна панель</h1>
+
+<!-- Statistics Cards -->
+<div class="stats-grid">
+    <div class="stat-card">
+        <div class="stat-icon">👥</div>
+        <div class="stat-info">
+            <div class="stat-number" id="total-users">-</div>
+            <div class="stat-label">Всього користувачів</div>
         </div>
-    </nav>
-
-    <div class="container">
-        <h1>Адміністративна панель</h1>
-
-        <!-- Statistics Cards -->
-        <div class="stats-grid">
-            <div class="stat-card">
-                <div class="stat-icon">👥</div>
-                <div class="stat-info">
-                    <div class="stat-number" id="total-users">-</div>
-                    <div class="stat-label">Всього користувачів</div>
-                </div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-icon">✅</div>
-                <div class="stat-info">
-                    <div class="stat-number" id="active-users">-</div>
-                    <div class="stat-label">Активні користувачі</div>
-                </div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-icon">🎬</div>
-                <div class="stat-info">
-                    <div class="stat-number" id="total-videos">-</div>
-                    <div class="stat-label">Всього відео</div>
-                </div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-icon">⚙️</div>
-                <div class="stat-info">
-                    <div class="stat-number" id="processing-videos">-</div>
-                    <div class="stat-label">В обробці</div>
-                </div>
-            </div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-icon">✅</div>
+        <div class="stat-info">
+            <div class="stat-number" id="active-users">-</div>
+            <div class="stat-label">Активні користувачі</div>
         </div>
-
-        <!-- Navigation Tabs -->
-        <div class="admin-tabs">
-            <button class="tab-button active" data-tab="users">Користувачі</button>
-            <button class="tab-button" data-tab="cvat-settings">CVAT Налаштування</button>
+    </div>
+    <div class="stat-card">
+        <div class="stat-icon">🎬</div>
+        <div class="stat-info">
+            <div class="stat-number" id="total-videos">-</div>
+            <div class="stat-label">Всього відео</div>
         </div>
-
-        <!-- Users Tab -->
-        <div id="users-tab" class="tab-content active">
-            <div class="section-header">
-                <h2>Управління користувачами</h2>
-                <button class="btn btn-success" id="add-user-btn">Додати користувача</button>
-            </div>
-
-            <div class="table-container">
-                <table class="admin-table" id="users-table">
-                    <thead>
-                        <tr>
-                            <th>Email</th>
-                            <th>Роль</th>
-                            <th>Статус</th>
-                            <th>Створено</th>
-                            <th>Дії</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <!-- Заповнюється JavaScript -->
-                    </tbody>
-                </table>
-            </div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-icon">⚙️</div>
+        <div class="stat-info">
+            <div class="stat-number" id="processing-videos">-</div>
+            <div class="stat-label">В обробці</div>
         </div>
+    </div>
+</div>
 
-        <!-- CVAT Settings Tab -->
-        <div id="cvat-settings-tab" class="tab-content">
-            <div class="section-header">
-                <h2>Налаштування CVAT проєктів</h2>
-                <button class="btn btn-secondary" id="reset-cvat-btn">Скинути до дефолтних</button>
-            </div>
+<!-- Navigation Tabs -->
+<div class="admin-tabs">
+    <button class="tab-button active" data-tab="users">Користувачі</button>
+    <button class="tab-button" data-tab="cvat-settings">CVAT Налаштування</button>
+</div>
 
-            <div class="cvat-settings-grid" id="cvat-settings-grid">
+<!-- Users Tab -->
+<div id="users-tab" class="tab-content active">
+    <div class="section-header">
+        <h2>Управління користувачами</h2>
+        <button class="btn btn-success" id="add-user-btn">Додати користувача</button>
+    </div>
+
+    <div class="table-container">
+        <table class="admin-table" id="users-table">
+            <thead>
+                <tr>
+                    <th>Email</th>
+                    <th>Роль</th>
+                    <th>Статус</th>
+                    <th>Створено</th>
+                    <th>Дії</th>
+                </tr>
+            </thead>
+            <tbody>
                 <!-- Заповнюється JavaScript -->
-            </div>
-        </div>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- CVAT Settings Tab -->
+<div id="cvat-settings-tab" class="tab-content">
+    <div class="section-header">
+        <h2>Налаштування CVAT проєктів</h2>
+        <button class="btn btn-secondary" id="reset-cvat-btn">Скинути до дефолтних</button>
     </div>
 
-    <!-- User Modal -->
-    <div id="user-modal" class="modal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3 id="user-modal-title">Додати користувача</h3>
-                <span class="modal-close">&times;</span>
-            </div>
-            <div class="modal-body">
-                <form id="user-form">
-                    <div class="form-group">
-                        <label for="user-email">Email:</label>
-                        <input type="email" id="user-email" class="form-control" required>
-                    </div>
-                    <div class="form-group">
-                        <label for="user-password">Пароль:</label>
-                        <input type="password" id="user-password" class="form-control" required minlength="8">
-                        <small class="form-text">Мінімум 8 символів</small>
-                    </div>
-                    <div class="form-group">
-                        <label for="user-role">Роль:</label>
-                        <select id="user-role" class="form-control" required>
-                            <option value="">Оберіть роль</option>
-                            <option value="annotator">Annotator</option>
-                            <option value="admin">Admin</option>
-                        </select>
-                    </div>
-                </form>
-            </div>
-            <div class="modal-footer">
-                <button class="btn btn-secondary" id="cancel-user-btn">Скасувати</button>
-                <button class="btn btn-success" id="save-user-btn">Зберегти</button>
-            </div>
+    <div class="cvat-settings-grid" id="cvat-settings-grid">
+        <!-- Заповнюється JavaScript -->
+    </div>
+</div>
+{% endblock %}
+
+{% block modals %}
+<!-- User Modal -->
+<div id="user-modal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3 id="user-modal-title">Додати користувача</h3>
+            <span class="modal-close">&times;</span>
+        </div>
+        <div class="modal-body">
+            <form id="user-form">
+                <div class="form-group">
+                    <label for="user-email">Email:</label>
+                    <input type="email" id="user-email" name="email" class="form-control" required>
+                </div>
+                <div class="form-group">
+                    <label for="user-password">Пароль:</label>
+                    <input type="password" id="user-password" name="password" class="form-control" required minlength="8">
+                    <small class="form-text">Мінімум 8 символів</small>
+                </div>
+                <div class="form-group">
+                    <label for="user-role">Роль:</label>
+                    <select id="user-role" name="role" class="form-control" required>
+                        <option value="">Оберіть роль</option>
+                        <option value="annotator">Annotator</option>
+                        <option value="admin">Admin</option>
+                    </select>
+                </div>
+            </form>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" id="cancel-user-btn">Скасувати</button>
+            <button class="btn btn-success" id="save-user-btn">Зберегти</button>
         </div>
     </div>
+</div>
 
-    <!-- Edit User Modal -->
-    <div id="edit-user-modal" class="modal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3 id="edit-user-modal-title">Редагувати користувача</h3>
-                <span class="modal-close">&times;</span>
-            </div>
-            <div class="modal-body">
-                <form id="edit-user-form">
-                    <div class="form-group">
-                        <label for="edit-user-email">Email:</label>
-                        <input type="email" id="edit-user-email" class="form-control" required>
-                    </div>
-                    <div class="form-group">
-                        <label for="edit-user-password">Новий пароль (опційно):</label>
-                        <input type="password" id="edit-user-password" class="form-control" minlength="8">
-                        <small class="form-text">Залиште порожнім, щоб не змінювати пароль</small>
-                    </div>
-                    <div class="form-group">
-                        <label for="edit-user-role">Роль:</label>
-                        <select id="edit-user-role" class="form-control" required>
-                            <option value="annotator">Annotator</option>
-                            <option value="admin">Admin</option>
-                        </select>
-                    </div>
-                </form>
-            </div>
-            <div class="modal-footer">
-                <button class="btn btn-secondary" id="cancel-edit-user-btn">Скасувати</button>
-                <button class="btn btn-success" id="save-edit-user-btn">Зберегти зміни</button>
-            </div>
+<!-- Edit User Modal -->
+<div id="edit-user-modal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3 id="edit-user-modal-title">Редагувати користувача</h3>
+            <span class="modal-close">&times;</span>
+        </div>
+        <div class="modal-body">
+            <form id="edit-user-form">
+                <div class="form-group">
+                    <label for="edit-user-email">Email:</label>
+                    <input type="email" id="edit-user-email" name="email" class="form-control" required>
+                </div>
+                <div class="form-group">
+                    <label for="edit-user-password">Новий пароль (опційно):</label>
+                    <input type="password" id="edit-user-password" name="password" class="form-control" minlength="8">
+                    <small class="form-text">Залиште порожнім, щоб не змінювати пароль</small>
+                </div>
+                <div class="form-group">
+                    <label for="edit-user-role">Роль:</label>
+                    <select id="edit-user-role" name="role" class="form-control" required>
+                        <option value="annotator">Annotator</option>
+                        <option value="admin">Admin</option>
+                    </select>
+                </div>
+            </form>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" id="cancel-edit-user-btn">Скасувати</button>
+            <button class="btn btn-success" id="save-edit-user-btn">Зберегти зміни</button>
         </div>
     </div>
+</div>
 
-    <!-- CVAT Settings Modal -->
-    <div id="cvat-modal" class="modal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3 id="cvat-modal-title">Редагувати налаштування</h3>
-                <span class="modal-close">&times;</span>
-            </div>
-            <div class="modal-body">
-                <form id="cvat-form">
-                    <div class="form-group">
-                        <label for="cvat-project-id">Project ID:</label>
-                        <input type="number" id="cvat-project-id" class="form-control" required min="1" max="1000">
-                    </div>
-                    <div class="form-group">
-                        <label for="cvat-overlap">Overlap (%):</label>
-                        <input type="number" id="cvat-overlap" class="form-control" required min="0" max="100">
-                    </div>
-                    <div class="form-group">
-                        <label for="cvat-segment-size">Segment Size:</label>
-                        <input type="number" id="cvat-segment-size" class="form-control" required min="50" max="2000">
-                    </div>
-                    <div class="form-group">
-                        <label for="cvat-image-quality">Image Quality (%):</label>
-                        <input type="number" id="cvat-image-quality" class="form-control" required min="1" max="100">
-                    </div>
-                </form>
-            </div>
-            <div class="modal-footer">
-                <button class="btn btn-secondary" id="cancel-cvat-btn">Скасувати</button>
-                <button class="btn btn-success" id="save-cvat-btn">Зберегти</button>
-            </div>
+<!-- CVAT Settings Modal -->
+<div id="cvat-modal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3 id="cvat-modal-title">Редагувати налаштування</h3>
+            <span class="modal-close">&times;</span>
+        </div>
+        <div class="modal-body">
+            <form id="cvat-form">
+                <div class="form-group">
+                    <label for="cvat-project-id">Project ID:</label>
+                    <input type="number" id="cvat-project-id" name="projectId" class="form-control" required min="1" max="1000">
+                </div>
+                <div class="form-group">
+                    <label for="cvat-overlap">Overlap (%):</label>
+                    <input type="number" id="cvat-overlap" name="overlap" class="form-control" required min="0" max="100">
+                </div>
+                <div class="form-group">
+                    <label for="cvat-segment-size">Segment Size:</label>
+                    <input type="number" id="cvat-segment-size" name="segmentSize" class="form-control" required min="50" max="2000">
+                </div>
+                <div class="form-group">
+                    <label for="cvat-image-quality">Image Quality (%):</label>
+                    <input type="number" id="cvat-image-quality" name="imageQuality" class="form-control" required min="1" max="100">
+                </div>
+            </form>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" id="cancel-cvat-btn">Скасувати</button>
+            <button class="btn btn-success" id="save-cvat-btn">Зберегти</button>
         </div>
     </div>
+</div>
+{% endblock %}
 
-    <script src="/js/core.js"></script>
-    <script src="/js/notifications.js"></script>
-    <script src="/js/auth.js"></script>
-    <script src="/js/admin.js"></script>
-</body>
-</html>
+{% block extra_js %}
+<script src="/js/admin.js"></script>
+{% endblock %}

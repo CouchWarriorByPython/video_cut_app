@@ -31,6 +31,12 @@ async def faq(request: Request) -> HTMLResponse:
     return templates.TemplateResponse("faq.html", {"request": request})
 
 
+@router.get("/admin", response_class=HTMLResponse)
+async def admin_panel(request: Request) -> HTMLResponse:
+    """Адміністративна панель"""
+    return templates.TemplateResponse("admin.html", {"request": request})
+
+
 @router.get("/css/{file_name}")
 async def serve_css(file_name: str) -> FileResponse:
     """CSS файли"""
@@ -39,8 +45,14 @@ async def serve_css(file_name: str) -> FileResponse:
 
 @router.get("/js/{file_name}")
 async def serve_js(file_name: str) -> FileResponse:
-    """JS файли"""
+    """JS файли включаючи новий common.js"""
     return FileResponse(f"frontend/js/{file_name}", media_type="application/javascript")
+
+
+@router.get("/data/{file_name}")
+async def serve_data(file_name: str) -> FileResponse:
+    """JSON файли з даними (наприклад drones.json)"""
+    return FileResponse(f"frontend/data/{file_name}", media_type="application/json")
 
 
 @router.get("/favicon.png")
@@ -53,8 +65,3 @@ async def serve_favicon_png() -> FileResponse:
 async def serve_favicon_ico() -> FileResponse:
     """Favicon ICO"""
     return FileResponse("frontend/static/images/favicon.png", media_type="image/png")
-
-@router.get("/admin", response_class=HTMLResponse)
-async def admin_panel(request: Request) -> HTMLResponse:
-    """Адміністративна панель"""
-    return templates.TemplateResponse("admin.html", {"request": request})

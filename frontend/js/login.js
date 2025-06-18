@@ -1,7 +1,7 @@
 class LoginManager {
     constructor() {
+        this.form = new BaseForm(document.getElementById('login-form'));
         this.elements = {
-            form: document.getElementById('login-form'),
             email: document.getElementById('email'),
             password: document.getElementById('password'),
             loginBtn: document.getElementById('login-btn'),
@@ -17,66 +17,45 @@ class LoginManager {
     }
 
     _setupEventListeners() {
-        this.elements.form.addEventListener('submit', (e) => this._handleLogin(e));
+        this.form.form.addEventListener('submit', (e) => this._handleLogin(e));
     }
 
     async _handleLogin(e) {
         e.preventDefault();
 
-        const formData = this._getFormData();
+        const validationRules = {
+            email: {
+                required: true,
+                validator: validators.email,
+                message: 'Некоректний email'
+            },
+            password: {
+                required: true,
+                message: 'Пароль є обов\'язковим'
+            }
+        };
 
-        if (!this._validateForm(formData)) {
+        if (!this.form.validate(validationRules)) {
+            this._showError('Будь ласка, заповніть всі поля коректно');
             return;
         }
 
-        UI.setButtonState(this.elements.loginBtn, true);
+        this._setButtonLoading(true);
         this._hideError();
 
         try {
-            const data = await HTTP.post('/auth/login', formData);
+            const formData = this.form.getData();
+            const data = await api.post('/auth/login', formData);
 
-            Auth.setTokens(data.access_token, data.refresh_token);
+            auth.setTokens(data.access_token, data.refresh_token);
 
-            const role = Auth.getCurrentUserRole();
-            const homePage = Auth.getRoleBasedHomePage(role);
+            const homePage = auth.isAdmin ? '/' : '/annotator';
             window.location.href = homePage;
         } catch (error) {
-            const message = ErrorHandler.handleApiError(error, 'login');
-            this._showError(message);
+            this._showError(error.message);
         } finally {
-            UI.setButtonState(this.elements.loginBtn, false, 'Увійти');
+            this._setButtonLoading(false);
         }
-    }
-
-    _getFormData() {
-        return {
-            email: this.elements.email.value.trim(),
-            password: this.elements.password.value
-        };
-    }
-
-    _validateForm(data) {
-        UI.clearFormErrors(this.elements.form);
-
-        if (!data.email) {
-            UI.setFieldValidation(this.elements.email, false, 'Email є обовʼязковим');
-            this._showError('Будь ласка, заповніть всі поля');
-            return false;
-        }
-
-        if (!Validators.isValidEmail(data.email)) {
-            UI.setFieldValidation(this.elements.email, false, 'Некоректний email');
-            this._showError('Некоректний формат email');
-            return false;
-        }
-
-        if (!data.password) {
-            UI.setFieldValidation(this.elements.password, false, 'Пароль є обовʼязковим');
-            this._showError('Будь ласка, заповніть всі поля');
-            return false;
-        }
-
-        return true;
     }
 
     _showError(message) {
@@ -87,11 +66,19 @@ class LoginManager {
     _hideError() {
         this.elements.errorMessage.classList.add('hidden');
     }
+
+    _setButtonLoading(loading) {
+        this.elements.loginBtn.disabled = loading;
+        this.elements.loginBtn.textContent = loading ? '' : 'Увійти';
+
+        if (loading) {
+            this.elements.loginBtn.classList.add('loading');
+        } else {
+            this.elements.loginBtn.classList.remove('loading');
+        }
+    }
 }
 
-/**
- * Ініціалізація при завантаженні сторінки
- */
 document.addEventListener('DOMContentLoaded', () => {
     new LoginManager();
 });

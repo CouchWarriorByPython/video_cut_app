@@ -1,49 +1,31 @@
-<!DOCTYPE html>
-<html lang="uk">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>FAQ - Типи дронів</title>
-    <link rel="icon" type="image/png" href="/favicon.png">
-    <link rel="stylesheet" href="/css/base.css">
-    <link rel="stylesheet" href="/css/faq.css">
-</head>
-<body>
-    <nav class="navbar">
-        <div class="navbar-container">
-            <div class="navbar-brand">
-                <h2>Video Annotator</h2>
-            </div>
-            <div class="navbar-menu">
-                <a href="/" class="navbar-item">Завантажити відео</a>
-                <a href="/annotator" class="navbar-item">Анотувати відео</a>
-                <a href="/faq" class="navbar-item active">FAQ</a>
-                <!-- Динамічні кнопки додаються через JavaScript -->
-            </div>
-        </div>
-    </nav>
+{% extends "base.html" %}
 
-    <div class="container">
-        <h1>Типи дронів</h1>
-        <p class="page-description">Візуальний довідник типів безпілотних літальних апаратів</p>
+{% block title %}FAQ - Типи дронів - Video Annotator{% endblock %}
 
-        <div class="faq-accordion" id="dronesAccordion">
-            <!-- Контент генерується JavaScript -->
-        </div>
+{% block extra_css %}
+<link rel="stylesheet" href="/css/faq.css">
+{% endblock %}
+
+{% block content %}
+<h1>Типи дронів</h1>
+<p class="page-description">Візуальний довідник типів безпілотних літальних апаратів</p>
+
+<div class="faq-accordion" id="dronesAccordion">
+    <!-- Контент генерується через JavaScript з JSON файлу -->
+</div>
+{% endblock %}
+
+{% block modals %}
+<!-- Модальне вікно для перегляду зображень -->
+<div id="imageLightbox" class="image-lightbox">
+    <div class="lightbox-content">
+        <span class="lightbox-close">&times;</span>
+        <img id="lightboxImage" class="lightbox-image" src="" alt="">
+        <div id="lightboxCaption" class="lightbox-caption"></div>
     </div>
+</div>
+{% endblock %}
 
-    <!-- Image Lightbox Modal -->
-    <div id="imageLightbox" class="image-lightbox">
-        <div class="lightbox-content">
-            <span class="lightbox-close">&times;</span>
-            <img id="lightboxImage" class="lightbox-image" src="" alt="">
-            <div id="lightboxCaption" class="lightbox-caption"></div>
-        </div>
-    </div>
-
-    <script src="/js/core.js"></script>
-    <script src="/js/notifications.js"></script>
-    <script src="/js/auth.js"></script>
-    <script src="/js/faq.js"></script>
-</body>
-</html>
+{% block extra_js %}
+<script src="/js/faq.js"></script>
+{% endblock %}

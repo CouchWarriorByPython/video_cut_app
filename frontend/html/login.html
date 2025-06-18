@@ -1,44 +1,48 @@
-<!DOCTYPE html>
-<html lang="uk">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Вхід - Video Annotator</title>
-    <link rel="icon" type="image/png" href="/favicon.png">
-    <link rel="stylesheet" href="/css/base.css">
-    <link rel="stylesheet" href="/css/login.css">
-</head>
-<body>
-    <div class="login-container">
-        <div class="login-card">
-            <div class="login-header">
-                <h1>Video Annotator</h1>
-                <p>Вхід до системи анотування відео</p>
+{% extends "base.html" %}
+
+{% block title %}Вхід - Video Annotator{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="/css/login.css">
+{% endblock %}
+
+{% block body_attrs %} class="login-page"{% endblock %}
+
+{% block navbar %}{% endblock %}
+
+{% block container_start %}{% endblock %}
+
+{% block content %}
+<div class="login-container">
+    <div class="login-card">
+        <div class="login-header">
+            <h1>Video Annotator</h1>
+            <p>Вхід до системи анотування відео</p>
+        </div>
+
+        <form id="login-form" class="login-form">
+            <div class="form-group">
+                <label for="email">Email:</label>
+                <input type="email" id="email" name="email" class="form-control" required>
             </div>
 
-            <form id="login-form" class="login-form">
-                <div class="form-group">
-                    <label for="email">Email:</label>
-                    <input type="email" id="email" name="email" class="form-control" required>
-                </div>
+            <div class="form-group">
+                <label for="password">Пароль:</label>
+                <input type="password" id="password" name="password" class="form-control" required>
+            </div>
 
-                <div class="form-group">
-                    <label for="password">Пароль:</label>
-                    <input type="password" id="password" name="password" class="form-control" required>
-                </div>
+            <button type="submit" class="btn btn-success full-width" id="login-btn">
+                Увійти
+            </button>
+        </form>
 
-                <button type="submit" class="btn btn-success full-width" id="login-btn">
-                    Увійти
-                </button>
-            </form>
-
-            <div id="error-message" class="error-message hidden"></div>
-        </div>
+        <div id="error-message" class="error-message hidden"></div>
     </div>
+</div>
+{% endblock %}
 
-    <script src="/js/core.js"></script>
-    <script src="/js/notifications.js"></script>
-    <script src="/js/auth.js"></script>
-    <script src="/js/login.js"></script>
-</body>
-</html>
+{% block container_end %}{% endblock %}
+
+{% block extra_js %}
+<script src="/js/login.js"></script>
+{% endblock %}

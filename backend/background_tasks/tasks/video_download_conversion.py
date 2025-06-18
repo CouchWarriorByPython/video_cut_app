@@ -23,9 +23,10 @@ def download_and_convert_video(self, azure_link: str) -> Dict[str, Any]:
     azure_service = AzureService()
 
     def update_download_progress(downloaded_bytes: int, total_bytes: int) -> None:
-        """Оновлює прогрес завантаження (0-50%)"""
+        """Оновлює прогрес завантаження (5-50%)"""
         if total_bytes > 0:
-            download_percent = (downloaded_bytes / total_bytes) * 50
+            # Прогрес від 5% до 50% (45% діapазон для завантаження)
+            download_percent = 5 + (downloaded_bytes / total_bytes) * 45
             self.update_state(
                 state='PROGRESS',
                 meta={

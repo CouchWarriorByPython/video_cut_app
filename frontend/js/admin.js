@@ -1,5 +1,3 @@
-// admin.js - Спрощена версія (скорочено з ~500 до ~200 рядків)
-
 class AdminPanel {
     constructor() {
         this.userModal = new BaseModal('user-modal', 'user-form');
@@ -15,7 +13,6 @@ class AdminPanel {
 
     async init() {
         if (!await this.checkAccess()) return;
-
         this.setupEvents();
         await this.loadData();
     }
@@ -31,20 +28,19 @@ class AdminPanel {
     }
 
     setupEvents() {
-        // Tabs
-        document.querySelectorAll('.tab-button').forEach(btn => {
-            btn.onclick = () => this.switchTab(btn.dataset.tab);
-        });
+        document.querySelectorAll('.tab-button').forEach(btn =>
+            btn.onclick = () => this.switchTab(btn.dataset.tab));
 
-        // User actions
-        document.getElementById('add-user-btn').onclick = () => this.userModal.open();
-        document.getElementById('save-user-btn').onclick = () => this.saveUser();
-        document.getElementById('save-edit-user-btn').onclick = () => this.saveEditUser();
+        const eventMappings = [
+            ['#add-user-btn', () => this.userModal.open()],
+            ['#save-user-btn', () => this.saveUser()],
+            ['#save-edit-user-btn', () => this.saveEditUser()],
+            ['#save-cvat-btn', () => this.saveCvat()]
+        ];
 
-        // CVAT actions
-        document.getElementById('save-cvat-btn').onclick = () => this.saveCvat();
+        eventMappings.forEach(([selector, handler]) =>
+            document.querySelector(selector).onclick = handler);
 
-        // Delegated events
         document.addEventListener('click', this.handleDelegatedClick.bind(this));
     }
 
@@ -58,12 +54,12 @@ class AdminPanel {
 
     handleDelegatedClick(e) {
         const { action, userId, project } = e.target.dataset;
-
-        switch (action) {
-            case 'edit-user': this.editUser(userId); break;
-            case 'delete-user': this.deleteUser(userId); break;
-            case 'edit-cvat': this.editCvat(project); break;
-        }
+        const actions = {
+            'edit-user': () => this.editUser(userId),
+            'delete-user': () => this.deleteUser(userId),
+            'edit-cvat': () => this.editCvat(project)
+        };
+        actions[action]?.();
     }
 
     async loadData() {
@@ -79,19 +75,24 @@ class AdminPanel {
     }
 
     renderStats({ total_users, active_users, total_videos, processing_videos }) {
-        document.getElementById('total-users').textContent = total_users;
-        document.getElementById('active-users').textContent = active_users;
-        document.getElementById('total-videos').textContent = total_videos;
-        document.getElementById('processing-videos').textContent = processing_videos;
+        const statsMap = {
+            'total-users': total_users,
+            'active-users': active_users,
+            'total-videos': total_videos,
+            'processing-videos': processing_videos
+        };
+
+        Object.entries(statsMap).forEach(([id, value]) =>
+            document.getElementById(id).textContent = value);
     }
 
     renderUsers(users) {
-        const tbody = document.querySelector('#users-table tbody');
-        tbody.innerHTML = users.map(user => `
+        document.querySelector('#users-table tbody').innerHTML = users.map(user => `
             <tr>
                 <td>${utils.escapeHtml(user.email)}</td>
                 <td><span class="role-badge ${user.role}">${user.role}</span></td>
-                <td><span class="status-badge ${user.is_active ? 'active' : 'inactive'}">${user.is_active ? 'Активний' : 'Неактивний'}</span></td>
+                <td><span class="status-badge ${user.is_active ? 'active' : 'inactive'}">
+                    ${user.is_active ? 'Активний' : 'Неактивний'}</span></td>
                 <td>${new Date(user.created_at).toLocaleDateString()}</td>
                 <td>
                     <button class="btn btn-icon" data-action="edit-user" data-user-id="${user.id}">✏️</button>
@@ -102,7 +103,6 @@ class AdminPanel {
     }
 
     renderCvat(settings) {
-        const grid = document.getElementById('cvat-settings-grid');
         const names = {
             'motion-det': 'Motion Detection',
             'tracking': 'Tracking',
@@ -110,7 +110,7 @@ class AdminPanel {
             're-id': 'Re-ID'
         };
 
-        grid.innerHTML = settings.map(s => `
+        document.getElementById('cvat-settings-grid').innerHTML = settings.map(s => `
             <div class="cvat-project-card">
                 <div class="project-header">
                     <h3>${names[s.project_name]}</h3>
@@ -162,12 +162,17 @@ class AdminPanel {
     }
 
     async editUser(userId) {
-        const user = await api.get(`/admin/users/${userId}`);
+        try {
+            const users = await api.get('/admin/users');
+            const user = users.find(u => u.id === userId);
 
-        document.getElementById('edit-user-email').value = user.email;
-        document.getElementById('edit-user-role').value = user.role;
-        this.editModal.currentUserId = userId;
-        this.editModal.open();
+            document.getElementById('edit-user-email').value = user.email;
+            document.getElementById('edit-user-role').value = user.role;
+            this.editModal.currentUserId = userId;
+            this.editModal.open();
+        } catch (e) {
+            notify(e.message, 'error');
+        }
     }
 
     async saveEditUser() {
@@ -185,16 +190,27 @@ class AdminPanel {
     }
 
     async editCvat(project) {
-        const settings = await api.get('/admin/cvat-settings');
-        const setting = settings.find(s => s.project_name === project);
+        try {
+            const settings = await api.get('/admin/cvat-settings');
+            const setting = settings.find(s => s.project_name === project);
 
-        Object.entries(setting).forEach(([key, value]) => {
-            const input = document.getElementById(`cvat-${key.replace('_', '-')}`);
-            if (input) input.value = value;
-        });
+            const fieldMappings = {
+                'project-id': 'project_id',
+                'overlap': 'overlap',
+                'segment-size': 'segment_size',
+                'image-quality': 'image_quality'
+            };
 
-        this.cvatModal.currentProject = project;
-        this.cvatModal.open();
+            Object.entries(fieldMappings).forEach(([fieldId, key]) => {
+                const input = document.getElementById(`cvat-${fieldId}`);
+                if (input) input.value = setting[key];
+            });
+
+            this.cvatModal.currentProject = project;
+            this.cvatModal.open();
+        } catch (e) {
+            notify(e.message, 'error');
+        }
     }
 
     async saveCvat() {
@@ -216,6 +232,4 @@ class AdminPanel {
     }
 }
 
-document.addEventListener('DOMContentLoaded', () => {
-    new AdminPanel();
-});
+document.addEventListener('DOMContentLoaded', () => new AdminPanel());

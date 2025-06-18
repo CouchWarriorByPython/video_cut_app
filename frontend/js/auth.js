@@ -1,5 +1,3 @@
-// auth.js - Спрощена версія (скорочено з ~300 до ~100 рядків)
-
 const auth = {
     get token() { return localStorage.getItem('access_token'); },
     get refreshToken() { return localStorage.getItem('refresh_token'); },
@@ -15,9 +13,7 @@ const auth = {
         } catch { return null; }
     },
 
-    get isAdmin() {
-        return ['admin', 'super_admin'].includes(this.role);
-    },
+    get isAdmin() { return ['admin', 'super_admin'].includes(this.role); },
 
     async refresh() {
         try {
@@ -52,7 +48,6 @@ const auth = {
             location.href = allowed[0] || '/login';
             return false;
         }
-
         return true;
     },
 
@@ -60,17 +55,13 @@ const auth = {
         const nav = document.querySelector('.navbar-menu');
         if (!nav || !this.role) return;
 
-        const links = {
-            '/': 'Завантажити відео',
-            '/annotator': 'Анотувати відео',
-            '/faq': 'FAQ'
-        };
+        const links = { '/': 'Завантажити відео', '/annotator': 'Анотувати відео', '/faq': 'FAQ' };
 
         nav.innerHTML = Object.entries(links)
             .filter(([path]) => this.hasAccess(path))
-            .map(([path, label]) => `
-                <a href="${path}" class="navbar-item ${location.pathname === path ? 'active' : ''}">${label}</a>
-            `).join('');
+            .map(([path, label]) =>
+                `<a href="${path}" class="navbar-item ${location.pathname === path ? 'active' : ''}">${label}</a>`)
+            .join('');
 
         if (this.isAdmin) {
             nav.innerHTML += `<a href="/admin" class="navbar-item admin-link ${location.pathname === '/admin' ? 'active' : ''}">Адмінка</a>`;
@@ -89,7 +80,6 @@ const auth = {
     }
 };
 
-// Автоматична ініціалізація
 document.addEventListener('DOMContentLoaded', async () => {
     if (location.pathname === '/login' && auth.token) {
         location.href = auth.isAdmin ? '/' : '/annotator';

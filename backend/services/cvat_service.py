@@ -1,5 +1,6 @@
 import re
 import subprocess
+import shlex
 from typing import Dict, Any, Optional
 
 from backend.config.settings import Settings
@@ -63,21 +64,24 @@ class CVATService:
                 logger.error("project_id не вказано в параметрах")
                 return None
 
-            auth_str = f"cvat-cli --auth {Settings.cvat_username}:{Settings.cvat_password} --server-host {Settings.cvat_host} --server-port {Settings.cvat_port}"
-
-            cli_command = (
-                f"{auth_str} create {filename} "
-                f"local {file_path} "
-                f"--project_id {project_id} "
-                f"--overlap {overlap} "
-                f"--segment_size {segment_size} "
-                f"--image_quality {image_quality} "
-                "--use_cache --use_zip_chunks"
-            )
+            cli_command = [
+                "cvat-cli",
+                "--auth", f"{shlex.quote(Settings.cvat_username)}:{shlex.quote(Settings.cvat_password)}",
+                "--server-host", shlex.quote(Settings.cvat_host),
+                "--server-port", str(Settings.cvat_port),
+                "create", shlex.quote(filename),
+                "local", shlex.quote(file_path),
+                "--project_id", str(project_id),
+                "--overlap", str(overlap),
+                "--segment_size", str(segment_size),
+                "--image_quality", str(image_quality),
+                "--use_cache",
+                "--use_zip_chunks"
+            ]
 
             logger.debug(f"Створення CVAT задачі для {filename}")
 
-            result = subprocess.run(cli_command, shell=True, capture_output=True, text=True)
+            result = subprocess.run(cli_command, capture_output=True, text=True)
 
             if result.returncode == 0:
                 output = result.stdout

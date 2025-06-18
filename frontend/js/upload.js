@@ -7,10 +7,8 @@ class VideoUploader {
             uploadBtn: document.getElementById('upload-btn'),
             result: document.getElementById('result')
         };
-
         this.activeUploads = new Map();
         this.progressIntervals = new Map();
-
         this._init();
     }
 
@@ -26,19 +24,16 @@ class VideoUploader {
 
     async _handleUpload() {
         const formData = this._getFormData();
-
-        if (!this._validateForm(formData)) {
-            return;
-        }
+        if (!this._validateForm(formData)) return;
 
         this._setButtonLoading(true);
 
         try {
             const data = await api.post('/upload', formData);
-            if (!data) return;
-
-            this._handleUploadResponse(data);
-            this._resetForm();
+            if (data) {
+                this._handleUploadResponse(data);
+                this._resetForm();
+            }
         } catch (error) {
             await notify(error.message, 'error');
         } finally {
@@ -55,36 +50,25 @@ class VideoUploader {
     }
 
     _validateForm(data) {
-        const errors = [];
-
-        if (!data.video_url) {
-            errors.push('Azure Blob URL є обов\'язковим');
-        } else if (!validators.azureUrl(data.video_url)) {
-            errors.push('Некоректний Azure URL');
-        }
-
-        if (data.where && !/^[A-Za-z\s\-_]+$/.test(data.where)) {
-            errors.push('Локація може містити тільки англійські літери');
-        }
-
-        if (data.when && !/^\d{8}$/.test(data.when)) {
-            errors.push('Дата повинна бути у форматі РРРРММДД');
-        }
+        const errors = [
+            !data.video_url && 'Azure Blob URL є обов\'язковим',
+            data.video_url && !validators.azureUrl(data.video_url) && 'Некоректний Azure URL',
+            data.where && !/^[A-Za-z\s\-_]+$/.test(data.where) && 'Локація може містити тільки англійські літери',
+            data.when && !/^\d{8}$/.test(data.when) && 'Дата повинна бути у форматі РРРРММДД'
+        ].filter(Boolean);
 
         if (errors.length > 0) {
             notify(errors.join('\n'), 'error');
             return false;
         }
-
         return true;
     }
 
     _validateUrl() {
         const url = this.elements.videoUrl.value.trim();
-        if (!url) return;
-
-        const isValid = validators.azureUrl(url);
-        this.elements.videoUrl.style.borderColor = isValid ? '' : '#e74c3c';
+        if (url) {
+            this.elements.videoUrl.style.borderColor = validators.azureUrl(url) ? '' : '#e74c3c';
+        }
     }
 
     _handleUploadResponse(data) {
@@ -122,7 +106,7 @@ class VideoUploader {
                         <span class="progress-percentage">0%</span>
                     </div>
                     <div class="progress-bar">
-                        <div class="progress-fill" style="width: 0%"></div>
+                        <div class="progress-fill" data-stage="queued" style="width: 0%"></div>
                     </div>
                     <div class="progress-stage">Чекаємо початку обробки...</div>
                 </div>
@@ -137,37 +121,23 @@ class VideoUploader {
     }
 
     _startProgressTracking(uploadId) {
-        const interval = setInterval(() => {
-            this._checkTaskProgress(uploadId);
-        }, 2000);
-
+        const interval = setInterval(() => this._checkTaskProgress(uploadId), 2000);
         this.progressIntervals.set(uploadId, interval);
     }
 
     async _checkTaskProgress(uploadId) {
         const uploadData = this.activeUploads.get(uploadId);
-        if (!uploadData) {
-            this._clearProgressInterval(uploadId);
-            return;
-        }
+        if (!uploadData) return this._clearProgressInterval(uploadId);
 
         try {
             const data = await api.get(`/task_status/${uploadData.taskId}`);
-            if (!data) {
-                this.removeUpload(uploadId);
-                return;
-            }
+            if (!data) return this.removeUpload(uploadId);
 
             this._updateProgressDisplay(uploadId, data);
 
-            if (data.status === 'completed' || data.status === 'failed') {
+            if (['completed', 'failed'].includes(data.status)) {
                 this._clearProgressInterval(uploadId);
-
-                if (data.status === 'completed') {
-                    this._showCompletedState(uploadId);
-                } else {
-                    this._showErrorState(uploadId, data.message);
-                }
+                data.status === 'completed' ? this._showCompletedState(uploadId) : this._showErrorState(uploadId, data.message);
             }
         } catch (error) {
             console.error('Помилка перевірки прогресу:', error);
@@ -175,46 +145,46 @@ class VideoUploader {
         }
     }
 
-    _updateProgressDisplay(uploadId, progressData) {
+    _updateProgressDisplay(uploadId, { progress = 0, stage = 'unknown', message = 'Обробка...' }) {
         const progressElement = document.getElementById(`progress-${uploadId}`);
         if (!progressElement) return;
 
-        const statusText = progressElement.querySelector('.status-text');
-        const progressPercentage = progressElement.querySelector('.progress-percentage');
-        const progressFill = progressElement.querySelector('.progress-fill');
-        const progressStage = progressElement.querySelector('.progress-stage');
-
-        const progress = progressData.progress || 0;
-        const stage = progressData.stage || 'unknown';
-        const message = progressData.message || 'Обробка...';
-
         const stageTexts = {
-            'queued': 'В черзі',
-            'downloading': 'Завантаження',
-            'analyzing': 'Аналіз відео',
-            'converting': 'Конвертація',
-            'finalizing': 'Завершення',
-            'completed': 'Завершено',
-            'failed': 'Помилка'
+            queued: 'В черзі',
+            downloading: 'Завантаження',
+            analyzing: 'Аналіз відео',
+            converting: 'Конвертація',
+            finalizing: 'Завершення',
+            completed: 'Завершено',
+            failed: 'Помилка'
         };
 
-        statusText.textContent = stageTexts[stage] || stage;
-        progressPercentage.textContent = `${progress}%`;
-        progressFill.style.width = `${progress}%`;
-        progressStage.textContent = message;
+        const elements = {
+            statusText: progressElement.querySelector('.status-text'),
+            progressPercentage: progressElement.querySelector('.progress-percentage'),
+            progressFill: progressElement.querySelector('.progress-fill'),
+            progressBar: progressElement.querySelector('.progress-bar'),
+            progressStage: progressElement.querySelector('.progress-stage')
+        };
 
-        progressFill.className = `progress-fill ${stage}`;
+        elements.statusText.textContent = stageTexts[stage] || stage;
+        elements.progressPercentage.textContent = `${progress}%`;
+        elements.progressFill.style.width = `${progress}%`;
+        elements.progressFill.setAttribute('data-stage', stage);
+        elements.progressStage.textContent = message;
+
+        // Оновлюємо clip-path для shimmer ефекту
+        elements.progressBar.style.setProperty('--progress-width', `${progress}%`);
+        elements.progressBar.setAttribute('data-stage', stage);
+        elements.progressBar.setAttribute('data-progress', progress.toString());
     }
 
     _showCompletedState(uploadId) {
         const progressElement = document.getElementById(`progress-${uploadId}`);
         if (!progressElement) return;
 
-        const actionsDiv = progressElement.querySelector('.upload-actions');
-        actionsDiv.innerHTML = `
-            <button class="btn btn-success" onclick="window.location.href='/annotator'">
-                Перейти до анотування
-            </button>
+        progressElement.querySelector('.upload-actions').innerHTML = `
+            <button class="btn btn-success" onclick="window.location.href='/annotator'">Перейти до анотування</button>
             <button class="btn btn-secondary" onclick="videoUploader.removeUpload('${uploadId}')">Приховати</button>
         `;
 
@@ -224,10 +194,10 @@ class VideoUploader {
 
     _showErrorState(uploadId, errorMessage) {
         const progressElement = document.getElementById(`progress-${uploadId}`);
-        if (!progressElement) return;
-
-        const progressStage = progressElement.querySelector('.progress-stage');
-        progressStage.innerHTML = `<span style="color: #e74c3c;">Помилка: ${utils.escapeHtml(errorMessage)}</span>`;
+        if (progressElement) {
+            progressElement.querySelector('.progress-stage').innerHTML =
+                `<span style="color: #e74c3c;">Помилка: ${utils.escapeHtml(errorMessage)}</span>`;
+        }
 
         this.activeUploads.delete(uploadId);
         this._saveUploadsToStorage();
@@ -238,10 +208,7 @@ class VideoUploader {
         this.activeUploads.delete(uploadId);
         this._saveUploadsToStorage();
 
-        const progressElement = document.getElementById(`progress-${uploadId}`);
-        if (progressElement) {
-            progressElement.remove();
-        }
+        document.getElementById(`progress-${uploadId}`)?.remove();
 
         if (this.elements.result.children.length === 0) {
             this.elements.result.classList.add('hidden');
@@ -257,8 +224,7 @@ class VideoUploader {
     }
 
     _saveUploadsToStorage() {
-        const uploadsArray = Array.from(this.activeUploads.values());
-        localStorage.setItem('activeUploads', JSON.stringify(uploadsArray));
+        localStorage.setItem('activeUploads', JSON.stringify(Array.from(this.activeUploads.values())));
     }
 
     async _loadSavedUploads() {
@@ -271,13 +237,10 @@ class VideoUploader {
             for (const uploadData of uploadsArray) {
                 const hoursSinceUpload = (Date.now() - uploadData.timestamp) / (1000 * 60 * 60);
 
-                if (hoursSinceUpload < 24) {
-                    const taskExists = await this._validateTaskExists(uploadData.taskId);
-                    if (taskExists) {
-                        this.activeUploads.set(uploadData.id, uploadData);
-                        this._showProgressBar(uploadData);
-                        this._startProgressTracking(uploadData.id);
-                    }
+                if (hoursSinceUpload < 24 && await this._validateTaskExists(uploadData.taskId)) {
+                    this.activeUploads.set(uploadData.id, uploadData);
+                    this._showProgressBar(uploadData);
+                    this._startProgressTracking(uploadData.id);
                 }
             }
 
@@ -294,33 +257,27 @@ class VideoUploader {
 
     async _validateTaskExists(taskId) {
         try {
-            const response = await api.get(`/task_status/${taskId}`);
-            return !!response;
-        } catch (error) {
+            return !!(await api.get(`/task_status/${taskId}`));
+        } catch {
             return false;
         }
     }
 
     _resetForm() {
-        this.elements.videoUrl.value = '';
-        this.elements.metadataWhere.value = '';
-        this.elements.metadataWhen.value = '';
-        this.elements.videoUrl.style.borderColor = '';
+        Object.assign(this.elements.videoUrl, { value: '', style: { borderColor: '' } });
+        Object.assign(this.elements.metadataWhere, { value: '' });
+        Object.assign(this.elements.metadataWhen, { value: '' });
         this._setButtonLoading(false);
     }
 
     _setButtonLoading(loading) {
-        this.elements.uploadBtn.disabled = loading;
-        this.elements.uploadBtn.textContent = loading ? 'Реєструємо...' : 'Зареєструвати відео';
-        if (loading) {
-            this.elements.uploadBtn.classList.add('loading');
-        } else {
-            this.elements.uploadBtn.classList.remove('loading');
-        }
+        Object.assign(this.elements.uploadBtn, {
+            disabled: loading,
+            textContent: loading ? 'Реєструємо...' : 'Зареєструвати відео'
+        });
+        this.elements.uploadBtn.classList.toggle('loading', loading);
     }
 }
-
-utils.generateId = () => 'id_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
 
 document.addEventListener('DOMContentLoaded', () => {
     window.videoUploader = new VideoUploader();

@@ -1,24 +1,33 @@
-// common.js - Базові класи для зменшення дублювання
+const CONFIG = {
+    MIN_CLIP_DURATION: 1,
+    ROLES: { ANNOTATOR: 'annotator', ADMIN: 'admin', SUPER_ADMIN: 'super_admin' }
+};
+
+const PROJECT_NAMES = {
+    'motion-det': 'Motion Detection',
+    'tracking': 'Tracking & Re-identification',
+    'mil-hardware': 'Mil Hardware Detection',
+    're-id': 'Re-ID'
+};
+
+['error', 'unhandledrejection'].forEach(event => {
+    window.addEventListener(event, e => console.error(`Global ${event}:`, e.error || e.reason));
+});
 
 class BaseModal {
     constructor(modalId, formId = null) {
         this.modal = document.getElementById(modalId);
         this.form = formId ? document.getElementById(formId) : null;
         this.closeBtn = this.modal.querySelector('.modal-close');
-
         this._setupEvents();
     }
 
     _setupEvents() {
         this.closeBtn?.addEventListener('click', () => this.close());
-        window.addEventListener('click', (e) => {
-            if (e.target === this.modal) this.close();
-        });
+        window.addEventListener('click', e => e.target === this.modal && this.close());
     }
 
-    open() {
-        this.modal.style.display = 'block';
-    }
+    open() { this.modal.style.display = 'block'; }
 
     close() {
         this.modal.style.display = 'none';
@@ -28,9 +37,7 @@ class BaseModal {
 
     clearErrors() {
         this.modal.querySelectorAll('.field-error').forEach(el => el.remove());
-        this.modal.querySelectorAll('.form-control').forEach(field => {
-            field.style.borderColor = '';
-        });
+        this.modal.querySelectorAll('.form-control').forEach(field => field.style.borderColor = '');
     }
 }
 
@@ -40,8 +47,7 @@ class BaseForm {
     }
 
     getData() {
-        const formData = new FormData(this.form);
-        return Object.fromEntries(formData.entries());
+        return Object.fromEntries(new FormData(this.form).entries());
     }
 
     setError(field, message) {
@@ -59,7 +65,7 @@ class BaseForm {
         const data = this.getData();
         const errors = [];
 
-        for (const [fieldName, rule] of Object.entries(rules)) {
+        Object.entries(rules).forEach(([fieldName, rule]) => {
             const field = this.form.querySelector(`[name="${fieldName}"]`);
             const value = data[fieldName];
 
@@ -70,17 +76,15 @@ class BaseForm {
                 this.setError(field, rule.message);
                 errors.push(fieldName);
             }
-        }
+        });
 
         return errors.length === 0;
     }
 }
 
-// Спрощена версія HTTP без зайвих абстракцій
 const api = {
     async request(url, options = {}) {
         const token = localStorage.getItem('access_token');
-
         const response = await fetch(url, {
             headers: {
                 'Content-Type': 'application/json',
@@ -104,46 +108,49 @@ const api = {
         return response.json();
     },
 
-    get: (url) => api.request(url),
+    get: url => api.request(url),
     post: (url, data) => api.request(url, { method: 'POST', body: JSON.stringify(data) }),
     put: (url, data) => api.request(url, { method: 'PUT', body: JSON.stringify(data) }),
-    delete: (url) => api.request(url, { method: 'DELETE' })
+    delete: url => api.request(url, { method: 'DELETE' })
 };
 
-// Спрощені утіліти
 const utils = {
-    formatTime: (seconds) => new Date(seconds * 1000).toISOString().substr(11, 8),
-    timeToSeconds: (timeStr) => timeStr.split(':').reduce((acc, time) => (60 * acc) + +time),
-    escapeHtml: (text) => document.createElement('div').textContent = text,
+    formatTime: s => new Date(s * 1000).toISOString().substr(11, 8),
+    timeToSeconds: t => t.split(':').reduce((acc, time) => (60 * acc) + +time),
+    escapeHtml: text => {
+        if (!utils._div) utils._div = document.createElement('div');
+        utils._div.textContent = text;
+        return utils._div.innerHTML;
+    },
     debounce: (func, ms) => {
         let timeout;
         return (...args) => {
             clearTimeout(timeout);
             timeout = setTimeout(() => func(...args), ms);
         };
-    }
+    },
+    generateId: () => 'id_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9)
 };
 
-// Спрощені валідатори
 const validators = {
-    email: (email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email),
-    azureUrl: (url) => {
+    email: email => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email),
+    azureUrl: url => {
         try {
             const u = new URL(url);
             return u.hostname.includes('.blob.core.windows.net') &&
                    ['.mp4', '.avi', '.mov', '.mkv'].some(ext => url.toLowerCase().endsWith(ext));
         } catch { return false; }
     },
-    password: (pwd) => pwd && pwd.length >= 8
+    password: pwd => pwd && pwd.length >= 8
 };
 
-// Спрощені повідомлення
-const notify = (message, type = 'info') => {
+const createNotificationModal = (message, type) => {
     const modal = document.createElement('div');
     modal.className = 'notification-modal';
+    const title = type === 'error' ? 'Помилка' : type === 'success' ? 'Успіх' : 'Інформація';
     modal.innerHTML = `
         <div class="notification-modal-content">
-            <h3>${type === 'error' ? 'Помилка' : type === 'success' ? 'Успіх' : 'Інформація'}</h3>
+            <h3>${title}</h3>
             <p>${utils.escapeHtml(message)}</p>
             <button class="btn btn-success" onclick="this.closest('.notification-modal').remove()">OK</button>
         </div>
@@ -152,7 +159,9 @@ const notify = (message, type = 'info') => {
     modal.style.display = 'block';
 };
 
-const confirm = (message) => new Promise(resolve => {
+const notify = (message, type = 'info') => createNotificationModal(message, type);
+
+const confirm = message => new Promise(resolve => {
     const modal = document.createElement('div');
     modal.className = 'notification-modal';
     modal.innerHTML = `
@@ -160,14 +169,13 @@ const confirm = (message) => new Promise(resolve => {
             <h3>Підтвердження</h3>
             <p>${utils.escapeHtml(message)}</p>
             <div style="display: flex; gap: 10px; justify-content: center;">
-                <button class="btn btn-secondary" onclick="resolve(false)">Скасувати</button>
-                <button class="btn btn-success" onclick="resolve(true)">Підтвердити</button>
+                <button class="btn btn-secondary">Скасувати</button>
+                <button class="btn btn-success">Підтвердити</button>
             </div>
         </div>
     `;
 
-    const buttons = modal.querySelectorAll('button');
-    buttons.forEach(btn => {
+    modal.querySelectorAll('button').forEach(btn => {
         btn.onclick = () => {
             modal.remove();
             resolve(btn.textContent === 'Підтвердити');
@@ -178,10 +186,4 @@ const confirm = (message) => new Promise(resolve => {
     modal.style.display = 'block';
 });
 
-window.BaseModal = BaseModal;
-window.BaseForm = BaseForm;
-window.api = api;
-window.utils = utils;
-window.validators = validators;
-window.notify = notify;
-window.confirm = confirm;
+Object.assign(window, { CONFIG, PROJECT_NAMES, BaseModal, BaseForm, api, utils, validators, notify, confirm });

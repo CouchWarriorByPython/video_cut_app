@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Request
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.templating import Jinja2Templates
+from backend.data.static_data import DRONE_TYPES, UAV_TYPES, VIDEO_CONTENT_TYPES
 
 router = APIRouter(tags=["static"])
 
@@ -22,13 +23,22 @@ async def index(request: Request) -> HTMLResponse:
 @router.get("/annotator", response_class=HTMLResponse)
 async def annotator(request: Request) -> HTMLResponse:
     """Сторінка анотування відео"""
-    return templates.TemplateResponse("annotator.html", {"request": request})
+    context = {
+        "request": request,
+        "uav_types": UAV_TYPES,
+        "video_content_types": VIDEO_CONTENT_TYPES
+    }
+    return templates.TemplateResponse("annotator.html", context)
 
 
 @router.get("/faq", response_class=HTMLResponse)
 async def faq(request: Request) -> HTMLResponse:
     """Сторінка FAQ з інформацією про дрони"""
-    return templates.TemplateResponse("faq.html", {"request": request})
+    context = {
+        "request": request,
+        "drone_types": DRONE_TYPES
+    }
+    return templates.TemplateResponse("faq.html", context)
 
 
 @router.get("/admin", response_class=HTMLResponse)
@@ -45,14 +55,8 @@ async def serve_css(file_name: str) -> FileResponse:
 
 @router.get("/js/{file_name}")
 async def serve_js(file_name: str) -> FileResponse:
-    """JS файли включаючи новий common.js"""
+    """JS файли"""
     return FileResponse(f"frontend/js/{file_name}", media_type="application/javascript")
-
-
-@router.get("/data/{file_name}")
-async def serve_data(file_name: str) -> FileResponse:
-    """JSON файли з даними (наприклад drones.json)"""
-    return FileResponse(f"frontend/data/{file_name}", media_type="application/json")
 
 
 @router.get("/favicon.png")

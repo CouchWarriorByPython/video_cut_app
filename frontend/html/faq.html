@@ -11,12 +11,37 @@
 <p class="page-description">Візуальний довідник типів безпілотних літальних апаратів</p>
 
 <div class="faq-accordion" id="dronesAccordion">
-    <!-- Контент генерується через JavaScript з JSON файлу -->
+    {% for drone_key, drone_data in drone_types.items() %}
+    <div class="accordion-item" data-drone="{{ drone_key }}">
+        <div class="accordion-header">
+            <h3>{{ drone_data.name }}</h3>
+            <span class="accordion-icon">▼</span>
+        </div>
+        <div class="accordion-content">
+            <div class="drone-content">
+                {% if drone_data.description %}
+                <div class="drone-description">{{ drone_data.description }}</div>
+                {% endif %}
+                <div class="drone-images-gallery">
+                    {% for image in drone_data.images %}
+                    <div class="drone-image-item">
+                        <div class="drone-image" onclick="faqManager.openLightbox('/static/images/drones/{{ image.src }}', '{{ image.modification or drone_data.name }}')">
+                            <img src="/static/images/drones/{{ image.src }}" alt="{{ image.modification or drone_data.name }}" onerror="this.src='/static/images/drones/placeholder.png'">
+                        </div>
+                        {% if image.modification %}
+                        <div class="image-caption">{{ image.modification }}</div>
+                        {% endif %}
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
 </div>
 {% endblock %}
 
 {% block modals %}
-<!-- Модальне вікно для перегляду зображень -->
 <div id="imageLightbox" class="image-lightbox">
     <div class="lightbox-content">
         <span class="lightbox-close">&times;</span>

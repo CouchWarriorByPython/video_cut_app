@@ -1,17 +1,16 @@
-/* Upload specific styles */
-#video-select {
-    min-height: 50px;
-    font-size: 18px;
-    font-weight: 500;
-}
-
-/* Progress bar styles */
 .upload-progress-item {
     background-color: var(--card-bg);
     border-radius: 8px;
     padding: 20px;
     margin-bottom: 20px;
     box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+    animation: slideIn 0.3s ease-out;
+}
+
+.upload-progress-item:not(:last-child) {
+    border-bottom: 1px solid var(--border-color);
+    padding-bottom: 25px;
+    margin-bottom: 25px;
 }
 
 .upload-info {
@@ -60,17 +59,10 @@
     overflow: hidden;
     margin-bottom: 8px;
     box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.2);
-}
-
-.progress-fill {
-    height: 100%;
-    background: linear-gradient(90deg, var(--primary-color), var(--primary-hover));
-    border-radius: 6px;
-    transition: width 0.3s ease, background 0.3s ease;
     position: relative;
 }
 
-.progress-fill::after {
+.progress-bar::after {
     content: '';
     position: absolute;
     top: 0;
@@ -80,34 +72,54 @@
     background: linear-gradient(
         90deg,
         transparent,
-        rgba(255, 255, 255, 0.3),
+        rgba(255, 255, 255, 0.15),
         transparent
     );
-    animation: shimmer 2s infinite;
+    animation: shimmer-empty 3s infinite;
+    z-index: 1;
+    clip-path: inset(0 0 0 var(--progress-width, 0%));
 }
 
-@keyframes shimmer {
-    0% {
-        transform: translateX(-100%);
-    }
-    100% {
-        transform: translateX(100%);
-    }
+.progress-bar[data-progress="0"]::after {
+    clip-path: none;
 }
 
-.progress-fill.downloading {
+.progress-bar[data-stage="completed"]::after,
+.progress-bar[data-stage="failed"]::after {
+    display: none;
+}
+
+.progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--primary-color), var(--primary-hover));
+    border-radius: 6px;
+    width: 0%;
+    position: relative;
+    transition: width 0.5s ease-out;
+    z-index: 2;
+}
+
+.progress-fill[data-stage="downloading"] {
     background: linear-gradient(90deg, #3498db, #2980b9);
 }
 
-.progress-fill.converting {
+.progress-fill[data-stage="analyzing"] {
+    background: linear-gradient(90deg, #9b59b6, #8e44ad);
+}
+
+.progress-fill[data-stage="converting"] {
     background: linear-gradient(90deg, #e67e22, #d35400);
 }
 
-.progress-fill.completed {
+.progress-fill[data-stage="finalizing"] {
+    background: linear-gradient(90deg, #f39c12, #e67e22);
+}
+
+.progress-fill[data-stage="completed"] {
     background: linear-gradient(90deg, #2ecc71, #27ae60);
 }
 
-.progress-fill.failed {
+.progress-fill[data-stage="failed"] {
     background: linear-gradient(90deg, #e74c3c, #c0392b);
 }
 
@@ -126,12 +138,18 @@
 
 .upload-actions .btn {
     flex: 1;
-    max-width: 200px;
 }
 
-/* Анімація появи прогрес-бару */
-.upload-progress-item {
-    animation: slideIn 0.3s ease-out;
+@keyframes shimmer-empty {
+    0% {
+        transform: translateX(-100%);
+    }
+    50% {
+        transform: translateX(100%);
+    }
+    100% {
+        transform: translateX(-100%);
+    }
 }
 
 @keyframes slideIn {
@@ -145,7 +163,6 @@
     }
 }
 
-/* Responsive design для прогрес-барів */
 @media (max-width: 768px) {
     .upload-actions {
         flex-direction: column;
@@ -160,41 +177,32 @@
         align-items: flex-start;
         gap: 5px;
     }
-}
 
-/* Стилі для декількох прогрес-барів */
-.upload-progress-item:not(:last-child) {
-    border-bottom: 1px solid var(--border-color);
-    padding-bottom: 25px;
-    margin-bottom: 25px;
-}
-
-/* Стилі для індикатора активності */
-.progress-fill:not(.completed):not(.failed)::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: linear-gradient(
-        45deg,
-        rgba(255, 255, 255, 0.1) 25%,
-        transparent 25%,
-        transparent 50%,
-        rgba(255, 255, 255, 0.1) 50%,
-        rgba(255, 255, 255, 0.1) 75%,
-        transparent 75%
-    );
-    background-size: 20px 20px;
-    animation: move 1s linear infinite;
-}
-
-@keyframes move {
-    0% {
-        background-position: 0 0;
+    .upload-info h3 {
+        font-size: 16px;
     }
-    100% {
-        background-position: 20px 20px;
+
+    .upload-progress-item {
+        padding: 15px;
+    }
+}
+
+@media (max-width: 480px) {
+    .upload-progress-item {
+        padding: 12px;
+        margin-bottom: 15px;
+    }
+
+    .upload-info p {
+        font-size: 14px;
+    }
+
+    .status-text,
+    .progress-percentage {
+        font-size: 14px;
+    }
+
+    .progress-stage {
+        font-size: 12px;
     }
 }

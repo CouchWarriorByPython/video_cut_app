@@ -7,32 +7,20 @@ class LoginManager {
             loginBtn: document.getElementById('login-btn'),
             errorMessage: document.getElementById('error-message')
         };
-
         this._init();
     }
 
     _init() {
-        this._setupEventListeners();
+        this.form.form.addEventListener('submit', e => this._handleLogin(e));
         this.elements.email.focus();
-    }
-
-    _setupEventListeners() {
-        this.form.form.addEventListener('submit', (e) => this._handleLogin(e));
     }
 
     async _handleLogin(e) {
         e.preventDefault();
 
         const validationRules = {
-            email: {
-                required: true,
-                validator: validators.email,
-                message: 'Некоректний email'
-            },
-            password: {
-                required: true,
-                message: 'Пароль є обов\'язковим'
-            }
+            email: { required: true, validator: validators.email, message: 'Некоректний email' },
+            password: { required: true, message: 'Пароль є обов\'язковим' }
         };
 
         if (!this.form.validate(validationRules)) {
@@ -44,13 +32,9 @@ class LoginManager {
         this._hideError();
 
         try {
-            const formData = this.form.getData();
-            const data = await api.post('/auth/login', formData);
-
+            const data = await api.post('/auth/login', this.form.getData());
             auth.setTokens(data.access_token, data.refresh_token);
-
-            const homePage = auth.isAdmin ? '/' : '/annotator';
-            window.location.href = homePage;
+            window.location.href = auth.isAdmin ? '/' : '/annotator';
         } catch (error) {
             this._showError(error.message);
         } finally {
@@ -59,8 +43,10 @@ class LoginManager {
     }
 
     _showError(message) {
-        this.elements.errorMessage.textContent = message;
-        this.elements.errorMessage.classList.remove('hidden');
+        Object.assign(this.elements.errorMessage, {
+            textContent: message,
+            className: 'error-message'
+        });
     }
 
     _hideError() {
@@ -68,17 +54,12 @@ class LoginManager {
     }
 
     _setButtonLoading(loading) {
-        this.elements.loginBtn.disabled = loading;
-        this.elements.loginBtn.textContent = loading ? '' : 'Увійти';
-
-        if (loading) {
-            this.elements.loginBtn.classList.add('loading');
-        } else {
-            this.elements.loginBtn.classList.remove('loading');
-        }
+        Object.assign(this.elements.loginBtn, {
+            disabled: loading,
+            textContent: loading ? '' : 'Увійти'
+        });
+        this.elements.loginBtn.classList.toggle('loading', loading);
     }
 }
 
-document.addEventListener('DOMContentLoaded', () => {
-    new LoginManager();
-});
+document.addEventListener('DOMContentLoaded', () => new LoginManager());

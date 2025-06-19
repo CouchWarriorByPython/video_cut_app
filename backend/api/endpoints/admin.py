@@ -64,7 +64,7 @@ async def get_all_users_admin(request: Request) -> List[UserResponse]:
             id=user["_id"],
             email=user["email"],
             role=user["role"],
-            created_at=user.get("created_at", ""),
+            created_at_utc=user.get("created_at_utc", ""),
             is_active=user["is_active"]
         )
         for user in users
@@ -224,8 +224,8 @@ async def get_cvat_settings(request: Request) -> List[CVATSettingsResponse]:
                 overlap=setting["overlap"],
                 segment_size=setting["segment_size"],
                 image_quality=setting["image_quality"],
-                created_at=setting["created_at"],
-                updated_at=setting["updated_at"]
+                created_at_utc=setting["created_at_utc"],
+                updated_at_utc=setting["updated_at_utc"]
             )
             for setting in all_settings
         ]

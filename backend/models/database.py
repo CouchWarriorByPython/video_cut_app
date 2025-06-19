@@ -1,20 +1,41 @@
-from typing import Dict, List, Optional
+from typing import List, Optional
 from pydantic import BaseModel, Field
-from datetime import datetime
+from datetime import datetime, UTC
 
 
-class ClipInfo(BaseModel):
-    """Інформація про відрізок відео"""
-    id: int
-    start_time: str
-    end_time: str
+class AzureFilePath(BaseModel):
+    """Azure file path structure"""
+    account_name: str
+    container_name: str
+    blob_path: str
 
 
-class VideoMetadata(BaseModel):
-    """Метадані відео"""
-    skip: bool = False
-    uav_type: str = ""
-    video_content: str = ""
+class TaskParams(BaseModel):
+    """CVAT task parameters"""
+    project_id: int
+    overlap: int
+    segment_size: int
+    image_quality: int
+
+
+class SourceVideo(BaseModel):
+    """Source video model based on new schema"""
+    azure_file_path: AzureFilePath
+    extension: str
+    skip_annotation: bool = False
+    clips: List[str] = Field(default_factory=list)
+    uav_type: Optional[str] = None
+    where: Optional[str] = None
+    when: Optional[str] = None
+    status: str = "queued"
+    created_at_utc: str = Field(default_factory=lambda: datetime.now(UTC).isoformat(sep=" ", timespec="seconds"))
+    updated_at_utc: str = Field(default_factory=lambda: datetime.now(UTC).isoformat(sep=" ", timespec="seconds"))
+    duration_sec: Optional[int] = None
+    resolution_width: Optional[int] = None
+    resolution_height: Optional[int] = None
+    size_MB: Optional[float] = None
+    fps: Optional[int] = None
+    video_content: Optional[str] = None
     is_urban: bool = False
     has_osd: bool = False
     is_analog: bool = False
@@ -24,37 +45,23 @@ class VideoMetadata(BaseModel):
     has_explosions: bool = False
 
 
-class CVATProjectParams(BaseModel):
-    """Параметри проєкту CVAT"""
-    project_id: int
-    overlap: int
-    segment_size: int
-    image_quality: int
-
-
-class SourceVideoAnnotation(BaseModel):
-    """Модель анотації соурс відео"""
-    azure_link: str
-    filename: str
-    created_at: str = Field(default_factory=lambda: datetime.now().isoformat(sep=" ", timespec="seconds"))
-    updated_at: str = Field(default_factory=lambda: datetime.now().isoformat(sep=" ", timespec="seconds"))
-    when: Optional[str] = None
+class ClipVideo(BaseModel):
+    """Clip video model based on new schema"""
+    source_video_id: str
+    azure_file_path: AzureFilePath
+    cvat_task_id: Optional[int] = None
+    cvat_task_params: TaskParams
+    status: str = "not_annotated"
+    extension: str
+    duration_sec: int
+    start_time_offset_sec: int
+    fps: Optional[int] = None
+    uav_type: Optional[str] = None
     where: Optional[str] = None
-    status: str = "not_annotated"
-    metadata: Optional[VideoMetadata] = None
-    clips: Dict[str, List[ClipInfo]] = Field(default_factory=dict)
-    cvat_params: Dict[str, CVATProjectParams] = Field(default_factory=dict)
-
-
-class VideoClipRecord(BaseModel):
-    """Модель запису відео кліпу"""
-    source_id: str
-    project: str
-    clip_id: int
-    extension: str = "mp4"
-    cvat_task_id: Optional[str] = None
-    status: str = "not_annotated"
-    azure_link: str
-    fps: Optional[float] = None
-    created_at: str = Field(default_factory=lambda: datetime.now().isoformat(sep=" ", timespec="seconds"))
-    updated_at: str = Field(default_factory=lambda: datetime.now().isoformat(sep=" ", timespec="seconds"))
+    when: Optional[str] = None
+    resolution_width: Optional[int] = None
+    resolution_height: Optional[int] = None
+    size_MB: Optional[float] = None
+    created_at_utc: str = Field(default_factory=lambda: datetime.now(UTC).isoformat(sep=" ", timespec="seconds"))
+    updated_at_utc: str = Field(default_factory=lambda: datetime.now(UTC).isoformat(sep=" ", timespec="seconds"))
+    cvat_project_id: int

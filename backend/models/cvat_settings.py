@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field, field_validator
-from datetime import datetime
+from datetime import datetime, UTC
 
 
 class CVATProjectSettings(BaseModel):
@@ -9,13 +9,12 @@ class CVATProjectSettings(BaseModel):
     overlap: int = Field(..., ge=0, le=100)
     segment_size: int = Field(..., ge=50, le=2000)
     image_quality: int = Field(..., ge=1, le=100)
-    created_at: str = Field(default_factory=lambda: datetime.now().isoformat(sep=" ", timespec="seconds"))
-    updated_at: str = Field(default_factory=lambda: datetime.now().isoformat(sep=" ", timespec="seconds"))
+    created_at_utc: str = Field(default_factory=lambda: datetime.now(UTC).isoformat(sep=" ", timespec="seconds"))
+    updated_at_utc: str = Field(default_factory=lambda: datetime.now(UTC).isoformat(sep=" ", timespec="seconds"))
 
     @field_validator('project_id')
     @classmethod
     def validate_project_id_unique(cls, v: int) -> int:
-        # Валідація унікальності буде в репозиторії
         return v
 
 
@@ -35,8 +34,8 @@ class CVATSettingsResponse(BaseModel):
     overlap: int
     segment_size: int
     image_quality: int
-    created_at: str
-    updated_at: str
+    created_at_utc: str
+    updated_at_utc: str
 
 
 class AdminStatsResponse(BaseModel):

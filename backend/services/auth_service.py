@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, UTC, timedelta, timezone
 from typing import Dict, Any, Optional
 from jose import jwt, JWTError
 from pydantic import EmailStr
@@ -121,8 +121,8 @@ class AuthService:
                 "hashed_password": self._hash_password(password),
                 "role": role,
                 "is_active": True,
-                "created_at": datetime.now().isoformat(sep=" ", timespec="seconds"),
-                "updated_at": datetime.now().isoformat(sep=" ", timespec="seconds")
+                "created_at_utc": datetime.now(UTC).isoformat(sep=" ", timespec="seconds"),
+                "updated_at_utc": datetime.now(UTC).isoformat(sep=" ", timespec="seconds")
             }
 
             user_id = self.user_repo.save_document(user_data)

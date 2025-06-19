@@ -129,7 +129,41 @@ const utils = {
             timeout = setTimeout(() => func(...args), ms);
         };
     },
-    generateId: () => 'id_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9)
+    generateId: () => 'id_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
+
+    azureFilePathToUrl: (azureFilePath) => {
+        if (!azureFilePath || !azureFilePath.account_name || !azureFilePath.container_name || !azureFilePath.blob_path) {
+            return '';
+        }
+        return `https://${azureFilePath.account_name}.blob.core.windows.net/${azureFilePath.container_name}/${azureFilePath.blob_path}`;
+    },
+
+    parseAzureUrl: (url) => {
+        try {
+            const urlObj = new URL(url);
+            const hostname = urlObj.hostname;
+            const pathParts = urlObj.pathname.substring(1).split('/');
+
+            const account_name = hostname.split('.')[0];
+            const container_name = pathParts[0];
+            const blob_path = pathParts.slice(1).join('/');
+
+            return {
+                account_name,
+                container_name,
+                blob_path
+            };
+        } catch (e) {
+            return null;
+        }
+    },
+
+    compareAzureFilePaths: (path1, path2) => {
+        if (!path1 || !path2) return false;
+        return path1.account_name === path2.account_name &&
+               path1.container_name === path2.container_name &&
+               path1.blob_path === path2.blob_path;
+    }
 };
 
 const validators = {

@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field, EmailStr
-from datetime import datetime
+from datetime import datetime, UTC
 from typing import Optional
 
 
@@ -8,8 +8,8 @@ class User(BaseModel):
     email: EmailStr
     hashed_password: str
     role: str = Field(..., pattern="^(super_admin|admin|annotator)$")
-    created_at: str = Field(default_factory=lambda: datetime.now().isoformat(sep=" ", timespec="seconds"))
-    updated_at: str = Field(default_factory=lambda: datetime.now().isoformat(sep=" ", timespec="seconds"))
+    created_at_utc: str = Field(default_factory=lambda: datetime.now(UTC).isoformat(sep=" ", timespec="seconds"))
+    updated_at_utc: str = Field(default_factory=lambda: datetime.now(UTC).isoformat(sep=" ", timespec="seconds"))
     is_active: bool = True
 
 
@@ -32,7 +32,7 @@ class UserResponse(BaseModel):
     id: str
     email: EmailStr
     role: str
-    created_at: str
+    created_at_utc: str
     is_active: bool
 
 

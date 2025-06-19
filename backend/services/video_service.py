@@ -1,9 +1,11 @@
 import os
 from typing import Dict, Any, Optional
-from datetime import datetime
+from datetime import datetime, UTC
 
 from backend.database import create_repository
 from backend.services.azure_service import AzureService
+from backend.models.database import SourceVideo, AzureFilePath
+from backend.utils.azure_path_utils import extract_filename_from_azure_path, get_file_extension_from_azure_path
 from backend.utils.video_utils import get_local_video_path
 from backend.utils.logger import get_logger
 
@@ -11,62 +13,68 @@ logger = get_logger(__name__, "services.log")
 
 
 class VideoService:
-    """Сервіс для роботи з відео"""
+    """Service for working with videos using new data structure"""
 
     def __init__(self):
         self.source_repo = create_repository("source_videos", async_mode=False)
         self.azure_service = AzureService()
 
     def validate_and_register_video(self, video_url: str, where: Optional[str], when: Optional[str]) -> Dict[str, Any]:
-        """Валідує Azure URL та реєструє відео для асинхронної обробки"""
+        """Validate Azure URL and register video for async processing"""
         try:
             validation_result = self.azure_service.validate_azure_url(video_url)
 
             if not validation_result["valid"]:
                 return {
                     "success": False,
-                    "error": f"Невірний Azure URL: {validation_result['error']}"
+                    "error": f"Invalid Azure URL: {validation_result['error']}"
                 }
 
+            azure_path = validation_result["azure_path"]
             filename = validation_result["filename"]
+            size_bytes = validation_result["size_bytes"]
 
-            video_record = {
-                "azure_link": video_url,
-                "filename": filename,
-                "created_at": datetime.now().isoformat(sep=" ", timespec="seconds"),
-                "updated_at": datetime.now().isoformat(sep=" ", timespec="seconds"),
-                "when": when,
-                "where": where,
-                "status": "queued"
-            }
+            source_video = SourceVideo(
+                azure_file_path=azure_path,
+                extension=get_file_extension_from_azure_path(azure_path),
+                uav_type=None,
+                where=where,
+                when=when,
+                size_MB=round(size_bytes / (1024 * 1024), 2) if size_bytes else None,
+                created_at_utc=datetime.now(UTC).isoformat(sep=" ", timespec="seconds"),
+                updated_at_utc=datetime.now(UTC).isoformat(sep=" ", timespec="seconds")
+            )
 
             self.source_repo.create_indexes()
-            record_id = self.source_repo.save_document(video_record)
 
-            # Запускаємо асинхронну задачу завантаження та конвертації
+            video_data = source_video.model_dump()
+            video_data["status"] = "queued"
+
+            record_id = self.source_repo.save_document(video_data)
+
             from backend.background_tasks.tasks.video_download_conversion import download_and_convert_video
-            task = download_and_convert_video.delay(video_url)
+            task = download_and_convert_video.delay(azure_path.model_dump())
 
-            logger.info(f"Відео зареєстровано та поставлено в чергу: {filename}, task_id: {task.id}")
+            logger.info(f"Video registered and queued: {filename}, task_id: {task.id}")
 
             return {
                 "success": True,
                 "_id": record_id,
-                "azure_link": video_url,
+                "azure_file_path": azure_path,
                 "filename": filename,
                 "task_id": task.id,
-                "message": "Відео зареєстровано та поставлено в чергу обробки"
+                "message": "Video registered and queued for processing"
             }
 
         except Exception as e:
-            logger.error(f"Помилка при реєстрації відео: {str(e)}")
+            logger.error(f"Error registering video: {str(e)}")
             return {
                 "success": False,
                 "error": str(e)
             }
 
     def get_task_status(self, task_id: str) -> Dict[str, Any]:
-        """Отримує статус виконання задачі Celery"""
+        """Get Celery task execution status"""
         try:
             from backend.background_tasks.app import app
             task = app.AsyncResult(task_id)
@@ -76,21 +84,21 @@ class VideoService:
                     "status": "pending",
                     "progress": 0,
                     "stage": "queued",
-                    "message": "Задача в черзі на виконання"
+                    "message": "Task queued for execution"
                 }
             elif task.state == 'PROGRESS':
                 response = {
                     "status": "processing",
                     "progress": task.info.get('progress', 0),
                     "stage": task.info.get('stage', 'unknown'),
-                    "message": task.info.get('message', 'Обробка...')
+                    "message": task.info.get('message', 'Processing...')
                 }
             elif task.state == 'SUCCESS':
                 response = {
                     "status": "completed",
                     "progress": 100,
                     "stage": "completed",
-                    "message": "Відео готове до анотування",
+                    "message": "Video ready for annotation",
                     "result": task.result
                 }
             elif task.state == 'FAILURE':
@@ -98,15 +106,14 @@ class VideoService:
                     "status": "failed",
                     "progress": task.info.get('progress', 0) if hasattr(task, 'info') and task.info else 0,
                     "stage": "failed",
-                    "message": str(task.info.get('error', task.result)) if hasattr(task, 'info') and task.info else str(
-                        task.result)
+                    "message": str(task.info.get('error', task.result)) if hasattr(task, 'info') and task.info else str(task.result)
                 }
             else:
                 response = {
                     "status": task.state.lower(),
                     "progress": 0,
                     "stage": "unknown",
-                    "message": f"Невідомий стан: {task.state}"
+                    "message": f"Unknown state: {task.state}"
                 }
 
             return {
@@ -115,73 +122,73 @@ class VideoService:
             }
 
         except Exception as e:
-            logger.error(f"Помилка при отриманні статусу задачі {task_id}: {str(e)}")
+            logger.error(f"Error getting task status {task_id}: {str(e)}")
             return {
                 "success": False,
                 "error": str(e)
             }
 
-    def get_video_status(self, azure_link: str) -> Dict[str, Any]:
-        """Отримує статус обробки відео за Azure посиланням"""
+    def get_video_status(self, azure_file_path: AzureFilePath) -> Dict[str, Any]:
+        """Get video processing status by Azure file path"""
         try:
-            annotation = self.source_repo.find_by_field("azure_link", azure_link)
+            video = self.source_repo.find_by_field("azure_file_path.blob_path", azure_file_path.blob_path)
 
-            if not annotation:
+            if not video:
                 return {
                     "success": False,
-                    "error": "Відео не знайдено"
+                    "error": "Video not found"
                 }
 
-            status = annotation.get("status", "unknown")
+            status = video.get("status", "unknown")
+            filename = extract_filename_from_azure_path(azure_file_path)
 
             return {
                 "success": True,
                 "status": status,
-                "filename": annotation.get("filename"),
+                "filename": filename,
                 "ready_for_annotation": status in ["ready", "not_annotated"]
             }
 
         except Exception as e:
-            logger.error(f"Помилка при отриманні статусу відео: {str(e)}")
+            logger.error(f"Error getting video status: {str(e)}")
             return {
                 "success": False,
                 "error": str(e)
             }
 
-    def get_video_for_streaming(self, azure_link: str) -> Optional[str]:
-        """Отримує локальний шлях до відео для стрімінгу"""
+    def get_video_for_streaming(self, azure_file_path: AzureFilePath) -> Optional[str]:
+        """Get local video path for streaming"""
         try:
-            annotation = self.source_repo.find_by_field("azure_link", azure_link)
+            video = self.source_repo.find_by_field("azure_file_path.blob_path", azure_file_path.blob_path)
 
-            if not annotation:
-                logger.error(f"Відео не знайдено: {azure_link}")
+            if not video:
+                logger.error(f"Video not found: {azure_file_path.blob_path}")
                 return None
 
-            # Перевіряємо, чи відео готове для перегляду
-            status = annotation.get("status")
+            status = video.get("status")
             if status not in ["ready", "not_annotated"]:
-                logger.warning(f"Відео ще не готове для перегляду, статус: {status}")
+                logger.warning(f"Video not ready for viewing, status: {status}")
                 return None
 
-            filename = annotation.get("filename")
+            filename = extract_filename_from_azure_path(azure_file_path)
             if not filename:
-                logger.error(f"Назва файлу не знайдена для: {azure_link}")
+                logger.error(f"Filename not found for: {azure_file_path.blob_path}")
                 return None
 
             local_path = get_local_video_path(filename)
 
             if not os.path.exists(local_path):
-                logger.error(f"Локальний файл не знайдено: {local_path}")
+                logger.error(f"Local file not found: {local_path}")
                 return None
 
             return local_path
 
         except Exception as e:
-            logger.error(f"Помилка при отриманні відео для стрімінгу: {str(e)}")
+            logger.error(f"Error getting video for streaming: {str(e)}")
             return None
 
     def get_videos_list(self) -> Dict[str, Any]:
-        """Отримує список відео які готові до анотування або ще обробляються"""
+        """Get list of videos ready for annotation or still processing"""
         try:
             videos_data = self.source_repo.find_all(
                 filter_query={"status": {"$ne": "annotated"}}
@@ -192,21 +199,21 @@ class VideoService:
                 "videos": videos_data
             }
         except Exception as e:
-            logger.error(f"Помилка при отриманні списку відео: {str(e)}")
+            logger.error(f"Error getting videos list: {str(e)}")
             return {
                 "success": False,
                 "error": str(e)
             }
 
-    def get_annotation(self, azure_link: str) -> Dict[str, Any]:
-        """Отримує існуючу анотацію для відео"""
+    def get_annotation(self, azure_file_path: AzureFilePath) -> Dict[str, Any]:
+        """Get existing annotation for video"""
         try:
-            annotation = self.source_repo.find_by_field("azure_link", azure_link)
+            annotation = self.source_repo.find_by_field("azure_file_path.blob_path", azure_file_path.blob_path)
 
             if not annotation:
                 return {
                     "success": False,
-                    "error": f"Анотацію для відео '{azure_link}' не знайдено"
+                    "error": f"Annotation for video '{azure_file_path.blob_path}' not found"
                 }
 
             return {
@@ -215,7 +222,7 @@ class VideoService:
             }
 
         except Exception as e:
-            logger.error(f"Помилка при отриманні анотації: {str(e)}")
+            logger.error(f"Error getting annotation: {str(e)}")
             return {
                 "success": False,
                 "error": str(e)

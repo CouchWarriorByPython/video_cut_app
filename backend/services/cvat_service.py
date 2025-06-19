@@ -79,9 +79,14 @@ class CVATService:
                 "--use_zip_chunks"
             ]
 
-            logger.debug(f"Створення CVAT задачі для {filename}")
+            logger.info(f"Створення CVAT задачі для {filename} в проєкті {project_id}")
+            logger.debug(f"CVAT CLI команда: {' '.join(cli_command)}")
 
-            result = subprocess.run(cli_command, capture_output=True, text=True)
+            result = subprocess.run(cli_command, capture_output=True, text=True, timeout=300)
+
+            logger.debug(f"CVAT CLI stdout: {result.stdout}")
+            logger.debug(f"CVAT CLI stderr: {result.stderr}")
+            logger.debug(f"CVAT CLI return code: {result.returncode}")
 
             if result.returncode == 0:
                 output = result.stdout
@@ -89,15 +94,19 @@ class CVATService:
                 task_id = match.group(1) if match else None
 
                 if task_id:
-                    logger.info(f"CVAT задача створена: {task_id}")
+                    logger.info(f"CVAT задача створена: {task_id} для {filename}")
                     return task_id
                 else:
-                    logger.warning(f"Не вдалося витягти task ID з виводу: {output}")
+                    logger.error(f"Не вдалося витягти task ID з виводу для {filename}: {output}")
                     return None
             else:
-                logger.error(f"Помилка створення CVAT задачі: {result.stderr}")
+                logger.error(
+                    f"Помилка створення CVAT задачі для {filename}: stdout={result.stdout}, stderr={result.stderr}")
                 return None
 
+        except subprocess.TimeoutExpired:
+            logger.error(f"Timeout при створенні CVAT задачі для {filename}")
+            return None
         except Exception as e:
             logger.error(f"Помилка при створенні CVAT задачі для {filename}: {str(e)}")
             return None

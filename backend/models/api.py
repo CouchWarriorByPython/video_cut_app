@@ -1,19 +1,17 @@
-import re
-
 from typing import Dict, List, Optional, Any
 from pydantic import BaseModel, Field, field_validator, ValidationInfo
+from backend.models.database import AzureFilePath
 
 
 class ClipInfoRequest(BaseModel):
-    """Схема для інформації про кліп в запиті"""
+    """Clip information in request"""
     id: int
     start_time: str = Field(..., pattern=r'^\d{2}:\d{2}:\d{2}$')
     end_time: str = Field(..., pattern=r'^\d{2}:\d{2}:\d{2}$')
 
 
-# backend/models/api.py - VideoMetadataRequest клас
 class VideoMetadataRequest(BaseModel):
-    """Схема для метаданих відео в запиті"""
+    """Video metadata in request"""
     skip: bool = False
     uav_type: str = Field("", max_length=100)
     video_content: str = Field("", max_length=100)
@@ -37,7 +35,6 @@ class VideoMetadataRequest(BaseModel):
 
     @field_validator('video_content')
     def validate_video_content_options(cls, v: str) -> str:
-        """Валідує допустимі варіанти контенту відео"""
         if not v.strip():
             return v
 
@@ -48,7 +45,7 @@ class VideoMetadataRequest(BaseModel):
 
 
 class VideoUploadRequest(BaseModel):
-    """Схема для запиту завантаження відео"""
+    """Video upload request schema"""
     video_url: str = Field(..., min_length=1, max_length=2048)
     where: Optional[str] = Field(None, max_length=100)
     when: Optional[str] = Field(None, pattern=r'^\d{8}$')
@@ -59,77 +56,63 @@ class VideoUploadRequest(BaseModel):
         if not v.startswith('https://') or '.blob.core.windows.net' not in v:
             raise ValueError('URL має бути з Azure Blob Storage')
 
-        # Перевіряємо підтримувані формати відео
         supported_extensions = ['.mp4', '.avi', '.mov', '.mkv']
         if not any(v.lower().endswith(ext) for ext in supported_extensions):
             raise ValueError(f'Підтримувані формати відео: {", ".join(supported_extensions)}')
 
         return v
 
-    @field_validator('where')
-    def validate_where(cls, v: Optional[str]) -> Optional[str]:
-        if not v:
-            return None
-
-        # Замінюємо всі символи крім англійських літер на підкреслення
-        normalized = re.sub(r'[^a-zA-Z]', '_', v.strip())
-
-        # Видаляємо множинні підкреслення та підкреслення на початку/кінці
-        normalized = re.sub(r'_+', '_', normalized).strip('_')
-
-        return normalized if normalized else None
-
 
 class SaveFragmentsRequest(BaseModel):
-    """Схема для запиту збереження фрагментів"""
-    azure_link: str = Field(..., min_length=1)
+    """Save fragments request schema"""
+    azure_file_path: AzureFilePath = Field(...)
     data: Dict[str, Any] = Field(...)
 
 
 class BaseResponse(BaseModel):
-    """Базова схема відповіді"""
+    """Base response schema"""
     success: bool = True
 
 
 class ErrorResponse(BaseResponse):
-    """Схема для відповіді з помилкою"""
+    """Error response schema"""
     success: bool = False
     message: str
     error: Optional[str] = None
 
 
 class VideoUploadResponse(BaseResponse):
-    """Схема відповіді для завантаження відео"""
+    """Video upload response"""
     id: str
-    azure_link: str
+    azure_file_path: AzureFilePath
     filename: str
     conversion_task_id: Optional[str] = None
     message: str
 
 
 class VideoStatusResponse(BaseResponse):
-    """Схема відповіді для статусу відео"""
+    """Video status response"""
     status: str
     filename: str
     ready_for_annotation: bool
 
 
 class SaveFragmentsResponse(BaseResponse):
-    """Схема відповіді для збереження фрагментів"""
+    """Save fragments response"""
     id: str
     task_id: Optional[str] = None
     message: str
 
 
 class ClipInfoResponse(BaseModel):
-    """Схема для інформації про кліп у відповіді"""
+    """Clip information in response"""
     id: int
     start_time: str
     end_time: str
 
 
 class VideoMetadataResponse(BaseModel):
-    """Схема для метаданих відео у відповіді"""
+    """Video metadata in response"""
     skip: bool
     uav_type: str
     video_content: str
@@ -143,7 +126,7 @@ class VideoMetadataResponse(BaseModel):
 
 
 class CVATProjectParamsResponse(BaseModel):
-    """Схема для параметрів CVAT проєкту у відповіді"""
+    """CVAT project parameters in response"""
     project_id: int
     overlap: int
     segment_size: int
@@ -151,12 +134,12 @@ class CVATProjectParamsResponse(BaseModel):
 
 
 class VideoAnnotationResponse(BaseModel):
-    """Схема для анотації відео у відповіді"""
+    """Video annotation response"""
     id: str
-    azure_link: str
+    azure_file_path: AzureFilePath
     filename: str
-    created_at: str
-    updated_at: str
+    created_at_utc: str
+    updated_at_utc: str
     when: Optional[str] = None
     where: Optional[str] = None
     status: str
@@ -166,17 +149,10 @@ class VideoAnnotationResponse(BaseModel):
 
 
 class VideoListResponse(BaseResponse):
-    """Схема відповіді для списку відео"""
+    """Video list response"""
     videos: List[VideoAnnotationResponse]
 
 
 class GetAnnotationResponse(BaseResponse):
-    """Схема відповіді для отримання анотації"""
+    """Get annotation response"""
     annotation: Optional[VideoAnnotationResponse] = None
-
-
-class ValidationErrorResponse(BaseModel):
-    """Схема для відповіді з помилкою валідації"""
-    success: bool = False
-    message: str
-    errors: List[Dict[str, Any]]

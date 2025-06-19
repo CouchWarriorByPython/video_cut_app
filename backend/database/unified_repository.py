@@ -1,5 +1,5 @@
 from typing import Dict, List, Optional, Any
-from datetime import datetime
+from datetime import datetime, UTC
 from bson import ObjectId
 from backend.database.base_repository import BaseRepository
 from backend.database.connection import DatabaseConnection
@@ -10,17 +10,18 @@ class UnifiedRepository(BaseRepository):
 
     INDEX_CONFIGURATIONS = {
         "source_videos": [
-            {"fields": [("azure_link", 1)], "unique": True, "name": "azure_link_unique"},
-            {"fields": [("status", 1)], "unique": False, "name": "status_index"}
+            {"fields": [("azure_file_path.blob_path", 1)], "unique": True, "name": "azure_blob_path_unique"},
+            {"fields": [("status", 1)], "unique": False, "name": "status_index"},
+            {"fields": [("skip_annotation", 1)], "unique": False, "name": "skip_annotation_index"},
+            {"fields": [("uav_type", 1)], "unique": False, "name": "uav_type_index"},
+            {"fields": [("where", 1)], "unique": False, "name": "where_index"},
+            {"fields": [("when", 1)], "unique": False, "name": "when_index"}
         ],
-        "video_clips": [
-            {
-                "fields": [("source_id", 1), ("project", 1), ("clip_id", 1)],
-                "unique": True,
-                "name": "source_project_clip_unique"
-            },
-            {"fields": [("azure_link", 1)], "unique": False, "name": "azure_link_index"},
-            {"fields": [("status", 1)], "unique": False, "name": "status_index"}
+        "clip_videos": [
+            {"fields": [("source_video_id", 1)], "unique": False, "name": "source_video_id_index"},
+            {"fields": [("azure_file_path.blob_path", 1)], "unique": True, "name": "azure_blob_path_unique"},
+            {"fields": [("status", 1)], "unique": False, "name": "status_index"},
+            {"fields": [("cvat_project_id", 1)], "unique": False, "name": "cvat_project_id_index"}
         ],
         "users": [
             {"fields": [("email", 1)], "unique": True, "name": "email_unique"},
@@ -34,12 +35,12 @@ class UnifiedRepository(BaseRepository):
 
     VALIDATION_RULES = {
         "source_videos": {
-            "required_fields": ["azure_link", "filename"],
-            "unique_fields": ["azure_link"]
+            "required_fields": ["azure_file_path", "extension"],
+            "unique_fields": ["azure_file_path.blob_path"]
         },
-        "video_clips": {
-            "required_fields": ["source_id", "project", "clip_id", "azure_link"],
-            "unique_fields": [["source_id", "project", "clip_id"]]
+        "clip_videos": {
+            "required_fields": ["source_video_id", "azure_file_path", "cvat_project_id", "cvat_task_params"],
+            "unique_fields": ["azure_file_path.blob_path"]
         },
         "users": {
             "required_fields": ["email", "hashed_password", "role"],
@@ -62,6 +63,7 @@ class UnifiedRepository(BaseRepository):
         return self._collection
 
     def get_index_configuration(self) -> List[Dict[str, Any]]:
+        """Отримання конфігурації індексів для колекції"""
         return self.INDEX_CONFIGURATIONS.get(self.collection_name, [])
 
     def create_indexes(self) -> None:
@@ -71,7 +73,13 @@ class UnifiedRepository(BaseRepository):
 
         try:
             index_config = self.get_index_configuration()
-            self._create_sync_indexes(index_config)
+            existing_indexes = list(self.collection.list_indexes())
+            existing_names = {idx.get("name") for idx in existing_indexes}
+
+            for config in index_config:
+                if config["name"] not in existing_names:
+                    self._create_single_index_sync(config)
+
             self.logger.debug(f"Індекси створено для колекції {self.collection_name}")
         except Exception as e:
             self.logger.error(f"Помилка створення індексів для {self.collection_name}: {str(e)}")
@@ -84,50 +92,46 @@ class UnifiedRepository(BaseRepository):
 
         try:
             index_config = self.get_index_configuration()
-            await self._create_async_indexes(index_config)
+            existing_indexes = []
+            async for idx in self.collection.list_indexes():
+                existing_indexes.append(idx)
+
+            existing_names = {idx.get("name") for idx in existing_indexes}
+
+            for config in index_config:
+                if config["name"] not in existing_names:
+                    await self._create_single_index_async(config)
+
             self.logger.debug(f"Індекси створено для колекції {self.collection_name}")
         except Exception as e:
             self.logger.error(f"Помилка створення індексів для {self.collection_name}: {str(e)}")
             raise
 
-    def _create_sync_indexes(self, index_config: List[Dict]) -> None:
-        """Створення синхронних індексів"""
-        existing_indexes = list(self.collection.list_indexes())
-        existing_names = {idx.get("name") for idx in existing_indexes}
+    def _create_single_index_sync(self, config: Dict[str, Any]) -> None:
+        """Створення одного індексу (синхронна версія)"""
+        index_kwargs = {
+            "unique": config.get("unique", False),
+            "name": config["name"]
+        }
 
-        for config in index_config:
-            if config["name"] not in existing_names:
-                index_kwargs = {
-                    "unique": config.get("unique", False),
-                    "name": config["name"]
-                }
+        if len(config["fields"]) == 1:
+            field, direction = config["fields"][0]
+            self.collection.create_index([(field, direction)], **index_kwargs)
+        else:
+            self.collection.create_index(config["fields"], **index_kwargs)
 
-                if len(config["fields"]) == 1:
-                    field, direction = config["fields"][0]
-                    self.collection.create_index([(field, direction)], **index_kwargs)
-                else:
-                    self.collection.create_index(config["fields"], **index_kwargs)
+    async def _create_single_index_async(self, config: Dict[str, Any]) -> None:
+        """Створення одного індексу (асинхронна версія)"""
+        index_kwargs = {
+            "unique": config.get("unique", False),
+            "name": config["name"]
+        }
 
-    async def _create_async_indexes(self, index_config: List[Dict]) -> None:
-        """Створення асинхронних індексів"""
-        existing_indexes = []
-        async for idx in self.collection.list_indexes():
-            existing_indexes.append(idx)
-
-        existing_names = {idx.get("name") for idx in existing_indexes}
-
-        for config in index_config:
-            if config["name"] not in existing_names:
-                index_kwargs = {
-                    "unique": config.get("unique", False),
-                    "name": config["name"]
-                }
-
-                if len(config["fields"]) == 1:
-                    field, direction = config["fields"][0]
-                    await self.collection.create_index([(field, direction)], **index_kwargs)
-                else:
-                    await self.collection.create_index(config["fields"], **index_kwargs)
+        if len(config["fields"]) == 1:
+            field, direction = config["fields"][0]
+            await self.collection.create_index([(field, direction)], **index_kwargs)
+        else:
+            await self.collection.create_index(config["fields"], **index_kwargs)
 
     def validate_document(self, data: Dict) -> None:
         """Валідація документа перед збереженням"""
@@ -366,6 +370,122 @@ class UnifiedRepository(BaseRepository):
             self.logger.error(f"Помилка видалення документа {doc_id}: {str(e)}")
             raise
 
+    def update_by_id(self, doc_id: str, update_data: Dict, mode: str = "set") -> bool:
+        """Оновлення документа за ID (синхронна версія)"""
+        if self.async_mode:
+            raise RuntimeError("Використовуйте update_by_id_async() для асинхронного режиму")
+
+        try:
+            update_data["updated_at_utc"] = datetime.now(UTC).isoformat(sep=" ", timespec="seconds")
+
+            if mode == "set":
+                update_operation = {"$set": update_data}
+            elif mode == "unset":
+                update_operation = {"$unset": update_data}
+            else:
+                update_operation = {"$set": update_data}
+
+            result = self.collection.update_one(
+                {"_id": ObjectId(doc_id)},
+                update_operation
+            )
+
+            success = result.modified_count > 0
+            if success:
+                self.logger.debug(f"Документ оновлено в {self.collection_name}: {doc_id}")
+            return success
+
+        except Exception as e:
+            self.logger.error(f"Помилка оновлення документа {doc_id}: {str(e)}")
+            raise
+
+    async def update_by_id_async(self, doc_id: str, update_data: Dict, mode: str = "set") -> bool:
+        """Оновлення документа за ID (асинхронна версія)"""
+        if not self.async_mode:
+            raise RuntimeError("Використовуйте update_by_id() для синхронного режиму")
+
+        try:
+            update_data["updated_at_utc"] = datetime.now(UTC).isoformat(sep=" ", timespec="seconds")
+
+            if mode == "set":
+                update_operation = {"$set": update_data}
+            elif mode == "unset":
+                update_operation = {"$unset": update_data}
+            else:
+                update_operation = {"$set": update_data}
+
+            result = await self.collection.update_one(
+                {"_id": ObjectId(doc_id)},
+                update_operation
+            )
+
+            success = result.modified_count > 0
+            if success:
+                self.logger.debug(f"Документ оновлено в {self.collection_name}: {doc_id}")
+            return success
+
+        except Exception as e:
+            self.logger.error(f"Помилка оновлення документа {doc_id}: {str(e)}")
+            raise
+
+    def update_by_field(self, field: str, value: Any, update_data: Dict, mode: str = "set") -> bool:
+        """Оновлення документа за полем (синхронна версія)"""
+        if self.async_mode:
+            raise RuntimeError("Використовуйте update_by_field_async() для асинхронного режиму")
+
+        try:
+            update_data["updated_at_utc"] = datetime.now(UTC).isoformat(sep=" ", timespec="seconds")
+
+            if mode == "set":
+                update_operation = {"$set": update_data}
+            elif mode == "unset":
+                update_operation = {"$unset": update_data}
+            else:
+                update_operation = {"$set": update_data}
+
+            result = self.collection.update_one(
+                {field: value},
+                update_operation
+            )
+
+            success = result.modified_count > 0
+            if success:
+                self.logger.debug(f"Документ оновлено в {self.collection_name} за {field}={value}")
+            return success
+
+        except Exception as e:
+            self.logger.error(f"Помилка оновлення документа за {field}={value}: {str(e)}")
+            raise
+
+    async def update_by_field_async(self, field: str, value: Any, update_data: Dict, mode: str = "set") -> bool:
+        """Оновлення документа за полем (асинхронна версія)"""
+        if not self.async_mode:
+            raise RuntimeError("Використовуйте update_by_field() для синхронного режиму")
+
+        try:
+            update_data["updated_at_utc"] = datetime.now(UTC).isoformat(sep=" ", timespec="seconds")
+
+            if mode == "set":
+                update_operation = {"$set": update_data}
+            elif mode == "unset":
+                update_operation = {"$unset": update_data}
+            else:
+                update_operation = {"$set": update_data}
+
+            result = await self.collection.update_one(
+                {field: value},
+                update_operation
+            )
+
+            success = result.modified_count > 0
+            if success:
+                self.logger.debug(f"Документ оновлено в {self.collection_name} за {field}={value}")
+            return success
+
+        except Exception as e:
+            self.logger.error(f"Помилка оновлення документа за {field}={value}: {str(e)}")
+            raise
+
     def soft_delete_by_id(self, doc_id: str) -> bool:
         """М'яке видалення документа (синхронна версія)"""
         if self.async_mode:
@@ -375,7 +495,7 @@ class UnifiedRepository(BaseRepository):
             object_id = self.convert_id_to_object(doc_id)
             update_data = {
                 "is_active": False,
-                "updated_at": datetime.now().isoformat(sep=" ", timespec="seconds")
+                "updated_at_utc": datetime.now(UTC).isoformat(sep=" ", timespec="seconds")
             }
             result = self.collection.update_one({"_id": object_id}, {"$set": update_data})
             success = result.modified_count > 0
@@ -395,7 +515,7 @@ class UnifiedRepository(BaseRepository):
             object_id = self.convert_id_to_object(doc_id)
             update_data = {
                 "is_active": False,
-                "updated_at": datetime.now().isoformat(sep=" ", timespec="seconds")
+                "updated_at_utc": datetime.now(UTC).isoformat(sep=" ", timespec="seconds")
             }
             result = await self.collection.update_one({"_id": object_id}, {"$set": update_data})
             success = result.modified_count > 0
@@ -404,130 +524,4 @@ class UnifiedRepository(BaseRepository):
             return success
         except Exception as e:
             self.logger.error(f"Помилка деактивації документа {doc_id}: {str(e)}")
-            raise
-
-    def update_by_id(self, doc_id: str, update_data: Dict, mode: str = "set") -> bool:
-        """Оновлення документа за ID"""
-        if self.async_mode:
-            raise RuntimeError("Використовуйте update_by_id_async() для асинхронного режиму")
-
-        try:
-            from datetime import datetime
-            from bson import ObjectId
-
-            update_data["updated_at"] = datetime.now().isoformat(sep=" ", timespec="seconds")
-
-            if mode == "set":
-                update_operation = {"$set": update_data}
-            elif mode == "unset":
-                update_operation = {"$unset": update_data}
-            else:
-                update_operation = {"$set": update_data}
-
-            result = self.collection.update_one(
-                {"_id": ObjectId(doc_id)},
-                update_operation
-            )
-
-            success = result.modified_count > 0
-            if success:
-                self.logger.debug(f"Документ оновлено в {self.collection_name}: {doc_id}")
-            return success
-
-        except Exception as e:
-            self.logger.error(f"Помилка оновлення документа {doc_id}: {str(e)}")
-            raise
-
-    def update_by_field(self, field: str, value: Any, update_data: Dict, mode: str = "set") -> bool:
-        """Оновлення документа за полем"""
-        if self.async_mode:
-            raise RuntimeError("Використовуйте update_by_field_async() для асинхронного режиму")
-
-        try:
-            from datetime import datetime
-
-            update_data["updated_at"] = datetime.now().isoformat(sep=" ", timespec="seconds")
-
-            if mode == "set":
-                update_operation = {"$set": update_data}
-            elif mode == "unset":
-                update_operation = {"$unset": update_data}
-            else:
-                update_operation = {"$set": update_data}
-
-            result = self.collection.update_one(
-                {field: value},
-                update_operation
-            )
-
-            success = result.modified_count > 0
-            if success:
-                self.logger.debug(f"Документ оновлено в {self.collection_name} за {field}={value}")
-            return success
-
-        except Exception as e:
-            self.logger.error(f"Помилка оновлення документа за {field}={value}: {str(e)}")
-            raise
-
-    async def update_by_id_async(self, doc_id: str, update_data: Dict, mode: str = "set") -> bool:
-        """Асинхронне оновлення документа за ID"""
-        if not self.async_mode:
-            raise RuntimeError("Використовуйте update_by_id() для синхронного режиму")
-
-        try:
-            from datetime import datetime
-            from bson import ObjectId
-
-            update_data["updated_at"] = datetime.now().isoformat(sep=" ", timespec="seconds")
-
-            if mode == "set":
-                update_operation = {"$set": update_data}
-            elif mode == "unset":
-                update_operation = {"$unset": update_data}
-            else:
-                update_operation = {"$set": update_data}
-
-            result = await self.collection.update_one(
-                {"_id": ObjectId(doc_id)},
-                update_operation
-            )
-
-            success = result.modified_count > 0
-            if success:
-                self.logger.debug(f"Документ оновлено в {self.collection_name}: {doc_id}")
-            return success
-
-        except Exception as e:
-            self.logger.error(f"Помилка оновлення документа {doc_id}: {str(e)}")
-            raise
-
-    async def update_by_field_async(self, field: str, value: Any, update_data: Dict, mode: str = "set") -> bool:
-        """Асинхронне оновлення документа за полем"""
-        if not self.async_mode:
-            raise RuntimeError("Використовуйте update_by_field() для синхронного режиму")
-
-        try:
-            from datetime import datetime
-
-            update_data["updated_at"] = datetime.now().isoformat(sep=" ", timespec="seconds")
-
-            if mode == "set":
-                update_operation = {"$set": update_data}
-            elif mode == "unset":
-                update_operation = {"$unset": update_data}
-            else:
-                update_operation = {"$set": update_data}
-
-            result = await self.collection.update_one(
-                {field: value},
-                update_operation
-            )
-
-            success = result.modified_count > 0
-            if success:
-                self.logger.debug(f"Документ оновлено в {self.collection_name} за {field}={value}")
-            return success
-
-        except Exception as e:
-            self.logger.error(f"Помилка оновлення документа за {field}={value}: {str(e)}")
             raise

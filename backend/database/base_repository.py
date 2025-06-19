@@ -1,7 +1,7 @@
 from typing import Dict, List, Optional, Union, Any, TypeVar, Generic
 from abc import ABC, abstractmethod
 from bson import ObjectId
-from datetime import datetime
+from datetime import datetime, UTC
 from motor.motor_asyncio import AsyncIOMotorCollection
 from pymongo.collection import Collection
 from backend.utils.logger import get_logger
@@ -49,12 +49,16 @@ class BaseRepository(ABC, Generic[T]):
 
     def prepare_document_for_save(self, data: Dict) -> Dict:
         """Підготовка документа до збереження"""
-        current_time = datetime.now().isoformat(sep=" ", timespec="seconds")
+        current_time = datetime.now(UTC).isoformat(sep=" ", timespec="seconds")
 
-        if "_id" not in data and "created_at" not in data:
-            data["created_at"] = current_time
+        if "_id" not in data and "created_at_utc" not in data:
+            data["created_at_utc"] = current_time
 
-        data["updated_at"] = current_time
+        data["updated_at_utc"] = current_time
+
+        # Округлення size_MB до 2 знаків після коми
+        if "size_MB" in data and data["size_MB"] is not None:
+            data["size_MB"] = round(data["size_MB"], 2)
 
         data_without_id = {k: v for k, v in data.items() if k != "_id"}
         return data_without_id

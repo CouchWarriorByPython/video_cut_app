@@ -1,7 +1,7 @@
 from backend.database import create_repository
 from backend.utils.logger import get_logger
 from backend.config.settings import Settings
-from datetime import datetime
+from datetime import datetime, UTC
 from passlib.context import CryptContext
 
 logger = get_logger(__name__, "admin_setup.log")
@@ -17,25 +17,22 @@ def create_super_admin() -> None:
         existing_admin = user_repo.find_by_field("email", Settings.admin_email)
 
         if existing_admin:
-            current_time = datetime.now().isoformat(sep=" ", timespec="seconds")
+            current_time = datetime.now(UTC).isoformat(sep=" ", timespec="seconds")
             updates = {}
 
-            # Перевірка та підготовка оновлень відсутніх полів
-            if "created_at" not in existing_admin:
-                updates["created_at"] = current_time
+            if "created_at_utc" not in existing_admin:
+                updates["created_at_utc"] = current_time
 
-            if "updated_at" not in existing_admin:
-                updates["updated_at"] = current_time
+            if "updated_at_utc" not in existing_admin:
+                updates["updated_at_utc"] = current_time
 
             if "is_active" not in existing_admin or not existing_admin["is_active"]:
                 updates["is_active"] = True
 
-            # Критично важливо: перевірка ролі супер адміна
             if existing_admin["role"] != "super_admin":
                 updates["role"] = "super_admin"
                 logger.warning(f"Виправлено роль супер адміна з '{existing_admin['role']}' на 'super_admin'")
 
-            # Оновлення пароля якщо змінився в конфігурації
             if not verify_password(Settings.admin_password, existing_admin["hashed_password"]):
                 updates["hashed_password"] = hash_password(Settings.admin_password)
                 logger.info("Оновлено пароль супер адміна згідно з поточними налаштуваннями")
@@ -50,14 +47,13 @@ def create_super_admin() -> None:
                 logger.info(f"Супер адмін {Settings.admin_email} вже існує та актуальний")
             return
 
-        # Створення нового супер адміна
         admin_data = {
             "email": Settings.admin_email,
             "hashed_password": hash_password(Settings.admin_password),
             "role": "super_admin",
             "is_active": True,
-            "created_at": datetime.now().isoformat(sep=" ", timespec="seconds"),
-            "updated_at": datetime.now().isoformat(sep=" ", timespec="seconds")
+            "created_at_utc": datetime.now(UTC).isoformat(sep=" ", timespec="seconds"),
+            "updated_at_utc": datetime.now(UTC).isoformat(sep=" ", timespec="seconds")
         }
 
         admin_id = user_repo.save_document(admin_data)

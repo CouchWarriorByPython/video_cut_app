@@ -76,7 +76,7 @@ class VideoUploader {
             const uploadData = {
                 id: utils.generateId(),
                 taskId: data.conversion_task_id,
-                azure_link: data.azure_link,
+                azure_file_path: data.azure_file_path,
                 filename: data.filename,
                 message: data.message,
                 timestamp: Date.now()
@@ -92,13 +92,14 @@ class VideoUploader {
     }
 
     _showProgressBar(uploadData) {
+        const azureUrl = utils.azureFilePathToUrl(uploadData.azure_file_path);
         const progressHTML = `
             <div id="progress-${uploadData.id}" class="upload-progress-item">
                 <div class="upload-info">
                     <h3>Обробка відео</h3>
                     <p><strong>Файл:</strong> ${utils.escapeHtml(uploadData.filename)}</p>
                     <p><strong>Azure посилання:</strong></p>
-                    <p class="url-display">${utils.escapeHtml(uploadData.azure_link)}</p>
+                    <p class="url-display">${utils.escapeHtml(azureUrl)}</p>
                 </div>
                 <div class="progress-container">
                     <div class="progress-status">
@@ -137,7 +138,7 @@ class VideoUploader {
 
             if (['completed', 'failed'].includes(data.status)) {
                 this._clearProgressInterval(uploadId);
-                data.status === 'completed' ? this._showCompletedState(uploadId) : this._showErrorState(uploadId, data.message);
+                data.status === 'completed' ? this._showCompletedState(uploadId, uploadData) : this._showErrorState(uploadId, data.message);
             }
         } catch (error) {
             console.error('Помилка перевірки прогресу:', error);
@@ -173,18 +174,19 @@ class VideoUploader {
         elements.progressFill.setAttribute('data-stage', stage);
         elements.progressStage.textContent = message;
 
-        // Оновлюємо clip-path для shimmer ефекту
         elements.progressBar.style.setProperty('--progress-width', `${progress}%`);
         elements.progressBar.setAttribute('data-stage', stage);
         elements.progressBar.setAttribute('data-progress', progress.toString());
     }
 
-    _showCompletedState(uploadId) {
+    _showCompletedState(uploadId, uploadData) {
         const progressElement = document.getElementById(`progress-${uploadId}`);
         if (!progressElement) return;
 
+        const azureFilePathParam = encodeURIComponent(JSON.stringify(uploadData.azure_file_path));
+
         progressElement.querySelector('.upload-actions').innerHTML = `
-            <button class="btn btn-success" onclick="window.location.href='/annotator'">Перейти до анотування</button>
+            <button class="btn btn-success" onclick="window.location.href='/annotator?azure_file_path=${azureFilePathParam}'">Перейти до анотування</button>
             <button class="btn btn-secondary" onclick="videoUploader.removeUpload('${uploadId}')">Приховати</button>
         `;
 

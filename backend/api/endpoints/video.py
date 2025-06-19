@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import FileResponse
 
 from backend.models.api import (
@@ -9,6 +9,7 @@ from backend.services.video_service import VideoService
 from backend.api.dependencies import convert_db_annotation_to_response
 from backend.utils.logger import get_logger
 from backend.services.auth_service import AuthService
+from backend.models.database import AzureFilePath
 
 logger = get_logger(__name__, "api.log")
 router = APIRouter(tags=["video"])
@@ -28,7 +29,7 @@ async def upload(data: VideoUploadRequest) -> VideoUploadResponse:
 
     return VideoUploadResponse(
         id=result["_id"],
-        azure_link=result["azure_link"],
+        azure_file_path=result["azure_file_path"],
         filename=result["filename"],
         conversion_task_id=result.get("task_id"),
         message=result["message"]
@@ -55,11 +56,21 @@ async def get_task_status(task_id: str):
 
 
 @router.get("/video_status", response_model=VideoStatusResponse)
-async def get_video_status(azure_link: str) -> VideoStatusResponse:
+async def get_video_status(
+    account_name: str = Query(...),
+    container_name: str = Query(...),
+    blob_path: str = Query(...)
+) -> VideoStatusResponse:
     """Отримання статусу обробки відео"""
     video_service = VideoService()
 
-    result = video_service.get_video_status(azure_link)
+    azure_path = AzureFilePath(
+        account_name=account_name,
+        container_name=container_name,
+        blob_path=blob_path
+    )
+
+    result = video_service.get_video_status(azure_path)
 
     if not result["success"]:
         if "не знайдено" in result["error"]:
@@ -89,22 +100,32 @@ async def get_videos() -> VideoListResponse:
 
 
 @router.get("/get_video")
-async def get_video(azure_link: str, token: str) -> FileResponse:
+async def get_video(
+    account_name: str = Query(...),
+    container_name: str = Query(...),
+    blob_path: str = Query(...),
+    token: str = Query(...)
+) -> FileResponse:
     """Відображає локальне відео для анотування з перевіркою токена"""
 
-    # Перевіряємо токен
     auth_service = AuthService()
     payload = auth_service.verify_token(token)
     if not payload:
         raise HTTPException(status_code=401, detail="Невалідний токен")
 
-    # Перевіряємо роль
     allowed_roles = ["annotator", "admin", "super_admin"]
     if payload.get("role") not in allowed_roles:
         raise HTTPException(status_code=403, detail="Недостатньо прав доступу")
 
     video_service = VideoService()
-    local_path = video_service.get_video_for_streaming(azure_link)
+
+    azure_path = AzureFilePath(
+        account_name=account_name,
+        container_name=container_name,
+        blob_path=blob_path
+    )
+
+    local_path = video_service.get_video_for_streaming(azure_path)
 
     if not local_path:
         raise HTTPException(status_code=404, detail="Відео не знайдено або ще не готове")

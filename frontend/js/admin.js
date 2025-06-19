@@ -93,7 +93,7 @@ class AdminPanel {
                 <td><span class="role-badge ${user.role}">${user.role}</span></td>
                 <td><span class="status-badge ${user.is_active ? 'active' : 'inactive'}">
                     ${user.is_active ? 'Активний' : 'Неактивний'}</span></td>
-                <td>${new Date(user.created_at).toLocaleDateString()}</td>
+                <td>${new Date(user.created_at_utc).toLocaleDateString()}</td>
                 <td>
                     <button class="btn btn-icon" data-action="edit-user" data-user-id="${user.id}">✏️</button>
                     <button class="btn btn-danger btn-icon" data-action="delete-user" data-user-id="${user.id}">🗑️</button>

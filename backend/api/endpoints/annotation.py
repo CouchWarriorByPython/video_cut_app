@@ -5,10 +5,10 @@ from backend.models.api import (
     GetAnnotationResponse
 )
 from backend.services.annotation_service import AnnotationService
-from backend.services.video_service import VideoService
 from backend.api.dependencies import convert_db_annotation_to_response
 from backend.background_tasks.tasks.video_processing import process_video_annotation
 from backend.utils.logger import get_logger
+from backend.utils.azure_path_utils import azure_path_to_url
 
 logger = get_logger(__name__, "api.log")
 
@@ -21,11 +21,14 @@ router = APIRouter(tags=["annotation"])
                 404: {"model": ErrorResponse},
                 500: {"model": ErrorResponse}
             })
-async def get_annotation(azure_link: str) -> GetAnnotationResponse:
+async def get_annotation(azure_file_path: dict) -> GetAnnotationResponse:
     """Отримання існуючої анотації для відео"""
-    video_service = VideoService()
+    annotation_service = AnnotationService()
 
-    result = video_service.get_annotation(azure_link)
+    from backend.models.database import AzureFilePath
+    azure_path = AzureFilePath(**azure_file_path)
+
+    result = annotation_service.get_annotation(azure_path)
 
     if not result["success"]:
         if "не знайдено" in result["error"]:
@@ -49,7 +52,7 @@ async def save_fragments(data: SaveFragmentsRequest) -> SaveFragmentsResponse:
     annotation_service = AnnotationService()
 
     result = annotation_service.save_fragments_and_metadata(
-        data.azure_link, data.data
+        data.azure_file_path, data.data
     )
 
     if not result["success"]:
@@ -60,12 +63,12 @@ async def save_fragments(data: SaveFragmentsRequest) -> SaveFragmentsResponse:
         else:
             raise HTTPException(status_code=500, detail=result["error"])
 
-    # Запускаємо Celery задачу якщо не skip
     task_id = None
     if not result.get("skip_processing", False):
-        task_result = process_video_annotation.delay(data.azure_link)
+        azure_link = azure_path_to_url(data.azure_file_path)
+        task_result = process_video_annotation.delay(azure_link)
         task_id = task_result.id
-        logger.info(f"Запущено обробку для відео: {data.azure_link}, task_id: {task_id}")
+        logger.info(f"Запущено обробку для відео: {azure_link}, task_id: {task_id}")
 
     return SaveFragmentsResponse(
         id=result["_id"],

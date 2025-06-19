@@ -10,17 +10,19 @@ class UnifiedRepository(BaseRepository):
 
     INDEX_CONFIGURATIONS = {
         "source_videos": [
-            {"fields": [("azure_link", 1)], "unique": True, "name": "azure_link_unique"},
-            {"fields": [("status", 1)], "unique": False, "name": "status_index"}
+            {"fields": [("azure_file_path.blob_path", 1)], "unique": True, "name": "azure_blob_path_unique"},
+            {"fields": [("status", 1)], "unique": False, "name": "status_index"},
+            {"fields": [("skip_annotation", 1)], "unique": False, "name": "skip_annotation_index"},
+            {"fields": [("uav_type", 1)], "unique": False, "name": "uav_type_index"},
+            {"fields": [("where", 1)], "unique": False, "name": "where_index"},
+            {"fields": [("when", 1)], "unique": False, "name": "when_index"}
         ],
-        "video_clips": [
-            {
-                "fields": [("source_id", 1), ("project", 1), ("clip_id", 1)],
-                "unique": True,
-                "name": "source_project_clip_unique"
-            },
-            {"fields": [("azure_link", 1)], "unique": False, "name": "azure_link_index"},
-            {"fields": [("status", 1)], "unique": False, "name": "status_index"}
+        "clip_videos": [
+            {"fields": [("source_video_id", 1)], "unique": False, "name": "source_video_id_index"},
+            {"fields": [("cvat_task_id", 1)], "unique": True, "name": "cvat_task_id_unique"},
+            {"fields": [("azure_file_path.blob_path", 1)], "unique": True, "name": "azure_blob_path_unique"},
+            {"fields": [("status", 1)], "unique": False, "name": "status_index"},
+            {"fields": [("cvat_project_id", 1)], "unique": False, "name": "cvat_project_id_index"}
         ],
         "users": [
             {"fields": [("email", 1)], "unique": True, "name": "email_unique"},
@@ -34,12 +36,12 @@ class UnifiedRepository(BaseRepository):
 
     VALIDATION_RULES = {
         "source_videos": {
-            "required_fields": ["azure_link", "filename"],
-            "unique_fields": ["azure_link"]
+            "required_fields": ["azure_file_path", "extension"],
+            "unique_fields": ["azure_file_path.blob_path"]
         },
-        "video_clips": {
-            "required_fields": ["source_id", "project", "clip_id", "azure_link"],
-            "unique_fields": [["source_id", "project", "clip_id"]]
+        "clip_videos": {
+            "required_fields": ["source_video_id", "azure_file_path", "cvat_project_id", "task_params"],
+            "unique_fields": ["azure_file_path.blob_path"]
         },
         "users": {
             "required_fields": ["email", "hashed_password", "role"],

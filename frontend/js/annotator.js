@@ -1,8 +1,9 @@
 class VideoAnnotator {
     constructor() {
         this.elements = this._initElements();
+        this.videosData = [];
         this.state = {
-            currentAzureLink: null,
+            currentAzureFilePath: null,
             videoFileName: null,
             projectFragments: { 'motion-det': [], 'tracking': [], 'mil-hardware': [], 're-id': [] },
             unfinishedFragments: { 'motion-det': null, 'tracking': null, 'mil-hardware': null, 're-id': null },
@@ -63,8 +64,15 @@ class VideoAnnotator {
     }
 
     _checkUrlParams() {
-        const azureLink = new URLSearchParams(window.location.search).get('azure_link');
-        if (azureLink) this._selectVideoByAzureLink(azureLink);
+        const azureFilePathParam = new URLSearchParams(window.location.search).get('azure_file_path');
+        if (azureFilePathParam) {
+            try {
+                const azureFilePath = JSON.parse(decodeURIComponent(azureFilePathParam));
+                this._selectVideoByAzureFilePath(azureFilePath);
+            } catch (e) {
+                console.error('Error parsing azure_file_path parameter:', e);
+            }
+        }
     }
 
     async _loadVideoList() {
@@ -83,12 +91,16 @@ class VideoAnnotator {
 
     _populateVideoSelect(videos) {
         this.elements.videoSelect.innerHTML = '<option value="">Виберіть відео...</option>' +
-            videos.map(video => {
+            videos.map((video, index) => {
                 const { indicator, ready } = this._getStatusData(video.status);
-                return `<option value="${video.azure_link}" data-video-id="${video.id}" data-filename="${video.filename || ''}"
-                        data-azure-link="${video.azure_link}" data-status="${video.status}" ${!ready ? 'disabled' : ''}>
-                        ${indicator} ${video.filename || video.azure_link.split('/').pop() || `Відео #${video.id}`}</option>`;
+                const videoIndex = index; // Використовуємо індекс для ідентифікації
+                return `<option value="${videoIndex}" data-video-id="${video.id}" data-filename="${video.filename || ''}"
+                        data-video-index="${videoIndex}" data-status="${video.status}" ${!ready ? 'disabled' : ''}>
+                        ${indicator} ${video.filename || video.azure_file_path.blob_path.split('/').pop() || `Відео #${video.id}`}</option>`;
             }).join('');
+
+        // Зберігаємо відео дані для доступу за індексом
+        this.videosData = videos;
     }
 
     _getStatusData(status) {
@@ -108,40 +120,51 @@ class VideoAnnotator {
         return statusMap[status] || { indicator: '❓', message: 'Обробка відео...', ready: false };
     }
 
-    _selectVideoByAzureLink(azureLink) {
-        const option = this.elements.videoSelect.querySelector(`option[data-azure-link="${azureLink}"]`);
-        if (option) {
-            this.elements.videoSelect.value = option.value;
-            this._handleLoadVideo();
-        } else {
-            console.warn(`Відео з Azure Link ${azureLink} не знайдено`);
-            this._loadVideoList();
-            setTimeout(() => {
-                const retryOption = this.elements.videoSelect.querySelector(`option[data-azure-link="${azureLink}"]`);
-                if (retryOption) {
-                    this.elements.videoSelect.value = retryOption.value;
-                    this._handleLoadVideo();
-                }
-            }, 1000);
-        }
+    _selectVideoByAzureFilePath(azureFilePath) {
+    // Шукаємо відео за azure_file_path у збережених даних
+    const videoIndex = this.videosData?.findIndex(video =>
+        utils.compareAzureFilePaths(video.azure_file_path, azureFilePath)
+    );
+
+    if (videoIndex !== undefined && videoIndex >= 0) {
+        this.elements.videoSelect.value = videoIndex.toString();
+        this._handleLoadVideo();
+    } else {
+        console.warn(`Відео з Azure File Path не знайдено`);
+        this._loadVideoList();
+        setTimeout(() => {
+            const retryIndex = this.videosData?.findIndex(video =>
+                utils.compareAzureFilePaths(video.azure_file_path, azureFilePath)
+            );
+            if (retryIndex !== undefined && retryIndex >= 0) {
+                this.elements.videoSelect.value = retryIndex.toString();
+                this._handleLoadVideo();
+            }
+        }, 1000);
     }
+}
 
     async _handleLoadVideo() {
-        const selectedVideo = this.elements.videoSelect.value;
-        if (!selectedVideo) return notify('Будь ласка, виберіть відео', 'warning');
+    const selectedIndex = this.elements.videoSelect.value;
+    if (!selectedIndex || !this.videosData) return notify('Будь ласка, виберіть відео', 'warning');
 
-        const option = this.elements.videoSelect.options[this.elements.videoSelect.selectedIndex];
-        const { azureLink, filename, status } = option.dataset;
-        const { ready } = this._getStatusData(status);
+    const video = this.videosData[parseInt(selectedIndex)];
+    if (!video) return notify('Помилка обробки даних відео', 'error');
 
-        if (!ready) {
-            this._showVideoProcessingStatus(azureLink, filename, status);
-        } else {
-            this._loadVideoForAnnotation(azureLink, filename);
-        }
+    const azureFilePath = video.azure_file_path;
+    const filename = video.filename;
+    const status = video.status;
+
+    const { ready } = this._getStatusData(status);
+
+    if (!ready) {
+        this._showVideoProcessingStatus(azureFilePath, filename, status);
+    } else {
+        this._loadVideoForAnnotation(azureFilePath, filename);
     }
+}
 
-    _showVideoProcessingStatus(azureLink, filename, status) {
+    _showVideoProcessingStatus(azureFilePath, filename, status) {
         this.elements.videoSelector.style.display = 'none';
         this.elements.videoEditor.innerHTML = `
             <div class="card">
@@ -157,18 +180,18 @@ class VideoAnnotator {
         `;
         this.elements.videoEditor.classList.remove('hidden');
         document.getElementById('back-to-list-btn')?.addEventListener('click', () => this.goBackToVideoList());
-        this.state.currentAzureLink = azureLink;
-        this._startVideoStatusChecking(azureLink);
+        this.state.currentAzureFilePath = azureFilePath;
+        this._startVideoStatusChecking(azureFilePath);
     }
 
-    _startVideoStatusChecking(azureLink) {
+    _startVideoStatusChecking(azureFilePath) {
         clearInterval(this.statusCheckInterval);
-        this.statusCheckInterval = setInterval(() => this._checkVideoStatus(azureLink), 3000);
+        this.statusCheckInterval = setInterval(() => this._checkVideoStatus(azureFilePath), 3000);
     }
 
-    async _checkVideoStatus(azureLink) {
+    async _checkVideoStatus(azureFilePath) {
         try {
-            const data = await api.get(`/video_status?azure_link=${encodeURIComponent(azureLink)}`);
+            const data = await api.post('/video_status', { azure_file_path: azureFilePath });
             if (!data) return clearInterval(this.statusCheckInterval);
 
             this._updateVideoStatusDisplay(data);
@@ -215,19 +238,19 @@ class VideoAnnotator {
         this._loadVideoList();
     }
 
-    _loadVideoForAnnotation(azureLink, filename) {
+    _loadVideoForAnnotation(azureFilePath, filename) {
         this.elements.videoSelector.style.display = 'none';
         this.elements.videoEditor.classList.remove('hidden');
 
-        const videoUrl = `/get_video?azure_link=${encodeURIComponent(azureLink)}&token=${encodeURIComponent(auth.token)}`;
+        const videoUrl = `/get_video?azure_file_path=${encodeURIComponent(JSON.stringify(azureFilePath))}&token=${encodeURIComponent(auth.token)}`;
         this.elements.videoPlayer.src = videoUrl;
         this.elements.videoPlayer.load();
 
         this.elements.videoFilenameSpan.textContent = filename;
-        Object.assign(this.state, { currentAzureLink: azureLink, videoFileName: filename });
+        Object.assign(this.state, { currentAzureFilePath: azureFilePath, videoFileName: filename });
 
         this._resetFragments();
-        this._loadExistingAnnotations(azureLink);
+        this._loadExistingAnnotations(azureFilePath);
         this._updateFragmentsList();
         this._clearAllMarkers();
         this._updateUnfinishedFragmentsUI();
@@ -241,9 +264,9 @@ class VideoAnnotator {
         });
     }
 
-    async _loadExistingAnnotations(azureLink) {
+    async _loadExistingAnnotations(azureFilePath) {
         try {
-            const data = await api.get(`/get_annotation?azure_link=${encodeURIComponent(azureLink)}`);
+            const data = await api.post('/get_annotation', { azure_file_path: azureFilePath });
             if (data?.success && data.annotation) {
                 this._populateFormFromAnnotation(data.annotation);
                 this._loadFragmentsFromAnnotation(data.annotation);
@@ -616,7 +639,7 @@ class VideoAnnotator {
         });
 
         return {
-            azure_link: this.state.currentAzureLink,
+            azure_file_path: this.state.currentAzureFilePath,
             metadata,
             clips: formattedProjects
         };
@@ -652,7 +675,7 @@ class VideoAnnotator {
 
         try {
             const data = await api.post('/save_fragments', {
-                azure_link: this.state.currentAzureLink,
+                azure_file_path: this.state.currentAzureFilePath,
                 data: this._prepareJsonData()
             });
 
@@ -660,9 +683,7 @@ class VideoAnnotator {
                 await notify(data.message || 'Анотацію успішно завершено. Відео відправлено на обробку.', 'success');
                 if (data.task_id) console.log('Task ID:', data.task_id);
 
-                // Повертаємось до початку - вибору відео
                 this.goBackToVideoList();
-
             } else {
                 await notify('Помилка: ' + data?.error, 'error');
             }

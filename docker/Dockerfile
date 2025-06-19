@@ -4,12 +4,11 @@ FROM python:3.13-slim
 ENV PYTHONPATH=/app \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
     LC_ALL=C.UTF-8 \
     LANG=C.UTF-8 \
     TZ=Europe/Kiev
-
+#    PIP_NO_CACHE_DIR=1 \
 # Встановлення системних залежностей
 RUN apt-get update && apt-get install -y \
     ffmpeg \

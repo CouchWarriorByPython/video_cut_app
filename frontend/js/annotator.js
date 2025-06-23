@@ -1,34 +1,81 @@
 class VideoAnnotator {
     constructor() {
         this.elements = this._initElements();
-        this.videosData = [];
+
+        // Створюємо обробники як bound методи для правильного видалення
+        this._boundHandlers = {
+            timeupdate: this._updateTimelineProgress.bind(this),
+            loadedmetadata: this._initVideoPlayer.bind(this),
+            error: this._handleVideoError.bind(this)
+        };
+
         this.state = {
+            currentPage: 1,
+            perPage: 20,
+            videos: [],
+            pagination: {},
+            filters: {
+                status: ''
+            },
             currentAzureFilePath: null,
+            currentVideoId: null,
             videoFileName: null,
             projectFragments: { 'motion-det': [], 'tracking': [], 'mil-hardware': [], 're-id': [] },
             unfinishedFragments: { 'motion-det': null, 'tracking': null, 'mil-hardware': null, 're-id': null },
-            activeProjects: []
+            activeProjects: [],
+            renderedVideoIds: new Set(),
+            isUnlocking: false
         };
-        this.statusCheckInterval = null;
+
+        this.refreshInterval = null;
         this.jsonModal = new BaseModal('json-modal');
         this.projectModal = new BaseModal('project-modal');
-        this._init(); // Викликаємо асинхронно, але не чекаємо
+        this._init();
     }
 
     _initElements() {
         const $ = id => document.getElementById(id);
-        const metaFields = ['skip-video', 'uav-type', 'video-content', 'is-urban', 'has-osd', 'is-analog', 'night-video', 'multiple-streams', 'has-infantry', 'has-explosions'];
         return {
-            videoSelector: $('video-selector'), videoSelect: $('video-select'), loadVideoBtn: $('load-video-btn'),
-            backToListBtn: $('back-to-list-btn'), videoEditor: $('video-editor'), videoPlayer: $('video-player'),
-            timeline: $('timeline'), timelineProgress: $('timeline-progress'), startFragmentBtn: $('start-fragment'),
-            endFragmentBtn: $('end-fragment'), cancelFragmentBtn: $('cancel-fragment'), fragmentsList: $('fragments-list'),
-            saveFragmentsBtn: $('save-fragments'), projectCheckboxes: document.querySelectorAll('input[name="project"]'),
-            videoFilenameSpan: document.querySelector('#video-filename span'), unfinishedFragmentsStatus: $('unfinished-fragments-status'),
-            metadataForm: Object.fromEntries(metaFields.map((field, i) => [
-                ['skipVideo', 'uavType', 'videoContent', 'isUrban', 'hasOsd', 'isAnalog', 'nightVideo', 'multipleStreams', 'hasInfantry', 'hasExplosions'][i],
-                $(field)
-            ]))
+            videosListSection: $('videos-list-section'),
+            videoEditor: $('video-editor'),
+            refreshBtn: $('refresh-videos-btn'),
+            videosCountText: $('videos-count-text'),
+            statusFilter: $('status-filter'),
+            videosTableBody: $('videos-table-body'),
+            paginationContainer: $('pagination-container'),
+            loadingStatus: $('loading-status'),
+            emptyState: $('empty-state'),
+
+            backToListBtn: $('back-to-list-btn'),
+            videoPlayer: $('video-player'),
+            timeline: $('timeline'),
+            timelineProgress: $('timeline-progress'),
+            startFragmentBtn: $('start-fragment'),
+            endFragmentBtn: $('end-fragment'),
+            cancelFragmentBtn: $('cancel-fragment'),
+            fragmentsList: $('fragments-list'),
+            saveFragmentsBtn: $('save-fragments'),
+            projectCheckboxes: document.querySelectorAll('input[name="project"]'),
+            videoFilenameSpan: document.querySelector('#video-filename span'),
+            unfinishedFragmentsStatus: $('unfinished-fragments-status'),
+            videoLockInfo: $('video-lock-info'),
+            lockExpiresTime: $('lock-expires-time'),
+
+            metadataForm: {
+                skipVideo: $('skip-video'),
+                uavType: $('uav-type'),
+                videoContent: $('video-content'),
+                isUrban: $('is-urban'),
+                hasOsd: $('has-osd'),
+                isAnalog: $('is-analog'),
+                nightVideo: $('night-video'),
+                multipleStreams: $('multiple-streams'),
+                hasInfantry: $('has-infantry'),
+                hasExplosions: $('has-explosions')
+            },
+
+            videoWhere: $('video-where'),
+            videoWhen: $('video-when'),
         };
     }
 
@@ -36,255 +83,612 @@ class VideoAnnotator {
         if (!await auth.checkAccess()) return;
 
         this._setupEvents();
-        await this._loadVideoList();
-        this._syncActiveProjects();
-        this._checkUrlParams();
+        await this._loadVideosList();
+        this._startAutoRefresh();
     }
 
     _setupEvents() {
-        const events = [
-            [this.elements.loadVideoBtn, 'click', () => this._handleLoadVideo()],
-            [this.elements.backToListBtn, 'click', () => this.goBackToVideoList()],
-            [this.elements.startFragmentBtn, 'click', () => this._handleStartFragment()],
-            [this.elements.endFragmentBtn, 'click', () => this._handleFragmentAction('end')],
-            [this.elements.cancelFragmentBtn, 'click', () => this._handleFragmentAction('cancel')],
-            [this.elements.saveFragmentsBtn, 'click', () => this._handleSaveFragments()],
-            [document.getElementById('view-json'), 'click', () => this._showJson()],
-            [this.elements.videoPlayer, 'timeupdate', () => this._updateTimelineProgress()],
-            [this.elements.videoPlayer, 'loadedmetadata', () => this._initVideoPlayer()],
-            [this.elements.videoPlayer, 'error', () => this._handleVideoError()],
-            [this.elements.timeline, 'click', e => this._handleTimelineClick(e)],
-            [this.elements.metadataForm.skipVideo, 'change', () => this._handleSkipChange()]
-        ];
-        events.forEach(([el, event, handler]) => el?.addEventListener(event, handler));
-        this.elements.projectCheckboxes.forEach(cb => cb.addEventListener('change', () => this._syncActiveProjects()));
+        this.elements.refreshBtn?.addEventListener('click', () => this._refreshVideosList());
+        this.elements.statusFilter?.addEventListener('change', () => this._applyFilters());
+
+        this.elements.backToListBtn?.addEventListener('click', () => this._goBackToList());
+        this.elements.startFragmentBtn?.addEventListener('click', () => this._handleStartFragment());
+        this.elements.endFragmentBtn?.addEventListener('click', () => this._handleFragmentAction('end'));
+        this.elements.cancelFragmentBtn?.addEventListener('click', () => this._handleFragmentAction('cancel'));
+        this.elements.saveFragmentsBtn?.addEventListener('click', () => this._handleSaveFragments());
+        document.getElementById('view-json')?.addEventListener('click', () => this._showJson());
+
+        this.elements.timeline?.addEventListener('click', e => this._handleTimelineClick(e));
+        this.elements.metadataForm.skipVideo?.addEventListener('change', () => this._handleSkipChange());
+
+        this.elements.projectCheckboxes?.forEach(cb =>
+            cb.addEventListener('change', () => this._syncActiveProjects())
+        );
     }
 
-    _showJson() {
-        document.getElementById('json-content').textContent = JSON.stringify(this._prepareJsonData(), null, 2);
-        this.jsonModal.open();
-    }
-
-    _checkUrlParams() {
-        const azureFilePathParam = new URLSearchParams(window.location.search).get('azure_file_path');
-        if (azureFilePathParam) {
-            try {
-                const azureFilePath = JSON.parse(decodeURIComponent(azureFilePathParam));
-                console.log('Параметр azure_file_path з URL:', azureFilePath);
-
-                // Чекаємо поки відео завантажаться
-                const waitForVideos = () => {
-                    if (this.videosData && this.videosData.length > 0) {
-                        this._selectVideoByAzureFilePath(azureFilePath);
-                    } else {
-                        setTimeout(waitForVideos, 500);
-                    }
-                };
-
-                setTimeout(waitForVideos, 100);
-            } catch (e) {
-                console.error('Помилка парсингу azure_file_path параметра:', e);
-            }
-        }
-    }
-
-    async _loadVideoList() {
+    async _loadVideosList() {
         try {
-            const data = await api.get('/get_videos');
-            if (data?.success && data.videos?.length) {
-                this.videosData = data.videos; // Важливо встановити це першим
-                this._populateVideoSelect(data.videos);
+            this._showLoading(true);
+
+            const params = new URLSearchParams({
+                page: this.state.currentPage.toString(),
+                per_page: this.state.perPage.toString()
+            });
+
+            const data = await api.get(`/get_videos?${params}`);
+
+            if (data?.success) {
+                this.state.videos = this._deduplicateVideos(data.videos);
+                this.state.pagination = data.pagination;
+                this._renderVideosList();
+                this._renderPagination();
+                this._updateVideosCount();
             } else {
-                this.videosData = []; // Встановлюємо порожній масив
-                this.elements.videoSelect.innerHTML = '<option value="">Немає доступних відео</option>';
+                this._showEmptyState();
             }
         } catch (error) {
-            console.error('Error loading videos:', error);
-            this.videosData = []; // Встановлюємо порожній масив при помилці
-            this.elements.videoSelect.innerHTML = '<option value="">Помилка завантаження відео</option>';
+            console.error('Помилка завантаження відео:', error);
+            notify('Помилка завантаження списку відео', 'error');
+            this._showEmptyState();
+        } finally {
+            this._showLoading(false);
         }
     }
 
-    _populateVideoSelect(videos) {
-        this.elements.videoSelect.innerHTML = '<option value="">Виберіть відео...</option>' +
-            videos.map((video, index) => {
-                const { indicator, ready } = this._getStatusData(video.status);
-                return `<option value="${index}" data-video-id="${video.id}" data-filename="${video.filename || ''}"
-                        data-video-index="${index}" data-status="${video.status}" ${!ready ? 'disabled' : ''}>
-                        ${indicator} ${video.filename || video.azure_file_path.blob_path.split('/').pop() || `Відео #${video.id}`}</option>`;
-            }).join('');
+    _deduplicateVideos(videos) {
+        const seen = new Set();
+        const seenPaths = new Set();
+
+        return videos.filter(video => {
+            const pathKey = `${video.azure_file_path?.account_name}-${video.azure_file_path?.container_name}-${video.azure_file_path?.blob_path}`;
+
+            if (seen.has(video.id) || seenPaths.has(pathKey)) {
+                return false;
+            }
+
+            seen.add(video.id);
+            seenPaths.add(pathKey);
+            return true;
+        });
     }
 
-    _getStatusData(status) {
-        const statusMap = {
-            'queued': { indicator: '⏳', message: 'В черзі на обробку...', ready: false },
-            'downloading': { indicator: '⬇️', message: 'Завантаження з Azure Storage...', ready: false },
-            'analyzing': { indicator: '🔍', message: 'Аналіз характеристик відео...', ready: false },
-            'converting': { indicator: '🔄', message: 'Конвертація відео для браузера...', ready: false },
-            'ready': { indicator: '✅', message: '', ready: true },
-            'not_annotated': { indicator: '✅', message: '', ready: true },
-            'processing_failed': { indicator: '❌', message: 'Помилка обробки відео', ready: false },
-            'download_failed': { indicator: '❌', message: 'Помилка завантаження з Azure Storage', ready: false },
-            'conversion_failed': { indicator: '❌', message: 'Помилка конвертації відео', ready: false },
-            'analysis_failed': { indicator: '❌', message: 'Помилка аналізу відео', ready: false },
-            'annotated': { indicator: '✓', message: '', ready: true }
-        };
-        return statusMap[status] || { indicator: '❓', message: 'Обробка відео...', ready: false };
-    }
-
-    _selectVideoByAzureFilePath(azureFilePath) {
-        if (!this.videosData || this.videosData.length === 0) {
-            console.warn('Дані відео ще не завантажені, очікуємо...');
-            setTimeout(() => this._selectVideoByAzureFilePath(azureFilePath), 500);
+    _renderVideosList() {
+        if (!this.state.videos.length) {
+            this._showEmptyState();
             return;
         }
 
-        const videoIndex = this.videosData.findIndex(video => {
-            const videoPath = video.azure_file_path;
-            return videoPath &&
-                   videoPath.account_name === azureFilePath.account_name &&
-                   videoPath.container_name === azureFilePath.container_name &&
-                   videoPath.blob_path === azureFilePath.blob_path;
+        const filteredVideos = this._applyFiltersToVideos();
+        this._updateVideosTable(filteredVideos);
+        this._showVideosList();
+    }
+
+    _updateVideosTable(videos) {
+        const currentVideoIds = new Set(videos.map(v => v.id));
+        const existingRows = this.elements.videosTableBody.querySelectorAll('tr[data-video-id]');
+
+        existingRows.forEach(row => {
+            const videoId = row.dataset.videoId;
+            if (!currentVideoIds.has(videoId)) {
+                row.remove();
+                this.state.renderedVideoIds.delete(videoId);
+            }
         });
 
-        if (videoIndex >= 0) {
-            console.log(`Знайдено відео за індексом: ${videoIndex}`);
-            this.elements.videoSelect.value = videoIndex.toString();
-            setTimeout(() => this._handleLoadVideo(), 200);
-        } else {
-            console.warn('Відео з Azure File Path не знайдено', azureFilePath);
-            console.log('Доступні відео:', this.videosData.map(v => v.azure_file_path));
+        videos.forEach((video, index) => {
+            const existingRow = this.elements.videosTableBody.querySelector(`tr[data-video-id="${video.id}"]`);
 
-            setTimeout(() => {
-                this._loadVideoList().then(() => {
-                    setTimeout(() => this._selectVideoByAzureFilePath(azureFilePath), 500);
-                });
-            }, 1000);
-        }
+            if (existingRow) {
+                this._updateVideoRow(existingRow, video);
+            } else {
+                const newRow = document.createElement('tr');
+                newRow.dataset.videoId = video.id;
+                newRow.innerHTML = this._createVideoRowContent(video);
+
+                const nextRow = this.elements.videosTableBody.children[index];
+                if (nextRow) {
+                    this.elements.videosTableBody.insertBefore(newRow, nextRow);
+                } else {
+                    this.elements.videosTableBody.appendChild(newRow);
+                }
+
+                this.state.renderedVideoIds.add(video.id);
+            }
+        });
     }
 
-    async _handleLoadVideo() {
-        const selectedIndex = this.elements.videoSelect.value;
-        if (!selectedIndex || !this.videosData) return notify('Будь ласка, виберіть відео', 'warning');
+    _updateVideoRow(row, video) {
+        const lockStatus = video.lock_status || { locked: false };
+        const canStart = video.can_start_work;
+        const isLockedByMe = lockStatus.locked && lockStatus.user_id === this._getCurrentUserId();
 
-        const video = this.videosData[parseInt(selectedIndex)];
-        if (!video) return notify('Помилка обробки даних відео', 'error');
+        const statusBadge = row.querySelector('.status-badge');
+        statusBadge.className = `status-badge ${video.status}`;
+        statusBadge.textContent = this._getStatusLabel(video.status);
 
-        const azureFilePath = video.azure_file_path;
-        const filename = video.filename;
-        const status = video.status;
-
-        const { ready } = this._getStatusData(status);
-
-        if (!ready) {
-            this._showVideoProcessingStatus(azureFilePath, filename, status);
-        } else {
-            this._loadVideoForAnnotation(azureFilePath, filename);
-        }
-    }
-
-    _showVideoProcessingStatus(azureFilePath, filename, status) {
-        this.elements.videoSelector.style.display = 'none';
-        this.elements.videoEditor.innerHTML = `
-            <div class="card">
-                <h3>Відео обробляється</h3>
-                <p><strong>Файл:</strong> ${utils.escapeHtml(filename)}</p>
-                <p class="status-text">Статус: ${this._getStatusData(status).message}</p>
-                <div class="loading-spinner"></div>
-                <div style="margin-top: 20px;">
-                    <button class="btn btn-secondary" onclick="location.reload()">Оновити сторінку</button>
-                    <button id="back-to-list-btn" class="btn">Вибрати інше відео</button>
-                </div>
-            </div>
+        const lockStatusCell = row.querySelector('.lock-status');
+        lockStatusCell.innerHTML = `
+            ${this._renderLockBadge(lockStatus, isLockedByMe)}
+            ${lockStatus.locked && lockStatus.expires_in_seconds
+                ? `<div class="lock-expires">Залишилось: ${this._formatTimeRemaining(lockStatus.expires_in_seconds)}</div>`
+                : ''
+            }
+            ${lockStatus.locked && lockStatus.locked_at
+                ? `<div class="lock-expires">Заблоковано: ${new Date(lockStatus.locked_at).toLocaleTimeString()}</div>`
+                : ''
+            }
         `;
-        this.elements.videoEditor.classList.remove('hidden');
-        document.getElementById('back-to-list-btn')?.addEventListener('click', () => this.goBackToVideoList());
-        this.state.currentAzureFilePath = azureFilePath;
-        this._startVideoStatusChecking(azureFilePath);
+
+        const actionsCell = row.querySelector('.video-actions');
+        actionsCell.innerHTML = this._renderActionButtons(video, canStart, isLockedByMe);
     }
 
-    _startVideoStatusChecking(azureFilePath) {
-        clearInterval(this.statusCheckInterval);
-        this.statusCheckInterval = setInterval(() => this._checkVideoStatus(azureFilePath), 3000);
+    _createVideoRowContent(video) {
+        const lockStatus = video.lock_status || { locked: false };
+        const canStart = video.can_start_work;
+        const isLockedByMe = lockStatus.locked && lockStatus.user_id === this._getCurrentUserId();
+
+        return `
+            <td>
+                <div class="video-filename" title="${utils.escapeHtml(video.filename)}">${utils.escapeHtml(video.filename)}</div>
+            </td>
+            <td>
+                <span class="status-badge ${video.status}">${this._getStatusLabel(video.status)}</span>
+            </td>
+            <td>${video.where || '-'}</td>
+            <td>${video.when || '-'}</td>
+            <td>${this._formatDuration(video.duration_sec)}</td>
+            <td>
+                <div class="lock-status">
+                    ${this._renderLockBadge(lockStatus, isLockedByMe)}
+                    ${lockStatus.locked && lockStatus.expires_in_seconds
+                        ? `<div class="lock-expires">Залишилось: ${this._formatTimeRemaining(lockStatus.expires_in_seconds)}</div>`
+                        : ''
+                    }
+                    ${lockStatus.locked && lockStatus.locked_at
+                        ? `<div class="lock-expires">Заблоковано: ${new Date(lockStatus.locked_at).toLocaleTimeString()}</div>`
+                        : ''
+                    }
+                </div>
+            </td>
+            <td>
+                <div class="video-actions">
+                    ${this._renderActionButtons(video, canStart, isLockedByMe)}
+                </div>
+            </td>
+        `;
     }
 
-    async _checkVideoStatus(azureFilePath) {
+    _renderLockBadge(lockStatus, isLockedByMe) {
+        if (!lockStatus.locked) {
+            return '<span class="lock-badge free">🟢 Вільне</span>';
+        }
+
+        if (isLockedByMe) {
+            return '<span class="lock-badge locked-by-me">🔵 Заблоковано вами</span>';
+        }
+
+        return `<span class="lock-badge locked">🔴 Заблоковано</span>
+                <div style="font-size: 10px; color: var(--text-muted);">${lockStatus.locked_by}</div>`;
+    }
+
+    _renderActionButtons(video, canStart, isLockedByMe) {
+        const buttons = [];
+
+        if (canStart) {
+            const buttonClass = isLockedByMe ? 'btn-start-work locked-by-me' : 'btn-start-work';
+            const buttonText = isLockedByMe ? 'Продовжити роботу' : 'Почати роботу';
+            buttons.push(
+                `<button class="btn ${buttonClass}" onclick="videoAnnotator._startWork('${video.id}')">${buttonText}</button>`
+            );
+        } else {
+            buttons.push(
+                `<button class="btn btn-start-work" disabled>Недоступно</button>`
+            );
+        }
+
+        if (isLockedByMe) {
+            buttons.push(
+                `<button class="btn-unlock" onclick="videoAnnotator._unlockVideo('${video.id}')" title="Розблокувати відео">🔓</button>`
+            );
+        }
+
+        return buttons.join('');
+    }
+
+    async _startWork(videoId) {
         try {
+            const video = this.state.videos.find(v => v.id === videoId);
+            if (!video) return;
+
+            const lockResult = await api.post(`/lock_video/${videoId}`);
+
+            if (!lockResult.success) {
+                notify(lockResult.error, 'error');
+                await this._refreshVideosList();
+                return;
+            }
+
+            this.state.currentVideoId = videoId;
+
+            video.lock_status = {
+                locked: true,
+                user_id: this._getCurrentUserId(),
+                expires_in_seconds: 3600,
+                locked_at: new Date().toISOString(),
+                ...lockResult.lock_status
+            };
+
+            await this._loadVideoForAnnotation(video);
+
+        } catch (error) {
+            console.error('Помилка початку роботи:', error);
+
+            // Перевіряємо чи це помилка блокування
+            if (error.message && error.message.includes('заблоковане')) {
+                notify(error.message, 'warning');
+            } else {
+                notify('Помилка при блокуванні відео', 'error');
+            }
+
+            // Оновлюємо список щоб показати актуальний статус блокування
+            await this._refreshVideosList();
+        }
+    }
+
+    async _unlockVideo(videoId) {
+        if (!videoId) return;
+
+        try {
+            const confirmed = await confirm('Ви впевнені, що хочете розблокувати відео? Всі незбережені зміни будуть втрачені.');
+            if (!confirmed) return;
+
+            const result = await api.post(`/unlock_video/${videoId}`);
+
+            if (result.success) {
+                notify('Відео розблоковано', 'success');
+
+                const video = this.state.videos.find(v => v.id === videoId);
+                if (video) {
+                    video.lock_status = { locked: false };
+                }
+
+                await this._refreshVideosList();
+            } else {
+                notify(result.error || 'Помилка розблокування відео', 'error');
+            }
+
+        } catch (error) {
+            console.error('Помилка розблокування:', error);
+            notify('Помилка розблокування відео', 'error');
+        }
+    }
+
+    async _loadVideoForAnnotation(video) {
+        try {
+            this._stopAutoRefresh();
+
+            this.elements.videosListSection.style.display = 'none';
+            this.elements.videoEditor.classList.remove('hidden');
+
+            this.state.currentAzureFilePath = video.azure_file_path;
+            this.state.currentVideoId = video.id;
+            this.state.videoFileName = video.filename;
+            this.elements.videoFilenameSpan.textContent = video.filename;
+
+            const lockStatus = video.lock_status;
+            if (lockStatus && (lockStatus.expires_in_seconds || lockStatus.expires_at)) {
+                let expiresAt;
+
+                if (lockStatus.expires_in_seconds) {
+                    expiresAt = new Date(Date.now() + lockStatus.expires_in_seconds * 1000);
+                } else if (lockStatus.expires_at) {
+                    expiresAt = new Date(lockStatus.expires_at);
+                }
+
+                if (expiresAt) {
+                    this.elements.lockExpiresTime.textContent = expiresAt.toLocaleTimeString();
+                    this.elements.videoLockInfo.style.display = 'flex';
+                }
+            }
+
             const params = new URLSearchParams();
-            Object.entries(azureFilePath).forEach(([key, value]) => {
+            Object.entries(video.azure_file_path).forEach(([key, value]) => {
                 params.append(key, value);
             });
+            params.append('token', auth.token);
 
-            const data = await api.get(`/video_status?${params.toString()}`);
-            if (!data) return clearInterval(this.statusCheckInterval);
+            const videoUrl = `/get_video?${params}`;
 
-            this._updateVideoStatusDisplay(data);
+            // Видаляємо старі обробники
+            this._removeVideoEventListeners();
 
-            if (data.ready_for_annotation) {
-                clearInterval(this.statusCheckInterval);
-                location.reload();
-            } else if (data.status.includes('failed')) {
-                clearInterval(this.statusCheckInterval);
-                this._showProcessingError(data.status);
-            }
+            // Додаємо нові обробники
+            this._addVideoEventListeners();
+
+            this.elements.videoPlayer.src = videoUrl;
+            this.elements.videoPlayer.load();
+
+            this._resetFragments();
+            await this._loadExistingAnnotations(video.azure_file_path);
+            this._updateFragmentsList();
+            this._clearAllMarkers();
+            this._updateUnfinishedFragmentsUI();
+            this._syncActiveProjects();
+
         } catch (error) {
-            console.error('Помилка перевірки статусу відео:', error);
+            console.error('Помилка завантаження відео для анотування:', error);
+            notify('Помилка завантаження відео', 'error');
+            this._goBackToList();
         }
     }
 
-    _updateVideoStatusDisplay(statusData) {
-        const statusElement = document.querySelector('.status-text');
-        if (statusElement) statusElement.textContent = `Статус: ${this._getStatusData(statusData.status).message}`;
+    _addVideoEventListeners() {
+        Object.entries(this._boundHandlers).forEach(([event, handler]) => {
+            this.elements.videoPlayer.addEventListener(event, handler);
+        });
     }
 
-    _showProcessingError(status) {
-        const errorMessages = {
-            'download_failed': 'Не вдалося завантажити відео з Azure Storage. Перевірте посилання.',
-            'conversion_failed': 'Не вдалося конвертувати відео в web-сумісний формат.',
-            'analysis_failed': 'Не вдалося проаналізувати характеристики відео.'
-        };
+    _removeVideoEventListeners() {
+        Object.entries(this._boundHandlers).forEach(([event, handler]) => {
+            this.elements.videoPlayer.removeEventListener(event, handler);
+        });
+    }
 
-        const errorDiv = document.createElement('div');
-        errorDiv.className = 'error-message';
-        errorDiv.innerHTML = `
-            <h3>Помилка обробки відео</h3>
-            <p>${errorMessages[status] || 'Не вдалося обробити відео.'}</p>
-            <p>Спробуйте завантажити відео ще раз або оберіть інший файл.</p>
+    async _goBackToList() {
+        try {
+            if (this.state.isUnlocking) {
+                return;
+            }
+
+            let needUnlock = false;
+
+            if (this.state.currentVideoId) {
+                const currentVideo = this.state.videos.find(v => v.id === this.state.currentVideoId);
+
+                if (currentVideo && currentVideo.lock_status?.locked &&
+                    currentVideo.lock_status.user_id === this._getCurrentUserId()) {
+                    needUnlock = true;
+                }
+            }
+
+            if (needUnlock) {
+                const confirmed = await confirm('Розблокувати відео при поверненні до списку?');
+                if (confirmed) {
+                    this.state.isUnlocking = true;
+                    try {
+                        const result = await api.post(`/unlock_video/${this.state.currentVideoId}`);
+                        if (result.success) {
+                            notify('Відео розблоковано', 'success');
+                        }
+                    } catch (error) {
+                        console.error('Помилка розблокування:', error);
+                    } finally {
+                        this.state.isUnlocking = false;
+                    }
+                }
+            }
+
+            // Видаляємо обробники подій
+            this._removeVideoEventListeners();
+
+            // Зупиняємо відео
+            this.elements.videoPlayer.pause();
+
+            // Очищаємо src перед приховуванням
+            this.elements.videoPlayer.src = '';
+            this.elements.videoPlayer.load(); // Важливо! Форсуємо перезавантаження
+
+            // Приховуємо редактор і показуємо список
+            this.elements.videoEditor.classList.add('hidden');
+            this.elements.videosListSection.style.display = 'block';
+
+            // Очищаємо стан
+            this.state.currentAzureFilePath = null;
+            this.state.currentVideoId = null;
+            this.state.videoFileName = null;
+            this.elements.videoLockInfo.style.display = 'none';
+
+            this._startAutoRefresh();
+            await this._refreshVideosList();
+
+        } catch (error) {
+            console.error('Помилка повернення до списку:', error);
+            notify('Помилка при поверненні до списку', 'error');
+
+            this.elements.videoEditor.classList.add('hidden');
+            this.elements.videosListSection.style.display = 'block';
+            this.state.isUnlocking = false;
+        }
+    }
+
+    _applyFiltersToVideos() {
+        return this.state.videos.filter(video => {
+            if (this.state.filters.status && video.status !== this.state.filters.status) {
+                return false;
+            }
+            return true;
+        });
+    }
+
+    _applyFilters() {
+        this.state.filters.status = this.elements.statusFilter.value;
+        this._renderVideosList();
+    }
+
+    _renderPagination() {
+        if (!this.state.pagination.total_pages || this.state.pagination.total_pages <= 1) {
+            this.elements.paginationContainer.innerHTML = '';
+            return;
+        }
+
+        const { current_page, total_pages, has_prev, has_next } = this.state.pagination;
+
+        let paginationHTML = `
+            <button class="pagination-btn" ${!has_prev ? 'disabled' : ''}
+                    onclick="videoAnnotator._changePage(${current_page - 1})">
+                ← Попередня
+            </button>
         `;
 
-        this.elements.videoEditor.querySelector('.card')?.replaceWith(errorDiv);
+        const startPage = Math.max(1, current_page - 2);
+        const endPage = Math.min(total_pages, current_page + 2);
+
+        for (let page = startPage; page <= endPage; page++) {
+            const isActive = page === current_page;
+            paginationHTML += `
+                <button class="pagination-btn ${isActive ? 'active' : ''}"
+                        onclick="videoAnnotator._changePage(${page})">
+                    ${page}
+                </button>
+            `;
+        }
+
+        paginationHTML += `
+            <span class="pagination-info">
+                Сторінка ${current_page} з ${total_pages}
+            </span>
+            <button class="pagination-btn" ${!has_next ? 'disabled' : ''}
+                    onclick="videoAnnotator._changePage(${current_page + 1})">
+                Наступна →
+            </button>
+        `;
+
+        this.elements.paginationContainer.innerHTML = paginationHTML;
     }
 
-    goBackToVideoList() {
-        clearInterval(this.statusCheckInterval);
-        this.elements.videoEditor.classList.add('hidden');
-        this.elements.videoSelector.style.display = 'block';
-        this._loadVideoList();
+    async _changePage(page) {
+        if (page < 1 || page > this.state.pagination.total_pages) return;
+
+        this.state.currentPage = page;
+        await this._loadVideosList();
     }
 
-    _loadVideoForAnnotation(azureFilePath, filename) {
-        this.elements.videoSelector.style.display = 'none';
-        this.elements.videoEditor.classList.remove('hidden');
+    async _refreshVideosList() {
+        try {
+            const params = new URLSearchParams({
+                page: this.state.currentPage.toString(),
+                per_page: this.state.perPage.toString()
+            });
 
-        const params = new URLSearchParams();
-        Object.entries(azureFilePath).forEach(([key, value]) => {
-            params.append(key, value);
-        });
-        params.append('token', auth.token);
+            const data = await api.get(`/get_videos?${params}`);
 
-        const videoUrl = `/get_video?${params.toString()}`;
-        this.elements.videoPlayer.src = videoUrl;
-        this.elements.videoPlayer.load();
+            if (data?.success) {
+                this.state.videos = this._deduplicateVideos(data.videos);
+                this.state.pagination = data.pagination;
+                this._renderVideosList();
+                this._renderPagination();
+                this._updateVideosCount();
+            }
+        } catch (error) {
+            console.error('Помилка оновлення списку відео:', error);
+        }
+    }
 
-        this.elements.videoFilenameSpan.textContent = filename;
-        Object.assign(this.state, { currentAzureFilePath: azureFilePath, videoFileName: filename });
+    _startAutoRefresh() {
+        this.refreshInterval = setInterval(async () => {
+            // Перевіряємо що ми на сторінці списку відео
+            if (this.elements.videosListSection.style.display !== 'none') {
+                try {
+                    const params = new URLSearchParams({
+                        page: this.state.currentPage.toString(),
+                        per_page: this.state.perPage.toString()
+                    });
 
-        this._resetFragments();
-        this._loadExistingAnnotations(azureFilePath);
-        this._updateFragmentsList();
-        this._clearAllMarkers();
-        this._updateUnfinishedFragmentsUI();
-        this._syncActiveProjects();
+                    const data = await api.get(`/get_videos?${params}`);
+
+                    if (data?.success) {
+                        const oldVideosCount = this.state.videos.length;
+                        this.state.videos = this._deduplicateVideos(data.videos);
+                        this.state.pagination = data.pagination;
+
+                        // Якщо кількість відео змінилась з 0 на більше - повністю перерендерюємо
+                        if (oldVideosCount === 0 && this.state.videos.length > 0) {
+                            this._renderVideosList();
+                            this._renderPagination();
+                            this._updateVideosCount();
+                        } else if (this.state.videos.length > 0) {
+                            // Якщо відео вже були - оновлюємо тільки таблицю
+                            const filteredVideos = this._applyFiltersToVideos();
+                            this._updateVideosTable(filteredVideos);
+                            this._updateVideosCount();
+                        }
+                        // Якщо відео немає - empty state вже показано
+                    }
+                } catch (error) {
+                    console.error('Помилка автооновлення:', error);
+                }
+            }
+        }, 5000);
+    }
+    _stopAutoRefresh() {
+        if (this.refreshInterval) {
+            clearInterval(this.refreshInterval);
+            this.refreshInterval = null;
+        }
+    }
+
+    _showLoading(show) {
+        this.elements.loadingStatus.classList.toggle('hidden', !show);
+        this.elements.videosTableBody.style.display = show ? 'none' : '';
+    }
+
+    _showEmptyState() {
+        this.elements.emptyState.classList.remove('hidden');
+        this.elements.videosTableBody.closest('.videos-table-container').style.display = 'none';
+        this.elements.paginationContainer.innerHTML = '';
+    }
+
+    _showVideosList() {
+        this.elements.emptyState.classList.add('hidden');
+        this.elements.videosTableBody.closest('.videos-table-container').style.display = 'block';
+    }
+
+    _updateVideosCount() {
+        const total = this.state.pagination.total_count || 0;
+        this.elements.videosCountText.textContent = `Всього: ${total} відео`;
+    }
+
+    _getStatusLabel(status) {
+        const labels = {
+            'downloading': 'Завантаження',
+            'not_annotated': 'Не анотоване',
+            'in_progress': 'В процесі анотації',
+            'annotated': 'Анотоване',
+            'download_error': 'Помилка завантаження',
+            'annotation_error': 'Помилка анотації'
+        };
+        return labels[status] || status;
+    }
+
+    _formatDuration(seconds) {
+        if (!seconds) return '-';
+        const minutes = Math.floor(seconds / 60);
+        const remainingSeconds = seconds % 60;
+        return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
+    }
+
+    _formatTimeRemaining(seconds) {
+        if (!seconds || seconds <= 0) return 'Прострочено';
+
+        const hours = Math.floor(seconds / 3600);
+        const minutes = Math.floor((seconds % 3600) / 60);
+
+        if (hours > 0) {
+            return `${hours}г ${minutes}хв`;
+        }
+        return `${minutes}хв`;
+    }
+
+    _getCurrentUserId() {
+        try {
+            const token = auth.token;
+            if (!token) return null;
+            const payload = JSON.parse(atob(token.split('.')[1]));
+            return payload.user_id;
+        } catch {
+            return null;
+        }
     }
 
     _resetFragments() {
@@ -301,7 +705,7 @@ class VideoAnnotator {
                 params.append(key, value);
             });
 
-            const data = await api.get(`/get_annotation?${params.toString()}`);
+            const data = await api.get(`/get_annotation?${params}`);
             if (data?.success && data.annotation) {
                 this._populateFormFromAnnotation(data.annotation);
                 this._loadFragmentsFromAnnotation(data.annotation);
@@ -316,6 +720,11 @@ class VideoAnnotator {
 
         const { metadata } = annotation;
         const form = this.elements.metadataForm;
+
+        // Беремо where/when з кореня annotation (вони вже правильно приходять з API)
+        if (annotation.where) this.elements.videoWhere.value = annotation.where;
+        if (annotation.when) this.elements.videoWhen.value = annotation.when;
+
         const mappings = [
             [form.skipVideo, 'checked', metadata.skip || false],
             [form.uavType, 'value', metadata.uav_type || ""],
@@ -348,32 +757,6 @@ class VideoAnnotator {
         });
         this._updateFragmentsList();
         this._visualizeFragments();
-    }
-
-    _handleVideoError() {
-        const errorMessage = this.elements.videoPlayer.error?.message || 'Невідома помилка';
-        console.error('Помилка відтворення відео:', errorMessage);
-
-        const videoContainer = document.querySelector('.video-container');
-        videoContainer.querySelector('.video-error')?.remove();
-
-        const errorDiv = document.createElement('div');
-        errorDiv.className = 'error-message video-error';
-        errorDiv.innerHTML = `
-            <h3>Помилка відтворення відео</h3>
-            <p>Не вдалося завантажити відео: ${utils.escapeHtml(errorMessage)}</p>
-            <p>Можливо, відео ще обробляється або має несумісний формат.</p>
-            <div style="margin-top: 15px;">
-                <button class="btn btn-secondary" onclick="videoAnnotator.retryVideoLoad()">Спробувати ще раз</button>
-                <button class="btn" onclick="videoAnnotator.goBackToVideoList()">Вибрати інше відео</button>
-            </div>
-        `;
-        videoContainer.appendChild(errorDiv);
-    }
-
-    retryVideoLoad() {
-        document.querySelector('.video-error')?.remove();
-        this.elements.videoPlayer.load();
     }
 
     _syncActiveProjects() {
@@ -639,6 +1022,23 @@ class VideoAnnotator {
         metaFields.forEach(field => field.disabled = this.elements.metadataForm.skipVideo.checked);
     }
 
+    _handleVideoError(e) {
+        // Ігноруємо помилку якщо відео немає src або якщо це abort error
+        if (!this.elements.videoPlayer.src ||
+            this.elements.videoPlayer.src === '' ||
+            this.elements.videoPlayer.src === window.location.href ||
+            e.target.error?.code === MediaError.MEDIA_ERR_ABORTED) {
+            return;
+        }
+        console.error('Помилка відтворення відео:', e);
+        notify('Помилка відтворення відео', 'error');
+    }
+
+    _showJson() {
+        document.getElementById('json-content').textContent = JSON.stringify(this._prepareJsonData(), null, 2);
+        this.jsonModal.open();
+    }
+
     _validateRequiredFields() {
         const form = this.elements.metadataForm;
         const errors = [];
@@ -651,6 +1051,8 @@ class VideoAnnotator {
         const form = this.elements.metadataForm;
         const metadata = {
             skip: form.skipVideo.checked,
+            where: this.elements.videoWhere.value.trim() || null,
+            when: this.elements.videoWhen.value.trim() || null,
             uav_type: form.uavType.value,
             video_content: form.videoContent.value,
             is_urban: form.isUrban.checked,
@@ -718,9 +1120,10 @@ class VideoAnnotator {
                 await notify(data.message || 'Анотацію успішно завершено. Відео відправлено на обробку.', 'success');
                 if (data.task_id) console.log('Task ID:', data.task_id);
 
-                this.goBackToVideoList();
+                this.state.isUnlocking = true;
+                this._goBackToList();
             } else {
-                await notify('Помилка: ' + data?.error, 'error');
+                await notify('Помилка: ' + (data?.error || 'Невідома помилка'), 'error');
             }
         } catch (error) {
             await notify(error.message, 'error');

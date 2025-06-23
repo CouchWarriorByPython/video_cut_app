@@ -13,15 +13,23 @@ class UnifiedRepository(BaseRepository):
             {"fields": [("azure_file_path.blob_path", 1)], "unique": True, "name": "azure_blob_path_unique"},
             {"fields": [("status", 1)], "unique": False, "name": "status_index"},
             {"fields": [("skip_annotation", 1)], "unique": False, "name": "skip_annotation_index"},
-            {"fields": [("uav_type", 1)], "unique": False, "name": "uav_type_index"},
-            {"fields": [("where", 1)], "unique": False, "name": "where_index"},
-            {"fields": [("when", 1)], "unique": False, "name": "when_index"}
+            {"fields": [("duration_sec", 1)], "unique": False, "name": "duration_index"},
+            {"fields": [("created_at_utc", 1)], "unique": False, "name": "created_at_index"},
+            {"fields": [("clips", 1)], "unique": False, "name": "clips_index"}
         ],
         "clip_videos": [
             {"fields": [("source_video_id", 1)], "unique": False, "name": "source_video_id_index"},
             {"fields": [("azure_file_path.blob_path", 1)], "unique": True, "name": "azure_blob_path_unique"},
             {"fields": [("status", 1)], "unique": False, "name": "status_index"},
-            {"fields": [("cvat_project_id", 1)], "unique": False, "name": "cvat_project_id_index"}
+            {"fields": [("cvat_project_id", 1)], "unique": False, "name": "cvat_project_id_index"},
+            {"fields": [("cvat_task_id", 1)], "unique": False, "name": "cvat_task_id_index"},
+            {"fields": [("ml_project", 1)], "unique": False, "name": "ml_project_index"},
+            {"fields": [("uav_type", 1)], "unique": False, "name": "uav_type_index"},
+            {"fields": [("where", 1)], "unique": False, "name": "where_index"},
+            {"fields": [("when", 1)], "unique": False, "name": "when_index"},
+            {"fields": [("video_content", 1)], "unique": False, "name": "video_content_index"},
+            {"fields": [("source_video_id", 1), ("ml_project", 1)], "unique": False,
+             "name": "source_project_compound_index"}
         ],
         "users": [
             {"fields": [("email", 1)], "unique": True, "name": "email_unique"},
@@ -35,16 +43,30 @@ class UnifiedRepository(BaseRepository):
 
     VALIDATION_RULES = {
         "source_videos": {
-            "required_fields": ["azure_file_path", "extension"],
+            "required_fields": ["azure_file_path", "status"],
             "unique_fields": ["azure_file_path.blob_path"]
         },
         "clip_videos": {
-            "required_fields": ["source_video_id", "azure_file_path", "cvat_project_id", "cvat_task_params"],
+            "required_fields": [
+                "source_video_id",
+                "azure_file_path",
+                "extension",
+                "ml_project",
+                "cvat_project_id",
+                "cvat_task_params",
+                "status",
+                "start_time_offset_sec",
+                "duration_sec"
+            ],
             "unique_fields": ["azure_file_path.blob_path"]
         },
         "users": {
             "required_fields": ["email", "hashed_password", "role"],
             "unique_fields": ["email"]
+        },
+        "cvat_project_settings": {
+            "required_fields": ["project_name", "project_id", "overlap", "segment_size", "image_quality"],
+            "unique_fields": ["project_name", "project_id"]
         }
     }
 

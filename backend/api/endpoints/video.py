@@ -1,39 +1,111 @@
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import FileResponse
 
+from typing import Dict, Any
 from backend.models.api import (
-    VideoUploadRequest, VideoUploadResponse,
-    VideoListResponse, VideoStatusResponse
+    VideoUploadRequest, VideoUploadResponse, VideoStatusResponse
 )
 from backend.services.video_service import VideoService
-from backend.api.dependencies import convert_db_annotation_to_response
+from backend.api.dependencies import get_current_user
 from backend.utils.logger import get_logger
 from backend.services.auth_service import AuthService
+from backend.services.azure_service import AzureService
 from backend.models.database import AzureFilePath
 
 logger = get_logger(__name__, "api.log")
 router = APIRouter(tags=["video"])
 
 
-@router.post("/upload", response_model=VideoUploadResponse)
-async def upload(data: VideoUploadRequest) -> VideoUploadResponse:
-    """Реєстрація відео за Azure URL з асинхронним завантаженням та конвертацією"""
+@router.post("/upload")
+async def upload(data: VideoUploadRequest) -> Dict[str, Any]:
+    """Реєстрація відео за Azure URLs - без where/when"""
     video_service = VideoService()
 
-    result = video_service.validate_and_register_video(
-        data.video_url, data.where, data.when
-    )
+    try:
+        if data.download_all_folder:
+            # Режим завантаження всіх відео з папки
+            folder_url = data.video_urls[0]
+            azure_service = AzureService()
+            videos_in_folder = azure_service.list_videos_in_folder(folder_url)
 
-    if not result["success"]:
-        raise HTTPException(status_code=400, detail=result["error"])
+            if not videos_in_folder:
+                raise HTTPException(
+                    status_code=404,
+                    detail="Не знайдено відео файлів у вказаній папці"
+                )
 
-    return VideoUploadResponse(
-        id=result["_id"],
-        azure_file_path=result["azure_file_path"],
-        filename=result["filename"],
-        conversion_task_id=result.get("task_id"),
-        message=result["message"]
-    )
+            # Реєструємо всі знайдені відео
+            results = []
+            for video_info in videos_in_folder:
+                result = video_service.validate_and_register_video(video_info["url"])
+
+                if result["success"]:
+                    results.append({
+                        "task_id": result.get("task_id"),
+                        "azure_file_path": result["azure_file_path"],
+                        "filename": result["filename"],
+                        "message": result["message"]
+                    })
+
+            return {
+                "success": True,
+                "message": f"Зареєстровано {len(results)} відео з папки",
+                "tasks": results
+            }
+
+        else:
+            # Режим завантаження конкретних URL
+            if len(data.video_urls) == 1:
+                # Один URL - повертаємо як раніше
+                result = video_service.validate_and_register_video(data.video_urls[0])
+
+                if not result["success"]:
+                    raise HTTPException(status_code=400, detail=result["error"])
+
+                return VideoUploadResponse(
+                    id=result["_id"],
+                    azure_file_path=result["azure_file_path"],
+                    filename=result["filename"],
+                    conversion_task_id=result.get("task_id"),
+                    message=result["message"]
+                )
+
+            else:
+                # Декілька URL
+                results = []
+                errors = []
+
+                for url in data.video_urls:
+                    result = video_service.validate_and_register_video(url)
+
+                    if result["success"]:
+                        results.append({
+                            "task_id": result.get("task_id"),
+                            "azure_file_path": result["azure_file_path"],
+                            "filename": result["filename"],
+                            "message": result["message"]
+                        })
+                    else:
+                        errors.append(f"{url}: {result['error']}")
+
+                if not results and errors:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Помилки реєстрації всіх відео:\n" + "\n".join(errors)
+                    )
+
+                return {
+                    "success": True,
+                    "message": f"Зареєстровано {len(results)} відео з {len(data.video_urls)}",
+                    "tasks": results,
+                    "errors": errors if errors else None
+                }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Помилка реєстрації відео: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/task_status/{task_id}")
@@ -57,9 +129,9 @@ async def get_task_status(task_id: str):
 
 @router.get("/video_status", response_model=VideoStatusResponse)
 async def get_video_status(
-    account_name: str = Query(...),
-    container_name: str = Query(...),
-    blob_path: str = Query(...)
+        account_name: str = Query(...),
+        container_name: str = Query(...),
+        blob_path: str = Query(...)
 ) -> VideoStatusResponse:
     """Отримання статусу обробки відео"""
     video_service = VideoService()
@@ -85,26 +157,73 @@ async def get_video_status(
     )
 
 
-@router.get("/get_videos", response_model=VideoListResponse)
-async def get_videos() -> VideoListResponse:
-    """Отримання списку відео які ще не анотовані"""
+@router.get("/get_videos")
+async def get_videos_paginated(
+        request: Request,
+        page: int = Query(1, ge=1, description="Номер сторінки"),
+        per_page: int = Query(20, ge=1, le=50, description="Кількість відео на сторінці")
+):
+    """Отримання пагінованого списку відео з блокуваннями"""
+    current_user = get_current_user(request)
     video_service = VideoService()
 
-    result = video_service.get_videos_list()
+    result = video_service.get_videos_list_paginated(
+        page=page,
+        per_page=per_page,
+        user_id=current_user["user_id"]
+    )
 
     if not result["success"]:
         raise HTTPException(status_code=500, detail=result["error"])
 
-    videos = [convert_db_annotation_to_response(video) for video in result["videos"]]
-    return VideoListResponse(videos=videos)
+    return {
+        "success": True,
+        "videos": result["videos"],
+        "pagination": result["pagination"]
+    }
+
+
+@router.post("/lock_video/{video_id}")
+async def lock_video(video_id: str, request: Request):
+    """Блокування відео для анотування"""
+    current_user = get_current_user(request)
+    video_service = VideoService()
+
+    result = video_service.lock_video_for_annotation(
+        video_id=video_id,
+        user_id=current_user["user_id"],
+        user_email=current_user["email"]
+    )
+
+    if not result["success"]:
+        raise HTTPException(status_code=400, detail=result["error"])
+
+    return result
+
+
+@router.post("/unlock_video/{video_id}")
+async def unlock_video(video_id: str, request: Request):
+    """Розблокування відео"""
+    current_user = get_current_user(request)
+    video_service = VideoService()
+
+    result = video_service.unlock_video_for_annotation(
+        video_id=video_id,
+        user_id=current_user["user_id"]
+    )
+
+    if not result["success"]:
+        raise HTTPException(status_code=400, detail=result["error"])
+
+    return result
 
 
 @router.get("/get_video")
 async def get_video(
-    account_name: str = Query(...),
-    container_name: str = Query(...),
-    blob_path: str = Query(...),
-    token: str = Query(...)
+        account_name: str = Query(...),
+        container_name: str = Query(...),
+        blob_path: str = Query(...),
+        token: str = Query(...)
 ) -> FileResponse:
     """Відображає локальне відео для анотування з перевіркою токена"""
 

@@ -9,17 +9,71 @@
 {% block content %}
 <h1>Розмітка відео</h1>
 
-<!-- Селектор відео -->
-<div id="video-selector" class="card">
-    <h2>Оберіть відео для розмітки</h2>
-    <div class="form-group">
-        <select id="video-select" class="form-control">
-            <option value="">Виберіть відео...</option>
-        </select>
+<!-- Список відео -->
+<div id="videos-list-section" class="videos-list-section">
+    <div class="section-header">
+        <h2>Доступні відео для анотування</h2>
+        <div class="section-controls">
+            <button id="refresh-videos-btn" class="btn btn-secondary">🔄 Оновити</button>
+            <div class="videos-count">
+                <span id="videos-count-text">Завантаження...</span>
+            </div>
+            <div class="auto-refresh-indicator">
+                <div class="refresh-dot"></div>
+                <span>Авто-оновлення</span>
+            </div>
+        </div>
     </div>
-    <button id="load-video-btn" class="btn btn-success full-width">Завантажити вибране відео</button>
-    <div style="margin-top: 20px;">
-        <a href="/" class="btn btn-secondary full-width">Повернутися до завантаження</a>
+
+    <!-- Фільтри -->
+    <div class="filters-section">
+        <div class="filter-group">
+            <label for="status-filter">Статус:</label>
+            <select id="status-filter" class="form-control">
+                <option value="">Всі статуси</option>
+                <option value="not_annotated">Не анотовані</option>
+                <option value="in_progress">В процесі анотації</option>
+                <option value="annotated">Анотовані</option>
+            </select>
+        </div>
+    </div>
+
+    <!-- Таблиця відео -->
+    <div class="videos-table-container">
+        <table class="videos-table" id="videos-table">
+            <thead>
+                <tr>
+                    <th>Файл</th>
+                    <th>Статус</th>
+                    <th>Локація</th>
+                    <th>Дата</th>
+                    <th>Тривалість</th>
+                    <th>Блокування</th>
+                    <th>Дії</th>
+                </tr>
+            </thead>
+            <tbody id="videos-table-body">
+                <!-- Заповнюється JavaScript -->
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Пагінація -->
+    <div class="pagination-container" id="pagination-container">
+        <!-- Заповнюється JavaScript -->
+    </div>
+
+    <!-- Статус завантаження -->
+    <div id="loading-status" class="loading-status hidden">
+        <div class="loading-spinner"></div>
+        <p>Завантаження відео...</p>
+    </div>
+
+    <!-- Порожній стан -->
+    <div id="empty-state" class="empty-state hidden">
+        <div class="empty-icon">📹</div>
+        <h3>Немає доступних відео</h3>
+        <p>Поки що немає відео готових для анотування.</p>
     </div>
 </div>
 
@@ -27,10 +81,14 @@
 <div id="video-editor" class="hidden">
     <div class="card">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-            <h3>Інформація про відео</h3>
+            <h3>Анотування відео</h3>
             <button id="back-to-list-btn" class="btn btn-secondary">← Назад до списку</button>
         </div>
         <p id="video-filename">Назва файлу: <span></span></p>
+        <div id="video-lock-info" class="video-lock-info">
+            <span class="lock-icon">🔒</span>
+            <span>Відео заблоковано для вас до <span id="lock-expires-time"></span></span>
+        </div>
     </div>
 
     <!-- Відео секція -->
@@ -144,6 +202,25 @@
                             <input type="checkbox" id="has-explosions" name="has_explosions">
                             <span>Has explosions</span>
                         </label>
+                    </div>
+                </div>
+
+                <!-- Додати після checkbox-grid з проєктами -->
+                <div class="card">
+                    <h3>Інформація про відео</h3>
+
+                    <div class="form-group">
+                        <label for="video-where">Локація:</label>
+                        <input type="text" id="video-where" name="where" class="form-control"
+                               placeholder="Наприклад: Kyiv, Kharkiv">
+                        <small class="form-text">Локація де було знято відео (англійською)</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="video-when">Дата зйомки:</label>
+                        <input type="text" id="video-when" name="when" class="form-control"
+                               placeholder="РРРРММДД (наприклад: 20250527)">
+                        <small class="form-text">Дата коли було знято відео</small>
                     </div>
                 </div>
             </div>

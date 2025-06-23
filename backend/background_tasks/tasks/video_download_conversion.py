@@ -7,7 +7,7 @@ from datetime import datetime, UTC
 from backend.background_tasks.app import app
 from backend.database import create_repository
 from backend.services.azure_service import AzureService
-from backend.models.database import AzureFilePath
+from backend.models.database import AzureFilePath, VideoStatus
 from backend.utils.azure_path_utils import extract_filename_from_azure_path
 from backend.utils.video_utils import get_local_video_path, cleanup_file
 from backend.config.settings import Settings
@@ -62,7 +62,7 @@ def download_and_convert_video(self, azure_path_dict: Dict[str, str]) -> Dict[st
         filename = extract_filename_from_azure_path(azure_path)
         local_path = get_local_video_path(filename)
 
-        repo.update_by_field("azure_file_path.blob_path", azure_path.blob_path, {"status": "downloading"})
+        repo.update_by_field("azure_file_path.blob_path", azure_path.blob_path, {"status": VideoStatus.DOWNLOADING})
 
         self.update_state(
             state='PROGRESS',
@@ -78,7 +78,7 @@ def download_and_convert_video(self, azure_path_dict: Dict[str, str]) -> Dict[st
         )
 
         if not download_result["success"]:
-            repo.update_by_field("azure_file_path.blob_path", azure_path.blob_path, {"status": "download_failed"})
+            repo.update_by_field("azure_file_path.blob_path", azure_path.blob_path, {"status": VideoStatus.DOWNLOAD_ERROR})
             self.update_state(
                 state='FAILURE',
                 meta={
@@ -102,7 +102,7 @@ def download_and_convert_video(self, azure_path_dict: Dict[str, str]) -> Dict[st
 
         video_info = get_video_info(local_path)
         if not video_info:
-            repo.update_by_field("azure_file_path.blob_path", azure_path.blob_path, {"status": "analysis_failed"})
+            repo.update_by_field("azure_file_path.blob_path", azure_path.blob_path, {"status": VideoStatus.DOWNLOAD_ERROR})
             cleanup_file(local_path)
             self.update_state(
                 state='FAILURE',
@@ -112,8 +112,6 @@ def download_and_convert_video(self, azure_path_dict: Dict[str, str]) -> Dict[st
                 }
             )
             return {"status": "error", "message": "Failed to analyze video"}
-
-        repo.update_by_field("azure_file_path.blob_path", azure_path.blob_path, {"status": "converting"})
 
         self.update_state(
             state='PROGRESS',
@@ -144,7 +142,7 @@ def download_and_convert_video(self, azure_path_dict: Dict[str, str]) -> Dict[st
             )
 
             if not success:
-                repo.update_by_field("azure_file_path.blob_path", azure_path.blob_path, {"status": "conversion_failed"})
+                repo.update_by_field("azure_file_path.blob_path", azure_path.blob_path, {"status": VideoStatus.DOWNLOAD_ERROR})
                 cleanup_file(local_path)
                 self.update_state(
                     state='FAILURE',
@@ -167,12 +165,10 @@ def download_and_convert_video(self, azure_path_dict: Dict[str, str]) -> Dict[st
             }
         )
 
+        # Оновлюємо тільки поля які є в схемі source_videos
         update_data = {
-            "status": "ready",
+            "status": VideoStatus.NOT_ANNOTATED,
             "duration_sec": int(video_info.get("duration", 0)),
-            "resolution_width": video_info.get("width"),
-            "resolution_height": video_info.get("height"),
-            "fps": int(video_info.get("fps", 0)) if video_info.get("fps") else None,
             "updated_at_utc": datetime.now(UTC).isoformat(sep=" ", timespec="seconds")
         }
 
@@ -200,7 +196,7 @@ def download_and_convert_video(self, azure_path_dict: Dict[str, str]) -> Dict[st
         try:
             annotation = repo.find_by_field("azure_file_path.blob_path", azure_path.blob_path)
             if annotation:
-                repo.update_by_field("azure_file_path.blob_path", azure_path.blob_path, {"status": "processing_failed"})
+                repo.update_by_field("azure_file_path.blob_path", azure_path.blob_path, {"status": VideoStatus.DOWNLOAD_ERROR})
 
             if 'local_path' in locals():
                 cleanup_file(local_path)

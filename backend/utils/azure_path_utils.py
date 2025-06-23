@@ -66,12 +66,6 @@ def extract_filename_from_azure_path(azure_path: AzureFilePath) -> str:
     return azure_path.blob_path.split("/")[-1]
 
 
-def get_file_extension_from_azure_path(azure_path: AzureFilePath) -> str:
-    """Get file extension from Azure blob path"""
-    filename = extract_filename_from_azure_path(azure_path)
-    return filename.split(".")[-1].lower() if "." in filename else ""
-
-
 def validate_azure_path_structure(azure_path: AzureFilePath) -> bool:
     """Validate AzureFilePath structure"""
     if not azure_path.account_name or not azure_path.container_name or not azure_path.blob_path:

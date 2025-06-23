@@ -1,10 +1,11 @@
-from typing import Dict, Any
+import os
+from typing import Dict, Any, List
 
 from azure.storage.blob import BlobServiceClient, ContainerClient
 
 from backend.utils.azure_utils import (
     get_blob_service_client, get_blob_container_client,
-    download_blob_to_local_parallel_with_progress, upload_clip_to_azure
+    download_blob_to_local_parallel_with_progress, upload_clip_to_azure, parse_azure_blob_url
 )
 
 from backend.models.database import AzureFilePath
@@ -186,3 +187,46 @@ class AzureService:
                 "success": False,
                 "error": str(e)
             }
+
+    def list_videos_in_folder(self, folder_url: str) -> List[Dict[str, Any]]:
+        """Отримує список відео файлів у вказаній папці Azure"""
+        try:
+            parsed = parse_azure_blob_url(folder_url)
+            prefix = parsed["blob_name"]
+
+            # Додаємо слеш якщо його немає
+            if not prefix.endswith('/'):
+                prefix += '/'
+
+            container_client = self.blob_service_client.get_container_client(
+                parsed["container_name"]
+            )
+
+            video_extensions = {'.mp4', '.avi', '.mov', '.mkv'}
+            videos = []
+
+            # Отримуємо всі блоби з префіксом
+            blobs = container_client.list_blobs(name_starts_with=prefix)
+
+            for blob in blobs:
+                # Перевіряємо що це файл, а не папка
+                if not blob.name.endswith('/'):
+                    # Перевіряємо що це відео
+                    file_ext = os.path.splitext(blob.name)[1].lower()
+                    if file_ext in video_extensions:
+                        # Перевіряємо що файл на тому ж рівні (не в підпапці)
+                        relative_path = blob.name[len(prefix):]
+                        if '/' not in relative_path:
+                            full_url = f"https://{parsed['account_name']}.blob.core.windows.net/{parsed['container_name']}/{blob.name}"
+                            videos.append({
+                                "url": full_url,
+                                "filename": os.path.basename(blob.name),
+                                "size_bytes": blob.size
+                            })
+
+            logger.info(f"Знайдено {len(videos)} відео файлів у папці {prefix}")
+            return videos
+
+        except Exception as e:
+            logger.error(f"Помилка отримання списку відео з папки {folder_url}: {str(e)}")
+            return []

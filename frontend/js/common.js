@@ -100,12 +100,15 @@ const api = {
             return null;
         }
 
+        const data = await response.json().catch(() => ({}));
+
         if (!response.ok) {
-            const error = await response.json().catch(() => ({}));
-            throw new Error(error.message || `HTTP ${response.status}`);
+            // Якщо є повідомлення про помилку від сервера, використовуємо його
+            const errorMessage = data.message || data.error || `HTTP ${response.status}`;
+            throw new Error(errorMessage);
         }
 
-        return response.json();
+        return data;
     },
 
     get: url => api.request(url),

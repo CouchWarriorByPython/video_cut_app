@@ -12,21 +12,17 @@
 <div class="card">
     <div class="form-group">
         <label for="video-url">Azure Blob URL відео:</label>
-        <input type="text" id="video-url" name="video_url" class="form-control"
-               placeholder="https://storage-account.blob.core.windows.net/container/path/video.mp4">
-        <small class="form-text">Введіть повне посилання на відео в Azure Blob Storage</small>
+        <textarea id="video-url" name="video_url" class="form-control" rows="3"
+                  placeholder="https://storage-account.blob.core.windows.net/container/path/video.mp4&#10;або декілька URL через кому"></textarea>
+        <small class="form-text">Введіть одне або декілька посилань на відео в Azure Blob Storage (через кому)</small>
     </div>
 
     <div class="form-group">
-        <label for="metadata-where">Локація (опційно):</label>
-        <input type="text" id="metadata-where" name="where" class="form-control"
-               placeholder="Наприклад: Kyiv, Kharkiv">
-    </div>
-
-    <div class="form-group">
-        <label for="metadata-when">Дата зйомки (опційно):</label>
-        <input type="text" id="metadata-when" name="when" class="form-control"
-               placeholder="РРРРММДД (наприклад: 20250527)">
+        <label class="checkbox-label">
+            <input type="checkbox" id="download-all-folder" name="download_all_folder">
+            <span>Завантажити всі відео з папки</span>
+        </label>
+        <small class="form-text">Якщо увімкнено, буде завантажено всі відео файли з вказаної папки (не включаючи підпапки)</small>
     </div>
 
     <button id="upload-btn" class="btn btn-success full-width">Зареєструвати відео</button>
@@ -36,7 +32,7 @@
     <h3>Інформація</h3>
     <p>Система перевірить доступність відео в Azure Storage перед реєстрацією.</p>
     <p>Підтримувані формати: MP4, AVI, MOV, MKV</p>
-    <p>Максимальний розмір: без обмежень (залежить від Azure Storage)</p>
+    <p>При завантаженні папки будуть оброблені тільки відео файли</p>
 </div>
 
 <div id="result" class="hidden">

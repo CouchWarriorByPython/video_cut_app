@@ -2,8 +2,7 @@ class VideoUploader {
     constructor() {
         this.elements = {
             videoUrl: document.getElementById('video-url'),
-            metadataWhere: document.getElementById('metadata-where'),
-            metadataWhen: document.getElementById('metadata-when'),
+            downloadAllFolder: document.getElementById('download-all-folder'),
             uploadBtn: document.getElementById('upload-btn'),
             result: document.getElementById('result')
         };
@@ -19,7 +18,19 @@ class VideoUploader {
 
     _setupEventListeners() {
         this.elements.uploadBtn.addEventListener('click', () => this._handleUpload());
-        this.elements.videoUrl.addEventListener('input', utils.debounce(() => this._validateUrl(), 300));
+        this.elements.videoUrl.addEventListener('input', utils.debounce(() => this._validateUrls(), 300));
+        this.elements.downloadAllFolder.addEventListener('change', () => this._handleFolderCheckboxChange());
+    }
+
+    _handleFolderCheckboxChange() {
+        const isChecked = this.elements.downloadAllFolder.checked;
+        if (isChecked) {
+            this.elements.videoUrl.placeholder = "https://storage-account.blob.core.windows.net/container/folder/";
+            this.elements.videoUrl.rows = 1;
+        } else {
+            this.elements.videoUrl.placeholder = "https://storage-account.blob.core.windows.net/container/path/video.mp4\nабо декілька URL через кому";
+            this.elements.videoUrl.rows = 3;
+        }
     }
 
     async _handleUpload() {
@@ -42,20 +53,35 @@ class VideoUploader {
     }
 
     _getFormData() {
+        const urlsText = this.elements.videoUrl.value.trim();
+        const urls = this.elements.downloadAllFolder.checked ?
+            [urlsText] :
+            urlsText.split(',').map(url => url.trim()).filter(url => url);
+
         return {
-            video_url: this.elements.videoUrl.value.trim(),
-            where: this.elements.metadataWhere.value.trim() || null,
-            when: this.elements.metadataWhen.value.trim() || null
+            video_urls: urls,
+            download_all_folder: this.elements.downloadAllFolder.checked
         };
     }
 
     _validateForm(data) {
-        const errors = [
-            !data.video_url && 'Azure Blob URL є обов\'язковим',
-            data.video_url && !validators.azureUrl(data.video_url) && 'Некоректний Azure URL',
-            data.where && !/^[A-Za-z\s\-_]+$/.test(data.where) && 'Локація може містити тільки англійські літери',
-            data.when && !/^\d{8}$/.test(data.when) && 'Дата повинна бути у форматі РРРРММДД'
-        ].filter(Boolean);
+        const errors = [];
+
+        if (!data.video_urls.length) {
+            errors.push('Необхідно вказати хоча б один URL');
+        }
+
+        if (data.download_all_folder && data.video_urls.length > 1) {
+            errors.push('При завантаженні папки можна вказати тільки один URL');
+        }
+
+        data.video_urls.forEach((url, index) => {
+            if (!validators.azureUrl(url) && !data.download_all_folder) {
+                errors.push(`URL #${index + 1} некоректний`);
+            } else if (data.download_all_folder && !url.includes('.blob.core.windows.net')) {
+                errors.push('URL папки має бути з Azure Blob Storage');
+            }
+        });
 
         if (errors.length > 0) {
             notify(errors.join('\n'), 'error');
@@ -64,28 +90,58 @@ class VideoUploader {
         return true;
     }
 
-    _validateUrl() {
-        const url = this.elements.videoUrl.value.trim();
-        if (url) {
-            this.elements.videoUrl.style.borderColor = validators.azureUrl(url) ? '' : '#e74c3c';
+    _validateUrls() {
+        const urls = this.elements.videoUrl.value.trim();
+        if (urls) {
+            const urlList = this.elements.downloadAllFolder.checked ?
+                [urls] :
+                urls.split(',').map(url => url.trim());
+
+            const allValid = urlList.every(url =>
+                this.elements.downloadAllFolder.checked ?
+                    url.includes('.blob.core.windows.net') :
+                    validators.azureUrl(url)
+            );
+
+            this.elements.videoUrl.style.borderColor = allValid ? '' : '#e74c3c';
         }
     }
 
     _handleUploadResponse(data) {
         if (data.success) {
-            const uploadData = {
-                id: utils.generateId(),
-                taskId: data.conversion_task_id,
-                azure_file_path: data.azure_file_path,
-                filename: data.filename,
-                message: data.message,
-                timestamp: Date.now()
-            };
+            if (data.tasks && Array.isArray(data.tasks)) {
+                // Багато відео
+                data.tasks.forEach(task => {
+                    const uploadData = {
+                        id: utils.generateId(),
+                        taskId: task.task_id,
+                        azure_file_path: task.azure_file_path,
+                        filename: task.filename,
+                        message: task.message,
+                        timestamp: Date.now()
+                    };
 
-            this.activeUploads.set(uploadData.id, uploadData);
-            this._saveUploadsToStorage();
-            this._showProgressBar(uploadData);
-            this._startProgressTracking(uploadData.id);
+                    this.activeUploads.set(uploadData.id, uploadData);
+                    this._showProgressBar(uploadData);
+                    this._startProgressTracking(uploadData.id);
+                });
+                this._saveUploadsToStorage();
+            } else {
+                // Одне відео
+                const uploadData = {
+                    id: utils.generateId(),
+                    taskId: data.conversion_task_id,
+                    azure_file_path: data.azure_file_path,
+                    filename: data.filename,
+                    message: data.message,
+                    timestamp: Date.now()
+                };
+
+                this.activeUploads.set(uploadData.id, uploadData);
+                this._saveUploadsToStorage();
+                this._showProgressBar(uploadData);
+                this._startProgressTracking(uploadData.id);
+            }
         } else {
             notify(data.message || 'Невідома помилка при реєстрації відео', 'error');
         }
@@ -192,6 +248,13 @@ class VideoUploader {
 
         this.activeUploads.delete(uploadId);
         this._saveUploadsToStorage();
+
+        // Автоматично приховуємо через 30 секунд
+        setTimeout(() => {
+            if (document.getElementById(`progress-${uploadId}`)) {
+                this.removeUpload(uploadId);
+            }
+        }, 30000);
     }
 
     _showErrorState(uploadId, errorMessage) {
@@ -267,8 +330,8 @@ class VideoUploader {
 
     _resetForm() {
         Object.assign(this.elements.videoUrl, { value: '', style: { borderColor: '' } });
-        Object.assign(this.elements.metadataWhere, { value: '' });
-        Object.assign(this.elements.metadataWhen, { value: '' });
+        this.elements.downloadAllFolder.checked = false;
+        this._handleFolderCheckboxChange();
         this._setButtonLoading(false);
     }
 

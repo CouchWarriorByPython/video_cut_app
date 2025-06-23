@@ -24,6 +24,8 @@ async def get_admin_stats(request: Request) -> AdminStatsResponse:
     logger.info(f"Адмін {current_user['email']} запросив статистику")
 
     try:
+        from backend.models.database import VideoStatus
+
         user_repo = create_repository("users", async_mode=False)
         video_repo = create_repository("source_videos", async_mode=False)
 
@@ -34,8 +36,8 @@ async def get_admin_stats(request: Request) -> AdminStatsResponse:
         all_videos = video_repo.find_all()
         total_videos = len(all_videos)
         processing_videos = len(
-            [v for v in all_videos if v.get("status") not in ["ready", "not_annotated", "annotated"]])
-        annotated_videos = len([v for v in all_videos if v.get("status") == "annotated"])
+            [v for v in all_videos if v.get("status") in [VideoStatus.DOWNLOADING, VideoStatus.IN_PROGRESS]])
+        annotated_videos = len([v for v in all_videos if v.get("status") == VideoStatus.ANNOTATED])
 
         return AdminStatsResponse(
             total_users=total_users,

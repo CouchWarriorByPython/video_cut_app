@@ -36,17 +36,15 @@ class LoginManager {
             auth.setTokens(data.access_token, data.refresh_token);
             window.location.href = auth.isAdmin ? '/' : '/annotator';
         } catch (error) {
-            this._showError(error.message);
+            this._showError(error.message || 'Невірний email або пароль');
         } finally {
             this._setButtonLoading(false);
         }
     }
 
     _showError(message) {
-        Object.assign(this.elements.errorMessage, {
-            textContent: message,
-            className: 'error-message'
-        });
+        this.elements.errorMessage.textContent = message;
+        this.elements.errorMessage.classList.remove('hidden');
     }
 
     _hideError() {

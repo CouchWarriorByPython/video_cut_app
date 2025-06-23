@@ -1,4 +1,354 @@
-/* Video section */
+/* Videos List Section */
+.videos-list-section {
+    margin-bottom: 30px;
+}
+
+.section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    padding-bottom: 15px;
+    border-bottom: 2px solid var(--border-color);
+}
+
+.section-header h2 {
+    margin: 0;
+    color: var(--text-light);
+    font-size: 24px;
+}
+
+.section-controls {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+}
+
+.videos-count {
+    color: var(--text-muted);
+    font-size: 14px;
+    padding: 8px 12px;
+    background-color: var(--bg-darker);
+    border-radius: 6px;
+}
+
+/* Auto-refresh indicator */
+.auto-refresh-indicator {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 12px;
+    color: var(--text-muted);
+    padding: 4px 8px;
+    background-color: var(--bg-darker);
+    border-radius: 4px;
+}
+
+.refresh-dot {
+    width: 6px;
+    height: 6px;
+    background-color: var(--primary-color);
+    border-radius: 50%;
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 0.3; }
+    50% { opacity: 1; }
+}
+
+/* Filters */
+.filters-section {
+    display: flex;
+    gap: 20px;
+    margin-bottom: 20px;
+    padding: 15px;
+    background-color: var(--card-bg);
+    border-radius: 8px;
+    align-items: end;
+    justify-content: flex-start;
+}
+
+.filter-group {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.filter-group label {
+    font-size: 12px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.filter-group .form-control {
+    width: 200px;
+    padding: 8px 12px;
+    font-size: 14px;
+}
+
+/* Videos Table */
+.videos-table-container {
+    background-color: var(--card-bg);
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    border: 1px solid var(--border-color);
+    margin-bottom: 20px;
+}
+
+.videos-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14px;
+}
+
+.videos-table th {
+    background: linear-gradient(135deg, var(--bg-darker), var(--border-color));
+    color: var(--text-light);
+    font-weight: 600;
+    padding: 16px 12px;
+    text-align: left;
+    border-bottom: 2px solid var(--border-color);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    font-size: 11px;
+    white-space: nowrap;
+}
+
+.videos-table td {
+    padding: 16px 12px;
+    border-bottom: 1px solid var(--border-color);
+    color: var(--text-light);
+    vertical-align: middle;
+}
+
+.videos-table tbody tr:hover {
+    background-color: var(--bg-darker);
+}
+
+.videos-table tbody tr:last-child td {
+    border-bottom: none;
+}
+
+/* Table Cells */
+.video-filename {
+    font-weight: 500;
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Status badges */
+.status-badge {
+    display: inline-block;
+    padding: 4px 8px;
+    border-radius: 12px;
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    white-space: nowrap;
+}
+
+.status-badge.not_annotated {
+    background-color: rgba(52, 152, 219, 0.2);
+    color: #3498db;
+    border: 1px solid #3498db;
+}
+
+.status-badge.in_progress {
+    background-color: rgba(241, 196, 15, 0.2);
+    color: #f1c40f;
+    border: 1px solid #f1c40f;
+}
+
+.status-badge.annotated {
+    background-color: rgba(46, 204, 113, 0.2);
+    color: #2ecc71;
+    border: 1px solid #2ecc71;
+}
+
+.status-badge.downloading {
+    background-color: rgba(241, 196, 15, 0.2);
+    color: #f1c40f;
+    border: 1px solid #f1c40f;
+}
+
+.status-badge.download_error {
+    background-color: rgba(231, 76, 60, 0.2);
+    color: #e74c3c;
+    border: 1px solid #e74c3c;
+}
+
+.status-badge.annotation_error {
+    background-color: rgba(192, 57, 43, 0.2);
+    color: #c0392b;
+    border: 1px solid #c0392b;
+}
+
+/* Lock status */
+.lock-status {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.lock-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 6px;
+    border-radius: 8px;
+    font-size: 10px;
+    font-weight: 500;
+}
+
+.lock-badge.free {
+    background-color: rgba(46, 204, 113, 0.1);
+    color: #2ecc71;
+}
+
+.lock-badge.locked {
+    background-color: rgba(231, 76, 60, 0.1);
+    color: #e74c3c;
+}
+
+.lock-badge.locked-by-me {
+    background-color: rgba(52, 152, 219, 0.1);
+    color: #3498db;
+}
+
+.lock-expires {
+    font-size: 9px;
+    color: var(--text-muted);
+}
+
+/* Video actions */
+.video-actions {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.btn-start-work {
+    padding: 6px 12px;
+    font-size: 12px;
+    font-weight: 500;
+    border-radius: 6px;
+    white-space: nowrap;
+}
+
+.btn-start-work:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.btn-start-work.locked-by-me {
+    background-color: var(--primary-color);
+    color: white;
+}
+
+.btn-unlock {
+    padding: 4px 8px;
+    font-size: 11px;
+    background-color: var(--danger-color);
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+}
+
+.btn-unlock:hover {
+    background-color: var(--danger-hover);
+}
+
+/* Pagination */
+.pagination-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 10px;
+    margin: 20px 0;
+}
+
+.pagination-info {
+    color: var(--text-muted);
+    font-size: 14px;
+    margin: 0 15px;
+}
+
+.pagination-btn {
+    padding: 8px 12px;
+    background-color: var(--card-bg);
+    border: 1px solid var(--border-color);
+    color: var(--text-light);
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 14px;
+    transition: all 0.2s ease;
+}
+
+.pagination-btn:hover:not(:disabled) {
+    background-color: var(--primary-color);
+    border-color: var(--primary-color);
+}
+
+.pagination-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.pagination-btn.active {
+    background-color: var(--primary-color);
+    border-color: var(--primary-color);
+}
+
+/* Loading and Empty States */
+.loading-status {
+    text-align: center;
+    padding: 40px 20px;
+    color: var(--text-muted);
+}
+
+.empty-state {
+    text-align: center;
+    padding: 60px 20px;
+    color: var(--text-muted);
+}
+
+.empty-icon {
+    font-size: 48px;
+    margin-bottom: 20px;
+}
+
+.empty-state h3 {
+    color: var(--text-light);
+    margin-bottom: 10px;
+}
+
+/* Video Editor Section */
+.video-lock-info {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 15px;
+    background-color: rgba(52, 152, 219, 0.1);
+    border: 1px solid #3498db;
+    border-radius: 6px;
+    margin-top: 10px;
+    font-size: 14px;
+    color: #3498db;
+}
+
+.lock-icon {
+    font-size: 16px;
+}
+
+/* Video Player and Timeline */
 .video-section {
     margin-bottom: 20px;
     background-color: var(--bg-darker);
@@ -19,7 +369,6 @@ video {
     border-radius: 4px;
 }
 
-/* Timeline */
 .timeline-container {
     position: relative;
     height: 40px;
@@ -39,6 +388,7 @@ video {
     pointer-events: none;
 }
 
+/* Timeline fragments and markers */
 .fragment {
     position: absolute;
     height: 100%;
@@ -95,7 +445,36 @@ video {
     background-color: #9c27b0;
 }
 
-/* Fragment lists */
+/* Project selection */
+.checkbox-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 20px;
+    margin-top: 10px;
+    align-items: center;
+}
+
+.checkbox-group {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 12px;
+}
+
+.checkbox-label {
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+    white-space: nowrap;
+    flex: 0 0 auto;
+    min-width: max-content;
+}
+
+.checkbox-label input[type="checkbox"] {
+    margin-right: 8px;
+    flex-shrink: 0;
+}
+
+/* Fragment list */
 .fragment-list ul {
     list-style-type: none;
     padding: 0;
@@ -170,36 +549,7 @@ video {
     background: #666;
 }
 
-/* Checkboxes */
-.checkbox-grid {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 20px;
-    margin-top: 10px;
-    align-items: center;
-}
-
-.checkbox-group {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-    gap: 12px;
-}
-
-.checkbox-label {
-    display: flex;
-    align-items: center;
-    cursor: pointer;
-    white-space: nowrap;
-    flex: 0 0 auto;
-    min-width: max-content;
-}
-
-.checkbox-label input[type="checkbox"] {
-    margin-right: 8px;
-    flex-shrink: 0;
-}
-
-/* Status */
+/* Unfinished fragments status */
 .unfinished-status {
     margin: 10px 0 20px;
     padding: 15px;
@@ -315,4 +665,101 @@ video {
     overflow-x: auto;
     max-height: 60vh;
     overflow-y: auto;
+}
+
+/* Responsive Design */
+@media (max-width: 1200px) {
+    .videos-table th,
+    .videos-table td {
+        padding: 12px 8px;
+        font-size: 13px;
+    }
+
+    .main-layout {
+        flex-direction: column;
+    }
+
+    .left-column,
+    .right-column {
+        flex: 1;
+    }
+}
+
+@media (max-width: 768px) {
+    .section-header {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 15px;
+    }
+
+    .section-controls {
+        flex-direction: column;
+        gap: 10px;
+    }
+
+    .filters-section {
+        flex-direction: column;
+        gap: 15px;
+    }
+
+    .filter-group .form-control {
+        width: 100%;
+    }
+
+    .videos-table-container {
+        overflow-x: auto;
+    }
+
+    .videos-table {
+        min-width: 700px;
+    }
+
+    .pagination-container {
+        flex-wrap: wrap;
+        gap: 5px;
+    }
+
+    .video-actions {
+        flex-direction: column;
+        gap: 4px;
+    }
+
+    .btn-start-work {
+        font-size: 11px;
+        padding: 4px 8px;
+    }
+
+    .checkbox-grid {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .main-layout {
+        flex-direction: column;
+        gap: 15px;
+    }
+}
+
+@media (max-width: 480px) {
+    .videos-table {
+        min-width: 600px;
+    }
+
+    .videos-table th,
+    .videos-table td {
+        padding: 8px 6px;
+        font-size: 12px;
+    }
+
+    .video-filename {
+        max-width: 120px;
+    }
+
+    .section-controls {
+        align-items: stretch;
+    }
+
+    .auto-refresh-indicator {
+        justify-content: center;
+    }
 }

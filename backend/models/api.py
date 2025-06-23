@@ -10,9 +10,41 @@ class ClipInfoRequest(BaseModel):
     end_time: str = Field(..., pattern=r'^\d{2}:\d{2}:\d{2}$')
 
 
+class VideoUploadRequest(BaseModel):
+    """Video upload request schema - без where/when"""
+    video_urls: List[str] = Field(..., min_length=1, max_items=100)
+    download_all_folder: bool = Field(False)
+
+    @field_validator('video_urls')
+    def validate_azure_urls(cls, urls: List[str]) -> List[str]:
+        validated_urls = []
+        for url in urls:
+            url = url.strip()
+            if not url:
+                continue
+
+            if not url.startswith('https://') or '.blob.core.windows.net' not in url:
+                raise ValueError(f'URL має бути з Azure Blob Storage: {url}')
+
+            validated_urls.append(url)
+
+        if not validated_urls:
+            raise ValueError('Необхідно вказати хоча б один валідний URL')
+
+        return validated_urls
+
+    @field_validator('download_all_folder')
+    def validate_folder_mode(cls, v: bool, info: ValidationInfo) -> bool:
+        if v and len(info.data.get('video_urls', [])) > 1:
+            raise ValueError('При завантаженні папки можна вказати тільки один URL')
+        return v
+
+
 class VideoMetadataRequest(BaseModel):
-    """Video metadata in request"""
+    """Video metadata in request - додаємо where/when"""
     skip: bool = False
+    where: Optional[str] = Field(None, max_length=100)
+    when: Optional[str] = Field(None, pattern=r'^\d{8}$')
     uav_type: str = Field("", max_length=100)
     video_content: str = Field("", max_length=100)
     is_urban: bool = False
@@ -23,6 +55,12 @@ class VideoMetadataRequest(BaseModel):
     has_infantry: bool = False
     has_explosions: bool = False
 
+    @field_validator('where')
+    def validate_where(cls, v: Optional[str]) -> Optional[str]:
+        if v and not re.match(r'^[A-Za-z\s\-_]+$', v):
+            raise ValueError('Локація може містити тільки англійські літери')
+        return v
+
     @field_validator('uav_type', 'video_content')
     def validate_required_fields(cls, v: str, info: ValidationInfo) -> str:
         if not info.data.get('skip', False) and not v.strip():
@@ -32,35 +70,6 @@ class VideoMetadataRequest(BaseModel):
             }
             raise ValueError(f"Поле '{field_names.get(info.field_name, info.field_name)}' є обов'язковим")
         return v.strip()
-
-    @field_validator('video_content')
-    def validate_video_content_options(cls, v: str) -> str:
-        if not v.strip():
-            return v
-
-        valid_options = ['recon', 'interception', 'bombing', 'strike', 'panoramic', 'other']
-        if v.strip() not in valid_options:
-            raise ValueError(f"Недопустимий тип контенту. Допустимі варіанти: {', '.join(valid_options)}")
-        return v.strip()
-
-
-class VideoUploadRequest(BaseModel):
-    """Video upload request schema"""
-    video_url: str = Field(..., min_length=1, max_length=2048)
-    where: Optional[str] = Field(None, max_length=100)
-    when: Optional[str] = Field(None, pattern=r'^\d{8}$')
-
-    @field_validator('video_url')
-    def validate_azure_url(cls, v: str) -> str:
-        v = v.strip()
-        if not v.startswith('https://') or '.blob.core.windows.net' not in v:
-            raise ValueError('URL має бути з Azure Blob Storage')
-
-        supported_extensions = ['.mp4', '.avi', '.mov', '.mkv']
-        if not any(v.lower().endswith(ext) for ext in supported_extensions):
-            raise ValueError(f'Підтримувані формати відео: {", ".join(supported_extensions)}')
-
-        return v
 
 
 class SaveFragmentsRequest(BaseModel):

@@ -212,31 +212,6 @@ def download_blob_to_local_parallel(azure_url: str, local_path: str) -> Dict[str
     return download_blob_to_local_parallel_with_progress(azure_url, local_path, None)
 
 
-def download_blob_to_local_simple(blob_client, local_path: str) -> Dict[str, Any]:
-    """Простий спосіб завантаження для невеликих файлів (без прогресу)"""
-    try:
-        with open(local_path, "wb") as download_file:
-            blob_data = blob_client.download_blob()
-            for chunk in blob_data.chunks():
-                download_file.write(chunk)
-
-        return {
-            "success": True,
-            "local_path": local_path,
-        }
-    except Exception as e:
-        logger.error(f"Помилка завантаження blob: {str(e)}")
-        return {
-            "success": False,
-            "error": str(e)
-        }
-
-
-def download_blob_to_local(azure_url: str, local_path: str) -> Dict[str, Any]:
-    """Головна функція завантаження з автовибором методу"""
-    return download_blob_to_local_parallel(azure_url, local_path)
-
-
 def upload_clip_to_azure(
         container_client: ContainerClient,
         file_path: str,

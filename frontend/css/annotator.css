@@ -92,7 +92,7 @@
 .videos-table-container {
     background-color: var(--card-bg);
     border-radius: 12px;
-    overflow: hidden;
+    overflow-x: auto;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
     border: 1px solid var(--border-color);
     margin-bottom: 20px;
@@ -117,11 +117,20 @@
     white-space: nowrap;
 }
 
+.videos-table th:first-child {
+    width: 50%;
+    min-width: 400px;
+}
+
 .videos-table td {
     padding: 16px 12px;
     border-bottom: 1px solid var(--border-color);
     color: var(--text-light);
     vertical-align: middle;
+}
+
+.videos-table td:first-child {
+    position: relative;
 }
 
 .videos-table tbody tr:hover {
@@ -135,10 +144,29 @@
 /* Table Cells */
 .video-filename {
     font-weight: 500;
-    max-width: 200px;
+    min-width: 400px;
+    max-width: 600px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    cursor: pointer;
+    position: relative;
+}
+
+.video-filename:hover {
+    overflow: visible;
+    white-space: normal;
+    word-break: break-word;
+    background-color: var(--card-bg);
+    padding: 12px;
+    border-radius: 6px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+    position: absolute;
+    z-index: 100;
+    max-width: 800px;
+    left: 0;
+    margin-top: -8px;
+    border: 1px solid var(--border-color);
 }
 
 /* Status badges */
@@ -668,6 +696,12 @@ video {
 }
 
 /* Responsive Design */
+@media (min-width: 1400px) {
+    .container {
+        max-width: 1400px;
+    }
+}
+
 @media (max-width: 1200px) {
     .videos-table th,
     .videos-table td {
@@ -714,6 +748,15 @@ video {
         min-width: 700px;
     }
 
+    .videos-table th:first-child {
+        min-width: 300px;
+    }
+
+    .video-filename {
+        min-width: 280px;
+        max-width: 350px;
+    }
+
     .pagination-container {
         flex-wrap: wrap;
         gap: 5px;
@@ -752,7 +795,8 @@ video {
     }
 
     .video-filename {
-        max-width: 120px;
+        min-width: 200px;
+        max-width: 250px;
     }
 
     .section-controls {

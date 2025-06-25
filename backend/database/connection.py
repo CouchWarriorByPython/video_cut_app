@@ -1,64 +1,42 @@
-from pymongo import MongoClient
-from motor.motor_asyncio import AsyncIOMotorClient
+import mongoengine
 from backend.config.settings import get_settings
-
-settings = get_settings()
 from backend.utils.logger import get_logger
 
+settings = get_settings()
 logger = get_logger(__name__, "database.log")
 
 
 class DatabaseConnection:
-    """Менеджер підключень до MongoDB"""
-
-    _sync_client = None
-    _async_client = None
+    _connected = False
+    _connection = None
 
     @classmethod
-    def get_sync_client(cls) -> MongoClient:
-        """Отримує синхронний клієнт MongoDB"""
-        if cls._sync_client is None:
-            try:
-                cls._sync_client = MongoClient(settings.mongo_uri)
-                logger.debug(f"Створено синхронне підключення до MongoDB: {settings.mongo_db}")
-            except Exception as e:
-                logger.error(f"Помилка підключення до MongoDB: {str(e)}")
-                raise
-        return cls._sync_client
+    def connect(cls) -> None:
+        if cls._connected:
+            return
+
+        try:
+            cls._connection = mongoengine.connect(
+                db=settings.mongo_db,
+                host=settings.mongo_uri,
+                alias='default',
+                connect=True,
+                serverSelectionTimeoutMS=5000
+            )
+            cls._connected = True
+            logger.info(f"Підключено до MongoDB: {settings.mongo_db}")
+        except Exception as e:
+            logger.error(f"Помилка підключення до MongoDB: {str(e)}")
+            raise
 
     @classmethod
-    def get_async_client(cls) -> AsyncIOMotorClient:
-        """Отримує асинхронний клієнт MongoDB"""
-        if cls._async_client is None:
-            try:
-                cls._async_client = AsyncIOMotorClient(settings.mongo_uri)
-                logger.debug(f"Створено асинхронне підключення до MongoDB: {settings.mongo_db}")
-            except Exception as e:
-                logger.error(f"Помилка асинхронного підключення до MongoDB: {str(e)}")
-                raise
-        return cls._async_client
+    def disconnect(cls) -> None:
+        if cls._connected:
+            mongoengine.disconnect()
+            cls._connected = False
+            cls._connection = None
+            logger.info("Відключено від MongoDB")
 
     @classmethod
-    def get_sync_database(cls):
-        """Отримує синхронну базу даних"""
-        client = cls.get_sync_client()
-        return client[settings.mongo_db]
-
-    @classmethod
-    def get_async_database(cls):
-        """Отримує асинхронну базу даних"""
-        client = cls.get_async_client()
-        return client[settings.mongo_db]
-
-    @classmethod
-    def close_connections(cls) -> None:
-        """Закриває всі підключення"""
-        if cls._sync_client:
-            cls._sync_client.close()
-            cls._sync_client = None
-
-        if cls._async_client:
-            cls._async_client.close()
-            cls._async_client = None
-
-        logger.debug("Всі підключення до MongoDB закрито")
+    def is_connected(cls) -> bool:
+        return cls._connected

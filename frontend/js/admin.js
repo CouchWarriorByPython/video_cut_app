@@ -125,6 +125,14 @@ class AdminPanel {
                         <span class="setting-label">Overlap:</span>
                         <span class="setting-value">${s.overlap}%</span>
                     </div>
+                    <div class="setting-item">
+                        <span class="setting-label">Segment Size:</span>
+                        <span class="setting-value">${s.segment_size}</span>
+                    </div>
+                    <div class="setting-item">
+                        <span class="setting-label">Image Quality:</span>
+                        <span class="setting-value">${s.image_quality}%</span>
+                    </div>
                 </div>
             </div>
         `).join('');
@@ -140,10 +148,14 @@ class AdminPanel {
         if (!this.userForm.validate(rules)) return;
 
         try {
-            await api.post('/admin/users', this.userForm.getData());
-            notify('Користувача створено', 'success');
-            this.userModal.close();
-            this.loadData();
+            const response = await api.post('/admin/users', this.userForm.getData());
+            if (response.success) {
+                notify('Користувача створено', 'success');
+                this.userModal.close();
+                this.loadData();
+            } else {
+                notify(response.message || 'Помилка', 'error');
+            }
         } catch (e) {
             notify(e.message, 'error');
         }
@@ -153,9 +165,13 @@ class AdminPanel {
         if (!await confirm('Видалити користувача?')) return;
 
         try {
-            await api.delete(`/admin/users/${userId}`);
-            notify('Користувача видалено', 'success');
-            this.loadData();
+            const response = await api.delete(`/admin/users/${userId}`);
+            if (response.success) {
+                notify('Користувача видалено', 'success');
+                this.loadData();
+            } else {
+                notify(response.message || 'Помилка', 'error');
+            }
         } catch (e) {
             notify(e.message, 'error');
         }
@@ -180,10 +196,14 @@ class AdminPanel {
         if (!data.email) return;
 
         try {
-            await api.put(`/admin/users/${this.editModal.currentUserId}`, data);
-            notify('Користувача оновлено', 'success');
-            this.editModal.close();
-            this.loadData();
+            const response = await api.put(`/admin/users/${this.editModal.currentUserId}`, data);
+            if (response.success) {
+                notify('Користувача оновлено', 'success');
+                this.editModal.close();
+                this.loadData();
+            } else {
+                notify(response.message || 'Помилка', 'error');
+            }
         } catch (e) {
             notify(e.message, 'error');
         }
@@ -217,15 +237,21 @@ class AdminPanel {
         const data = this.cvatForm.getData();
 
         try {
-            await api.put(`/admin/cvat-settings/${this.cvatModal.currentProject}`, {
+            const response = await api.put(`/admin/cvat-settings/${this.cvatModal.currentProject}`, {
+                project_name: this.cvatModal.currentProject,
                 project_id: +data.projectId,
                 overlap: +data.overlap,
                 segment_size: +data.segmentSize,
                 image_quality: +data.imageQuality
             });
-            notify('Налаштування збережено', 'success');
-            this.cvatModal.close();
-            this.loadData();
+
+            if (response.success) {
+                notify('Налаштування збережено', 'success');
+                this.cvatModal.close();
+                this.loadData();
+            } else {
+                notify(response.message || 'Помилка', 'error');
+            }
         } catch (e) {
             notify(e.message, 'error');
         }

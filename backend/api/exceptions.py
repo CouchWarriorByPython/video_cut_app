@@ -1,4 +1,4 @@
-from typing import cast, Optional, Dict, Any
+from typing import cast, Optional, Dict, Any, NoReturn
 from fastapi import Request, status
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
@@ -243,21 +243,21 @@ def general_exception_handler(request: Request, exc: Exception) -> JSONResponse:
 
 # =================== HELPER ФУНКЦІЇ ===================
 
-def raise_not_found(resource: str, resource_id: Optional[str] = None) -> None:
+def raise_not_found(resource: str, resource_id: Optional[str] = None) -> NoReturn:
     """Швидке підняття NotFound помилки"""
     raise NotFoundException(resource, resource_id)
 
 
-def raise_business_error(message: str, details: Optional[Dict] = None) -> None:
+def raise_business_error(message: str, details: Optional[Dict] = None) -> NoReturn:
     """Швидке підняття бізнес помилки"""
     raise BusinessLogicException(message, details)
 
 
-def raise_auth_error(message: str = "Потрібна автентифікація") -> None:
+def raise_auth_error(message: str = "Потрібна автентифікація") -> NoReturn:
     """Швидке підняття помилки автентифікації"""
     raise AuthenticationException(message)
 
 
-def raise_permission_error(required_role: str, current_role: str) -> None:
+def raise_permission_error(required_role: str, current_role: str) -> NoReturn:
     """Швидке підняття помилки прав доступу"""
     raise InsufficientPermissionsException(required_role, current_role)

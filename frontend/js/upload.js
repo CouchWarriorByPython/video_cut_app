@@ -40,8 +40,8 @@ class VideoUploader {
         this._setButtonLoading(true);
 
         try {
-            const data = await api.post('/upload', formData);
-            if (data) {
+            const data = await api.post('/video/upload', formData);
+            if (data && data.success) {
                 this._handleUploadResponse(data);
                 this._resetForm();
             }
@@ -108,54 +108,60 @@ class VideoUploader {
     }
 
     _handleUploadResponse(data) {
-        if (data.success) {
-            if (data.tasks && Array.isArray(data.tasks)) {
-                // Багато відео
-                data.tasks.forEach(task => {
-                    const uploadData = {
-                        id: utils.generateId(),
-                        taskId: task.task_id,
-                        azure_file_path: task.azure_file_path,
-                        filename: task.filename,
-                        message: task.message,
-                        timestamp: Date.now()
-                    };
+        if (data.batch_results) {
+            // Багато відео
+            const { successful, errors } = data.batch_results;
 
-                    this.activeUploads.set(uploadData.id, uploadData);
-                    this._showProgressBar(uploadData);
-                    this._startProgressTracking(uploadData.id);
-                });
-                this._saveUploadsToStorage();
-            } else {
-                // Одне відео
+            successful.forEach(task => {
                 const uploadData = {
                     id: utils.generateId(),
-                    taskId: data.conversion_task_id,
-                    azure_file_path: data.azure_file_path,
-                    filename: data.filename,
+                    taskId: task.task_id,
+                    filename: task.filename,
                     message: data.message,
                     timestamp: Date.now()
                 };
 
                 this.activeUploads.set(uploadData.id, uploadData);
-                this._saveUploadsToStorage();
                 this._showProgressBar(uploadData);
                 this._startProgressTracking(uploadData.id);
+            });
+
+            if (errors.length > 0) {
+                notify(`Помилки:\n${errors.join('\n')}`, 'warning');
             }
         } else {
-            notify(data.message || 'Невідома помилка при реєстрації відео', 'error');
+            // Одне відео
+            const uploadData = {
+                id: utils.generateId(),
+                taskId: data.conversion_task_id,
+                azure_file_path: data.azure_file_path,
+                filename: data.filename,
+                message: data.message,
+                timestamp: Date.now()
+            };
+
+            this.activeUploads.set(uploadData.id, uploadData);
+            this._showProgressBar(uploadData);
+            this._startProgressTracking(uploadData.id);
         }
+
+        this._saveUploadsToStorage();
     }
 
     _showProgressBar(uploadData) {
-        const azureUrl = utils.azureFilePathToUrl(uploadData.azure_file_path);
+        const azureUrl = uploadData.azure_file_path ?
+            utils.azureFilePathToUrl(uploadData.azure_file_path) :
+            uploadData.filename;
+
         const progressHTML = `
             <div id="progress-${uploadData.id}" class="upload-progress-item">
                 <div class="upload-info">
                     <h3>Обробка відео</h3>
                     <p><strong>Файл:</strong> ${utils.escapeHtml(uploadData.filename)}</p>
-                    <p><strong>Azure посилання:</strong></p>
-                    <p class="url-display">${utils.escapeHtml(azureUrl)}</p>
+                    ${uploadData.azure_file_path ? `
+                        <p><strong>Azure посилання:</strong></p>
+                        <p class="url-display">${utils.escapeHtml(azureUrl)}</p>
+                    ` : ''}
                 </div>
                 <div class="progress-container">
                     <div class="progress-status">
@@ -187,7 +193,7 @@ class VideoUploader {
         if (!uploadData) return this._clearProgressInterval(uploadId);
 
         try {
-            const data = await api.get(`/task_status/${uploadData.taskId}`);
+            const data = await api.get(`/video/task/${uploadData.taskId}/status`);
             if (!data) return this.removeUpload(uploadId);
 
             this._updateProgressDisplay(uploadId, data);
@@ -239,17 +245,20 @@ class VideoUploader {
         const progressElement = document.getElementById(`progress-${uploadId}`);
         if (!progressElement) return;
 
-        const azureFilePathParam = encodeURIComponent(JSON.stringify(uploadData.azure_file_path));
+        const azureFilePathParam = uploadData.azure_file_path ?
+            encodeURIComponent(JSON.stringify(uploadData.azure_file_path)) : '';
 
         progressElement.querySelector('.upload-actions').innerHTML = `
-            <button class="btn btn-success" onclick="window.location.href='/annotator?azure_file_path=${azureFilePathParam}'">Перейти до анотування</button>
+            ${azureFilePathParam ?
+                `<button class="btn btn-success" onclick="window.location.href='/annotator?azure_file_path=${azureFilePathParam}'">Перейти до анотування</button>` :
+                `<button class="btn btn-success" onclick="window.location.href='/annotator'">Перейти до анотування</button>`
+            }
             <button class="btn btn-secondary" onclick="videoUploader.removeUpload('${uploadId}')">Приховати</button>
         `;
 
         this.activeUploads.delete(uploadId);
         this._saveUploadsToStorage();
 
-        // Автоматично приховуємо через 30 секунд
         setTimeout(() => {
             if (document.getElementById(`progress-${uploadId}`)) {
                 this.removeUpload(uploadId);
@@ -322,7 +331,7 @@ class VideoUploader {
 
     async _validateTaskExists(taskId) {
         try {
-            return !!(await api.get(`/task_status/${taskId}`));
+            return !!(await api.get(`/video/task/${taskId}/status`));
         } catch {
             return false;
         }

@@ -17,6 +17,7 @@ ENDPOINT_PERMISSIONS = {
     "/favicon.ico": None,
     "/favicon.png": None,
     "/get_video": None,
+    "/video/stream": "token_in_query",  # Спеціальний випадок
 
     # HTML сторінки (JavaScript сам перевіряє)
     "/": "html",
@@ -59,6 +60,45 @@ async def auth_middleware(request: Request, call_next):
     if required_permission is None:
         return await call_next(request)
 
+    # Спеціальний випадок для /video/stream - токен в query
+    if required_permission == "token_in_query":
+        token = request.query_params.get("token")
+
+        if not token:
+            logger.warning(f"Missing token in query for {method} {request.url}")
+            return JSONResponse(
+                status_code=401,
+                content={"success": False, "message": "Token відсутній"}
+            )
+
+        try:
+            auth_service = AuthService()
+            current_user = auth_service.get_current_user_from_token(token)
+
+            if not current_user:
+                return JSONResponse(
+                    status_code=401,
+                    content={"success": False, "message": "Невалідний або прострочений токен"}
+                )
+
+            # Перевіряємо ролі для video/stream
+            allowed_roles = ["annotator", "admin", "super_admin"]
+            if current_user.role not in allowed_roles:
+                return JSONResponse(
+                    status_code=403,
+                    content={"success": False, "message": "Недостатньо прав доступу"}
+                )
+
+            request.state.user = current_user.model_dump()
+            return await call_next(request)
+
+        except Exception as e:
+            logger.error(f"Error validating token from query: {str(e)}")
+            return JSONResponse(
+                status_code=401,
+                content={"success": False, "message": "Помилка перевірки токена"}
+            )
+
     # HTML сторінки - дозволяємо показ, JS сам перевірить
     if required_permission == "html":
         is_html_request = request.headers.get("accept", "").startswith("text/html")
@@ -70,7 +110,7 @@ async def auth_middleware(request: Request, call_next):
     # Перевіряємо токен
     auth_header = request.headers.get("Authorization")
     if not auth_header:
-        logger.warning(f"Відсутній Authorization header для {method} {request.url}")
+        logger.warning(f"Missing Authorization header for {method} {request.url}")
         return JSONResponse(
             status_code=401,
             content={"success": False, "message": "Authorization header відсутній"}
@@ -84,37 +124,31 @@ async def auth_middleware(request: Request, call_next):
                 content={"success": False, "message": "Невірна схема авторизації"}
             )
 
-        # Перевіряємо токен
+        # Використовуємо AuthService для перевірки токена
         auth_service = AuthService()
-        payload = auth_service.verify_token(token)
+        current_user = auth_service.get_current_user_from_token(token)
 
-        if not payload:
+        if not current_user:
             return JSONResponse(
                 status_code=401,
                 content={"success": False, "message": "Невалідний або прострочений токен"}
             )
 
-        user_data = {
-            "user_id": payload["user_id"],
-            "email": payload["sub"],
-            "role": payload["role"]
-        }
-
         # Перевіряємо ролі
         if isinstance(required_permission, list):
-            if user_data["role"] not in required_permission:
+            if current_user.role not in required_permission:
                 logger.warning(
-                    f"🚫 Доступ заборонено для {user_data['email']} "
-                    f"(роль: {user_data['role']}, потрібна: {required_permission})"
+                    f"🚫 Access denied for {current_user.email} "
+                    f"(role: {current_user.role}, required: {required_permission})"
                 )
                 return JSONResponse(
                     status_code=403,
                     content={"success": False, "message": "Недостатньо прав доступу"}
                 )
 
-        # Зберігаємо дані користувача
-        request.state.user = user_data
-        logger.debug(f"✅ Авторизація успішна: {payload['sub']} ({payload['role']})")
+        # Зберігаємо дані користувача як dict для сумісності з API
+        request.state.user = current_user.model_dump()
+        logger.debug(f"✅ Authorization successful: {current_user.email} ({current_user.role})")
 
     except ValueError:
         return JSONResponse(
@@ -122,7 +156,7 @@ async def auth_middleware(request: Request, call_next):
             content={"success": False, "message": "Невірний формат токена"}
         )
     except Exception as e:
-        logger.error(f"Помилка в auth_middleware: {str(e)}")
+        logger.error(f"Error in auth_middleware: {str(e)}")
         return JSONResponse(
             status_code=500,
             content={"success": False, "message": "Внутрішня помилка сервера"}
@@ -144,7 +178,7 @@ def get_endpoint_permission(path: str, method: str) -> str | list[str] | None:
 
     # Всі операції з користувачами тільки для адмінів
     if path.startswith("/users/"):
-        return ENDPOINT_PERMISSIONS["/users"]
+        return ["admin", "super_admin"]
 
     # За замовчуванням вимагаємо авторизацію
     return ["annotator", "admin", "super_admin"]

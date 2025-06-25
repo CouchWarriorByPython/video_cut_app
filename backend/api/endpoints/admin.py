@@ -1,297 +1,173 @@
-from typing import List
-from fastapi import APIRouter, HTTPException, Request
+from typing import List, Annotated
+from fastapi import APIRouter, Depends
 
-from backend.models.user import UserCreate, UserResponse, UserCreateResponse, UserDeleteResponse, UserUpdateRequest
-from backend.models.cvat_settings import (
-    CVATSettingsRequest, CVATSettingsResponse, AdminStatsResponse
+from backend.models.api import (
+    UserCreate, UserResponse, UserCreateResponse, UserDeleteResponse,
+    UserUpdateRequest, AdminStatsResponse, ErrorResponse
 )
-from backend.services.auth_service import AuthService
-from backend.database import create_repository
-from backend.api.dependencies import get_current_user
+from backend.models.shared import CVATSettings
+from backend.services.admin_service import AdminService
+from backend.api.dependencies import require_admin_role
+from backend.api.exceptions import ValidationException
 from backend.utils.logger import get_logger
-from passlib.context import CryptContext
 
 logger = get_logger(__name__, "api.log")
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
 router = APIRouter(prefix="/admin", tags=["admin"])
 
 
-@router.get("/stats", response_model=AdminStatsResponse)
-async def get_admin_stats(request: Request) -> AdminStatsResponse:
-    """Отримання статистики для адмін панелі"""
-    current_user = get_current_user(request)
-    logger.info(f"Адмін {current_user['email']} запросив статистику")
-
-    try:
-        from backend.models.database import VideoStatus
-
-        user_repo = create_repository("users", async_mode=False)
-        video_repo = create_repository("source_videos", async_mode=False)
-
-        all_users = user_repo.find_all()
-        total_users = len(all_users)
-        active_users = len([u for u in all_users if u.get("is_active", True)])
-
-        all_videos = video_repo.find_all()
-        total_videos = len(all_videos)
-        processing_videos = len(
-            [v for v in all_videos if v.get("status") in [VideoStatus.DOWNLOADING, VideoStatus.IN_PROGRESS]])
-        annotated_videos = len([v for v in all_videos if v.get("status") == VideoStatus.ANNOTATED])
-
-        return AdminStatsResponse(
-            total_users=total_users,
-            active_users=active_users,
-            total_videos=total_videos,
-            processing_videos=processing_videos,
-            annotated_videos=annotated_videos
-        )
-
-    except Exception as e:
-        logger.error(f"Помилка отримання статистики: {str(e)}")
-        raise HTTPException(status_code=500, detail="Помилка отримання статистики")
+@router.get(
+    "/stats",
+    response_model=AdminStatsResponse,
+    summary="Отримати статистику системи",
+    description="Повертає загальну статистику по користувачах та відео",
+    responses={
+        400: {"model": ErrorResponse, "description": "Помилка отримання статистики"}
+    }
+)
+async def get_admin_stats(
+        current_user: Annotated[dict, Depends(require_admin_role)],
+        admin_service: Annotated[AdminService, Depends(AdminService)]
+) -> AdminStatsResponse:
+    """Отримати адміністративну статистику"""
+    logger.info(f"Admin {current_user['email']} requested statistics")
+    return admin_service.get_system_statistics_response()
 
 
-@router.get("/users", response_model=List[UserResponse])
-async def get_all_users_admin(request: Request) -> List[UserResponse]:
-    """Отримання всіх користувачів для адмін панелі"""
-    current_user = get_current_user(request)
-    logger.info(f"Адмін {current_user['email']} запросив список користувачів")
-
-    user_repo = create_repository("users", async_mode=False)
-    users = user_repo.find_all()
-
-    return [
-        UserResponse(
-            id=user["_id"],
-            email=user["email"],
-            role=user["role"],
-            created_at_utc=user.get("created_at_utc", ""),
-            is_active=user["is_active"]
-        )
-        for user in users
-    ]
+@router.get(
+    "/users",
+    response_model=List[UserResponse],
+    summary="Отримати список користувачів",
+    description="Повертає список всіх користувачів системи для адміністрування",
+    responses={
+        400: {"model": ErrorResponse, "description": "Помилка отримання користувачів"}
+    }
+)
+async def get_all_users_admin(
+        current_user: Annotated[dict, Depends(require_admin_role)],
+        admin_service: Annotated[AdminService, Depends(AdminService)]
+) -> List[UserResponse]:
+    """Отримати всіх користувачів для адмін панелі"""
+    logger.info(f"Admin {current_user['email']} requested users list")
+    return admin_service.get_all_users_response()
 
 
-@router.post("/users", response_model=UserCreateResponse)
-async def create_user_admin(user_data: UserCreate, request: Request) -> UserCreateResponse:
-    """Створення користувача через адмін панель"""
-    current_user = get_current_user(request)
+@router.post(
+    "/users",
+    response_model=UserCreateResponse,
+    summary="Створити нового користувача",
+    description="Створює нового користувача з вказаною роллю. Тільки super_admin може створювати admin користувачів",
+    responses={
+        400: {"model": ErrorResponse, "description": "Недостатньо прав для створення користувача з такою роллю"},
+        409: {"model": ErrorResponse, "description": "Користувач з таким email вже існує"},
+        422: {"model": ErrorResponse, "description": "Помилка валідації даних"}
+    }
+)
+async def create_user_admin(
+        user_data: UserCreate,
+        current_user: Annotated[dict, Depends(require_admin_role)],
+        admin_service: Annotated[AdminService, Depends(AdminService)]
+) -> UserCreateResponse:
+    """Створити нового користувача"""
+    result = admin_service.create_user_with_validation(
+        email=user_data.email,
+        password=user_data.password,
+        role=user_data.role,
+        current_user_role=current_user["role"]
+    )
 
-    if user_data.role == "admin" and current_user["role"] != "super_admin":
-        raise HTTPException(
-            status_code=403,
-            detail="Тільки super_admin може створювати адміністраторів"
-        )
+    logger.info(f"User {user_data.email} created by admin {current_user['email']}")
+    return result
 
-    auth_service = AuthService()
-    result = auth_service.create_user(user_data.email, user_data.password, user_data.role)
 
-    if not result["success"]:
-        raise HTTPException(status_code=400, detail=result["error"])
-
-    logger.info(f"Користувач {user_data.email} створений адміністратором {current_user['email']}")
-    return UserCreateResponse(
-        success=True,
-        message=result["message"],
-        user_id=result["user_id"]
+@router.put(
+    "/users/{user_id}",
+    summary="Оновити користувача",
+    description="Оновлює дані існуючого користувача. Не можна редагувати самого себе",
+    responses={
+        400: {"model": ErrorResponse, "description": "Не можна редагувати самого себе або недостатньо прав"},
+        404: {"model": ErrorResponse, "description": "Користувач не знайдений"},
+        409: {"model": ErrorResponse, "description": "Email вже використовується"},
+        422: {"model": ErrorResponse, "description": "Помилка валідації даних"}
+    }
+)
+async def update_user_admin(
+        user_id: str,
+        user_data: UserUpdateRequest,
+        current_user: Annotated[dict, Depends(require_admin_role)],
+        admin_service: Annotated[AdminService, Depends(AdminService)]
+):
+    """Оновити існуючого користувача"""
+    return admin_service.update_user_with_validation(
+        user_id=user_id,
+        email=user_data.email,
+        password=user_data.password,
+        role=user_data.role,
+        current_user_id=current_user["user_id"],
+        current_user_role=current_user["role"]
     )
 
 
-@router.put("/users/{user_id}")
-async def update_user_admin(user_id: str, user_data: UserUpdateRequest, request: Request):
-    """Оновлення користувача через адмін панель"""
-    current_user = get_current_user(request)
-    user_repo = create_repository("users", async_mode=False)
-
-    user_to_update = user_repo.find_by_id(user_id)
-    if not user_to_update:
-        raise HTTPException(status_code=404, detail="Користувача не знайдено")
-
-    if user_to_update["_id"] == current_user["user_id"]:
-        raise HTTPException(status_code=400, detail="Не можна редагувати самого себе")
-
-    updates = {}
-
-    if user_data.email and user_data.email != user_to_update["email"]:
-        existing_user = user_repo.find_by_field("email", user_data.email)
-        if existing_user and existing_user["_id"] != user_id:
-            raise HTTPException(status_code=400, detail="Користувач з таким email вже існує")
-        updates["email"] = user_data.email
-
-    if user_data.role and user_data.role != user_to_update["role"]:
-        if user_data.role not in ["annotator", "admin"]:
-            raise HTTPException(status_code=400, detail="Невірна роль")
-
-        if user_data.role == "admin" and current_user["role"] != "super_admin":
-            raise HTTPException(
-                status_code=403,
-                detail="Тільки super_admin може призначати роль admin"
-            )
-        updates["role"] = user_data.role
-
-    if user_data.password:
-        if len(user_data.password) < 8:
-            raise HTTPException(status_code=400, detail="Пароль повинен містити мінімум 8 символів")
-        updates["hashed_password"] = pwd_context.hash(user_data.password)
-
-    if not updates:
-        return {"success": True, "message": "Немає змін для оновлення"}
-
-    user_repo.update_by_id(user_id, updates)
-
-    logger.info(f"Користувач {user_to_update['email']} оновлений адміністратором {current_user['email']}")
-    return {"success": True, "message": "Користувача успішно оновлено"}
+@router.delete(
+    "/users/{user_id}",
+    response_model=UserDeleteResponse,
+    summary="Видалити користувача",
+    description="Видаляє користувача з системи. Не можна видалити самого себе",
+    responses={
+        400: {"model": ErrorResponse, "description": "Не можна видалити самого себе або недостатньо прав"},
+        404: {"model": ErrorResponse, "description": "Користувач не знайдений"}
+    }
+)
+async def delete_user_admin(
+        user_id: str,
+        current_user: Annotated[dict, Depends(require_admin_role)],
+        admin_service: Annotated[AdminService, Depends(AdminService)]
+) -> UserDeleteResponse:
+    """Видалити користувача"""
+    return admin_service.delete_user_with_validation(
+        user_id=user_id,
+        current_user_id=current_user["user_id"],
+        current_user_role=current_user["role"]
+    )
 
 
-@router.put("/users/{user_id}/role")
-async def update_user_role(user_id: str, new_role: str, request: Request):
-    """Оновлення ролі користувача"""
-    current_user = get_current_user(request)
-
-    if new_role not in ["annotator", "admin"]:
-        raise HTTPException(status_code=400, detail="Невірна роль")
-
-    if new_role == "admin" and current_user["role"] != "super_admin":
-        raise HTTPException(
-            status_code=403,
-            detail="Тільки super_admin може призначати роль admin"
-        )
-
-    user_repo = create_repository("users", async_mode=False)
-    user_to_update = user_repo.find_by_id(user_id)
-
-    if not user_to_update:
-        raise HTTPException(status_code=404, detail="Користувача не знайдено")
-
-    if user_to_update["_id"] == current_user["user_id"]:
-        raise HTTPException(status_code=400, detail="Не можна змінити власну роль")
-
-    user_repo.update_by_id(user_id, {"role": new_role})
-
-    logger.info(
-        f"Роль користувача {user_to_update['email']} змінена на {new_role} адміністратором {current_user['email']}")
-    return {"success": True, "message": "Роль успішно оновлена"}
+@router.get(
+    "/cvat-settings",
+    response_model=List[CVATSettings],
+    summary="Отримати налаштування CVAT",
+    description="Повертає налаштування для всіх CVAT проєктів",
+    responses={
+        400: {"model": ErrorResponse, "description": "Помилка отримання налаштувань"}
+    }
+)
+async def get_cvat_settings(
+        current_user: Annotated[dict, Depends(require_admin_role)],
+        admin_service: Annotated[AdminService, Depends(AdminService)]
+) -> List[CVATSettings]:
+    """Отримати налаштування CVAT проєктів"""
+    logger.info(f"Admin {current_user['email']} requested CVAT settings")
+    return admin_service.get_cvat_settings_response()
 
 
-@router.delete("/users/{user_id}", response_model=UserDeleteResponse)
-async def delete_user_admin(user_id: str, request: Request) -> UserDeleteResponse:
-    """Видалення користувача через адмін панель"""
-    current_user = get_current_user(request)
-    user_repo = create_repository("users", async_mode=False)
-
-    user_to_delete = user_repo.find_by_id(user_id)
-    if not user_to_delete:
-        raise HTTPException(status_code=404, detail="Користувача не знайдено")
-
-    if current_user["role"] == "annotator":
-        raise HTTPException(status_code=403, detail="Анотатори не можуть видаляти користувачів")
-
-    if user_to_delete["role"] == "admin" and current_user["role"] != "super_admin":
-        raise HTTPException(status_code=403, detail="Тільки super_admin може видаляти адміністраторів")
-
-    if user_to_delete["role"] == "super_admin" and current_user["role"] != "super_admin":
-        raise HTTPException(status_code=403, detail="Тільки super_admin може видаляти інших super_admin")
-
-    if user_to_delete["_id"] == current_user["user_id"]:
-        raise HTTPException(status_code=400, detail="Не можна видалити самого себе")
-
-    success = user_repo.delete_by_id(user_id)
-    if not success:
-        raise HTTPException(status_code=400, detail="Помилка видалення користувача")
-
-    logger.info(f"Користувач {user_to_delete['email']} видалений адміністратором {current_user['email']}")
-    return UserDeleteResponse(success=True, message="Користувача успішно видалено")
-
-
-@router.get("/cvat-settings", response_model=List[CVATSettingsResponse])
-async def get_cvat_settings(request: Request) -> List[CVATSettingsResponse]:
-    """Отримання всіх налаштувань CVAT проєктів"""
-    current_user = get_current_user(request)
-    logger.info(f"Адмін {current_user['email']} запросив налаштування CVAT")
-
-    try:
-        settings_repo = create_repository("cvat_project_settings", async_mode=False)
-
-        from backend.utils.cvat_setup import initialize_default_cvat_settings
-        initialize_default_cvat_settings()
-
-        all_settings = settings_repo.find_all()
-
-        return [
-            CVATSettingsResponse(
-                id=setting["_id"],
-                project_name=setting["project_name"],
-                project_id=setting["project_id"],
-                overlap=setting["overlap"],
-                segment_size=setting["segment_size"],
-                image_quality=setting["image_quality"],
-                created_at_utc=setting["created_at_utc"],
-                updated_at_utc=setting["updated_at_utc"]
-            )
-            for setting in all_settings
-        ]
-
-    except Exception as e:
-        logger.error(f"Помилка отримання налаштувань CVAT: {str(e)}")
-        raise HTTPException(status_code=500, detail="Помилка отримання налаштувань")
-
-
-@router.put("/cvat-settings/{project_name}")
+@router.put(
+    "/cvat-settings/{project_name}",
+    summary="Оновити налаштування CVAT проєкту",
+    description="Оновлює параметри CVAT для вказаного ML проєкту",
+    responses={
+        400: {"model": ErrorResponse, "description": "Помилка оновлення налаштувань"},
+        422: {"model": ErrorResponse, "description": "Project name в URL та body не співпадають"}
+    }
+)
 async def update_cvat_settings(
         project_name: str,
-        settings_data: CVATSettingsRequest,
-        request: Request
+        settings_data: CVATSettings,
+        current_user: Annotated[dict, Depends(require_admin_role)],
+        admin_service: Annotated[AdminService, Depends(AdminService)]
 ):
-    """Оновлення налаштувань CVAT проєкту"""
-    current_user = get_current_user(request)
+    """Оновити налаштування CVAT проєкту"""
+    if settings_data.project_name.value != project_name:
+        raise ValidationException("Project name in URL and body must match")
 
-    if project_name not in ["motion-det", "tracking", "mil-hardware", "re-id"]:
-        raise HTTPException(status_code=400, detail="Невірна назва проєкту")
+    result = admin_service.update_cvat_settings_with_model(settings_data)
 
-    try:
-        settings_repo = create_repository("cvat_project_settings", async_mode=False)
-
-        existing_settings = settings_repo.find_by_field("project_name", project_name)
-
-        if existing_settings:
-            success = settings_repo.update_by_field(
-                "project_name",
-                project_name,
-                {
-                    "project_id": settings_data.project_id,
-                    "overlap": settings_data.overlap,
-                    "segment_size": settings_data.segment_size,
-                    "image_quality": settings_data.image_quality
-                }
-            )
-
-            if success:
-                settings_id = existing_settings["_id"]
-            else:
-                raise Exception("Документ не було оновлено")
-        else:
-            from backend.models.cvat_settings import CVATProjectSettings
-            settings = CVATProjectSettings(
-                project_name=project_name,
-                project_id=settings_data.project_id,
-                overlap=settings_data.overlap,
-                segment_size=settings_data.segment_size,
-                image_quality=settings_data.image_quality
-            )
-            settings_dict = settings.model_dump()
-            settings_id = settings_repo.save_document(settings_dict)
-
-        logger.info(f"Налаштування проєкту {project_name} оновлені адміністратором {current_user['email']}")
-
-        return {
-            "success": True,
-            "message": "Налаштування успішно оновлені",
-            "id": settings_id
-        }
-
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        logger.error(f"Помилка оновлення налаштувань CVAT: {str(e)}")
-        raise HTTPException(status_code=500, detail="Помилка оновлення налаштувань")
+    logger.info(f"CVAT settings for {project_name} updated by admin {current_user['email']}")
+    return result

@@ -1,7 +1,7 @@
 import urllib.parse
 from typing import Dict, Any
 from urllib.parse import urlparse
-from backend.models.database import AzureFilePath
+from backend.models.shared import AzureFilePath
 from backend.utils.logger import get_logger
 
 logger = get_logger(__name__, "utils.log")

@@ -83,8 +83,66 @@ class BaseForm {
 }
 
 const api = {
+    isRefreshing: false,
+    failedQueue: [],
+
+    processQueue(error = null) {
+        api.failedQueue.forEach(prom => {
+            if (error) {
+                prom.reject(error);
+            } else {
+                prom.resolve();
+            }
+        });
+        api.failedQueue = [];
+    },
+
     async request(url, options = {}) {
+        // Якщо це запит на refresh - не додаємо токен і не перевіряємо авторизацію
+        if (url === '/auth/refresh') {
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...options.headers
+                },
+                ...options
+            });
+
+            if (!response.ok) {
+                const data = await response.json().catch(() => ({}));
+                throw new Error(data.message || data.detail || `HTTP ${response.status}`);
+            }
+
+            return response.json();
+        }
+
+        // Для інших запитів перевіряємо токен
         const token = localStorage.getItem('access_token');
+
+        // Якщо токен прострочений, спробуємо оновити
+        if (token && auth.isTokenExpired(token)) {
+            if (api.isRefreshing) {
+                // Якщо вже оновлюємо токен - чекаємо
+                return new Promise((resolve, reject) => {
+                    api.failedQueue.push({ resolve, reject });
+                }).then(() => api.request(url, options));
+            }
+
+            api.isRefreshing = true;
+            const refreshed = await auth.refresh();
+            api.isRefreshing = false;
+
+            if (refreshed) {
+                api.processQueue();
+                return api.request(url, options);
+            } else {
+                api.processQueue(new Error('Failed to refresh token'));
+                auth.logout();
+                return null;
+            }
+        }
+
         const response = await fetch(url, {
             headers: {
                 'Content-Type': 'application/json',
@@ -95,16 +153,31 @@ const api = {
         });
 
         if (response.status === 401) {
-            localStorage.clear();
-            location.href = '/login';
+            // Якщо отримали 401 і не намагалися оновити токен
+            if (!api.isRefreshing && token) {
+                api.isRefreshing = true;
+                const refreshed = await auth.refresh();
+                api.isRefreshing = false;
+
+                if (refreshed) {
+                    api.processQueue();
+                    return api.request(url, options);
+                } else {
+                    api.processQueue(new Error('Unauthorized'));
+                    auth.logout();
+                    return null;
+                }
+            }
+
+            // Якщо немає токена або вже намагалися оновити
+            auth.logout();
             return null;
         }
 
         const data = await response.json().catch(() => ({}));
 
         if (!response.ok) {
-            // Якщо є повідомлення про помилку від сервера, використовуємо його
-            const errorMessage = data.message || data.error || `HTTP ${response.status}`;
+            const errorMessage = data.message || data.detail || data.error || `HTTP ${response.status}`;
             throw new Error(errorMessage);
         }
 

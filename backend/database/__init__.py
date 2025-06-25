@@ -1,5 +1,25 @@
-from backend.database.unified_repository import UnifiedRepository
+from backend.database.document_repository import BaseDocumentRepository
+from backend.models.documents import (
+    SourceVideoDocument, ClipVideoDocument,
+    UserDocument, CVATProjectSettingsDocument
+)
 
-def create_repository(collection_name: str, async_mode: bool = False) -> UnifiedRepository:
-    """Створює репозиторій для роботи з MongoDB колекцією"""
-    return UnifiedRepository(collection_name, async_mode)
+
+def create_source_video_repository() -> BaseDocumentRepository[SourceVideoDocument]:
+    """Create source video repository"""
+    return BaseDocumentRepository(SourceVideoDocument)
+
+
+def create_clip_video_repository() -> BaseDocumentRepository[ClipVideoDocument]:
+    """Create clip video repository"""
+    return BaseDocumentRepository(ClipVideoDocument)
+
+
+def create_user_repository() -> BaseDocumentRepository[UserDocument]:
+    """Create user repository"""
+    return BaseDocumentRepository(UserDocument)
+
+
+def create_cvat_settings_repository() -> BaseDocumentRepository[CVATProjectSettingsDocument]:
+    """Create CVAT settings repository"""
+    return BaseDocumentRepository(CVATProjectSettingsDocument)

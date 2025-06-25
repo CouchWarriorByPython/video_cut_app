@@ -13,6 +13,7 @@ from backend.api.exceptions import (
 from backend.api.endpoints import video, annotation, static, auth, admin
 from backend.middlewares.auth_middleware import auth_middleware
 from backend.middlewares.log_middleware import log_middleware
+from backend.database.connection import DatabaseConnection
 from backend.config.settings import get_settings
 from backend.utils.logger import get_logger
 from backend.utils.admin_setup import create_super_admin, validate_admin_configuration
@@ -22,10 +23,11 @@ logger = get_logger(__name__, "main.log")
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    """Lifespan для ініціалізації при старті додатка"""
     logger.info("🚀 Запуск додатка...")
 
     try:
+        DatabaseConnection.connect()
+
         if not validate_admin_configuration():
             raise ValueError("Невірна конфігурація супер адміна")
 
@@ -40,6 +42,7 @@ async def lifespan(_app: FastAPI):
 
     yield
 
+    DatabaseConnection.disconnect()
     logger.info("🛑 Завершення роботи додатка")
 
 

@@ -9,32 +9,69 @@ const auth = {
 
     get role() {
         try {
-            return JSON.parse(atob(this.token.split('.')[1])).role;
+            const token = this.token;
+            if (!token) return null;
+            return JSON.parse(atob(token.split('.')[1])).role;
         } catch { return null; }
     },
 
     get isAdmin() { return ['admin', 'super_admin'].includes(this.role); },
 
+    isTokenExpired(token) {
+        try {
+            if (!token) return true;
+            const payload = JSON.parse(atob(token.split('.')[1]));
+            const exp = payload.exp;
+            if (!exp) return false;
+            // Перевіряємо чи токен прострочений (з запасом в 60 секунд)
+            return (exp * 1000) < (Date.now() + 60000);
+        } catch {
+            return true;
+        }
+    },
+
     async refresh() {
         try {
-            const data = await api.post('/auth/refresh', { refresh_token: this.refreshToken });
-            this.setTokens(data.access_token, data.refresh_token);
-            return true;
+            const refreshToken = this.refreshToken;
+            if (!refreshToken || this.isTokenExpired(refreshToken)) {
+                return false;
+            }
+
+            const data = await api.post('/auth/refresh', { refresh_token: refreshToken });
+            if (data && data.access_token && data.refresh_token) {
+                this.setTokens(data.access_token, data.refresh_token);
+                return true;
+            }
+            return false;
         } catch {
-            this.logout();
             return false;
         }
     },
 
     logout() {
         localStorage.clear();
-        location.href = '/login';
+        // Перевіряємо чи ми не на сторінці логіна
+        if (location.pathname !== '/login') {
+            location.href = '/login';
+        }
     },
 
     async checkAccess() {
-        if (!this.token) {
+        const token = this.token;
+
+        // Якщо немає токена
+        if (!token) {
             if (location.pathname !== '/login') this.logout();
             return false;
+        }
+
+        // Якщо токен прострочений, спробуємо оновити
+        if (this.isTokenExpired(token)) {
+            const refreshed = await this.refresh();
+            if (!refreshed) {
+                this.logout();
+                return false;
+            }
         }
 
         const permissions = {
@@ -81,7 +118,16 @@ const auth = {
 };
 
 document.addEventListener('DOMContentLoaded', async () => {
-    if (location.pathname === '/login' && auth.token) {
+    // Перевіряємо токен перед будь-якими діями
+    if (auth.token && auth.isTokenExpired(auth.token)) {
+        const refreshed = await auth.refresh();
+        if (!refreshed) {
+            auth.logout();
+            return;
+        }
+    }
+
+    if (location.pathname === '/login' && auth.token && !auth.isTokenExpired(auth.token)) {
         location.href = auth.isAdmin ? '/' : '/annotator';
         return;
     }

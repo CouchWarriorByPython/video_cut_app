@@ -2,7 +2,6 @@ class VideoAnnotator {
     constructor() {
         this.elements = this._initElements();
 
-        // Створюємо обробники як bound методи для правильного видалення
         this._boundHandlers = {
             timeupdate: this._updateTimelineProgress.bind(this),
             loadedmetadata: this._initVideoPlayer.bind(this),
@@ -115,7 +114,7 @@ class VideoAnnotator {
                 per_page: this.state.perPage.toString()
             });
 
-            const data = await api.get(`/get_videos?${params}`);
+            const data = await api.get(`/video/list?${params}`);
 
             if (data?.success) {
                 this.state.videos = this._deduplicateVideos(data.videos);
@@ -235,8 +234,6 @@ class VideoAnnotator {
             <td>
                 <span class="status-badge ${video.status}">${this._getStatusLabel(video.status)}</span>
             </td>
-            <td>${video.where || '-'}</td>
-            <td>${video.when || '-'}</td>
             <td>${this._formatDuration(video.duration_sec)}</td>
             <td>
                 <div class="lock-status">
@@ -301,10 +298,10 @@ class VideoAnnotator {
             const video = this.state.videos.find(v => v.id === videoId);
             if (!video) return;
 
-            const lockResult = await api.post(`/lock_video/${videoId}`);
+            const lockResult = await api.post(`/video/${videoId}/lock`, {});
 
             if (!lockResult.success) {
-                notify(lockResult.error, 'error');
+                notify(lockResult.error || lockResult.message, 'error');
                 await this._refreshVideosList();
                 return;
             }
@@ -324,14 +321,12 @@ class VideoAnnotator {
         } catch (error) {
             console.error('Помилка початку роботи:', error);
 
-            // Перевіряємо чи це помилка блокування
             if (error.message && error.message.includes('заблоковане')) {
                 notify(error.message, 'warning');
             } else {
                 notify('Помилка при блокуванні відео', 'error');
             }
 
-            // Оновлюємо список щоб показати актуальний статус блокування
             await this._refreshVideosList();
         }
     }
@@ -343,7 +338,7 @@ class VideoAnnotator {
             const confirmed = await confirm('Ви впевнені, що хочете розблокувати відео? Всі незбережені зміни будуть втрачені.');
             if (!confirmed) return;
 
-            const result = await api.post(`/unlock_video/${videoId}`);
+            const result = await api.post(`/video/${videoId}/unlock`, {});
 
             if (result.success) {
                 notify('Відео розблоковано', 'success');
@@ -398,12 +393,9 @@ class VideoAnnotator {
             });
             params.append('token', auth.token);
 
-            const videoUrl = `/get_video?${params}`;
+            const videoUrl = `/video/stream?${params}`;
 
-            // Видаляємо старі обробники
             this._removeVideoEventListeners();
-
-            // Додаємо нові обробники
             this._addVideoEventListeners();
 
             this.elements.videoPlayer.src = videoUrl;
@@ -457,7 +449,7 @@ class VideoAnnotator {
                 if (confirmed) {
                     this.state.isUnlocking = true;
                     try {
-                        const result = await api.post(`/unlock_video/${this.state.currentVideoId}`);
+                        const result = await api.post(`/video/${this.state.currentVideoId}/unlock`, {});
                         if (result.success) {
                             notify('Відео розблоковано', 'success');
                         }
@@ -469,21 +461,14 @@ class VideoAnnotator {
                 }
             }
 
-            // Видаляємо обробники подій
             this._removeVideoEventListeners();
-
-            // Зупиняємо відео
             this.elements.videoPlayer.pause();
-
-            // Очищаємо src перед приховуванням
             this.elements.videoPlayer.src = '';
-            this.elements.videoPlayer.load(); // Важливо! Форсуємо перезавантаження
+            this.elements.videoPlayer.load();
 
-            // Приховуємо редактор і показуємо список
             this.elements.videoEditor.classList.add('hidden');
             this.elements.videosListSection.style.display = 'block';
 
-            // Очищаємо стан
             this.state.currentAzureFilePath = null;
             this.state.currentVideoId = null;
             this.state.videoFileName = null;
@@ -571,7 +556,7 @@ class VideoAnnotator {
                 per_page: this.state.perPage.toString()
             });
 
-            const data = await api.get(`/get_videos?${params}`);
+            const data = await api.get(`/video/list?${params}`);
 
             if (data?.success) {
                 this.state.videos = this._deduplicateVideos(data.videos);
@@ -587,7 +572,6 @@ class VideoAnnotator {
 
     _startAutoRefresh() {
         this.refreshInterval = setInterval(async () => {
-            // Перевіряємо що ми на сторінці списку відео
             if (this.elements.videosListSection.style.display !== 'none') {
                 try {
                     const params = new URLSearchParams({
@@ -595,25 +579,22 @@ class VideoAnnotator {
                         per_page: this.state.perPage.toString()
                     });
 
-                    const data = await api.get(`/get_videos?${params}`);
+                    const data = await api.get(`/video/list?${params}`);
 
                     if (data?.success) {
                         const oldVideosCount = this.state.videos.length;
                         this.state.videos = this._deduplicateVideos(data.videos);
                         this.state.pagination = data.pagination;
 
-                        // Якщо кількість відео змінилась з 0 на більше - повністю перерендерюємо
                         if (oldVideosCount === 0 && this.state.videos.length > 0) {
                             this._renderVideosList();
                             this._renderPagination();
                             this._updateVideosCount();
                         } else if (this.state.videos.length > 0) {
-                            // Якщо відео вже були - оновлюємо тільки таблицю
                             const filteredVideos = this._applyFiltersToVideos();
                             this._updateVideosTable(filteredVideos);
                             this._updateVideosCount();
                         }
-                        // Якщо відео немає - empty state вже показано
                     }
                 } catch (error) {
                     console.error('Помилка автооновлення:', error);
@@ -621,6 +602,7 @@ class VideoAnnotator {
             }
         }, 5000);
     }
+
     _stopAutoRefresh() {
         if (this.refreshInterval) {
             clearInterval(this.refreshInterval);
@@ -721,7 +703,6 @@ class VideoAnnotator {
         const { metadata } = annotation;
         const form = this.elements.metadataForm;
 
-        // Беремо where/when з кореня annotation (вони вже правильно приходять з API)
         if (annotation.where) this.elements.videoWhere.value = annotation.where;
         if (annotation.when) this.elements.videoWhen.value = annotation.when;
 
@@ -1023,7 +1004,6 @@ class VideoAnnotator {
     }
 
     _handleVideoError(e) {
-        // Ігноруємо помилку якщо відео немає src або якщо це abort error
         if (!this.elements.videoPlayer.src ||
             this.elements.videoPlayer.src === '' ||
             this.elements.videoPlayer.src === window.location.href ||

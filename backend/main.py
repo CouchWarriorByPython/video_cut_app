@@ -6,8 +6,10 @@ from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from backend.api.exceptions import (
+    APIException, api_exception_handler,
     validation_exception_handler, http_exception_handler, general_exception_handler
 )
+
 from backend.api.endpoints import video, annotation, static, auth, admin
 from backend.middlewares.auth_middleware import auth_middleware
 from backend.middlewares.log_middleware import log_middleware
@@ -51,6 +53,7 @@ app = FastAPI(
 app.middleware("http")(log_middleware)
 app.middleware("http")(auth_middleware)
 
+app.add_exception_handler(APIException, api_exception_handler)
 app.add_exception_handler(RequestValidationError, validation_exception_handler)
 app.add_exception_handler(StarletteHTTPException, http_exception_handler)
 app.add_exception_handler(Exception, general_exception_handler)

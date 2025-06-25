@@ -3,10 +3,12 @@ import subprocess
 import shlex
 from typing import Dict, Any, Optional
 
-from backend.config.settings import Settings
+from backend.config.settings import get_settings
+
 from backend.database import create_repository
 from backend.utils.logger import get_logger
 
+settings = get_settings()
 logger = get_logger(__name__, "services.log")
 
 
@@ -66,9 +68,9 @@ class CVATService:
 
             cli_command = [
                 "cvat-cli",
-                "--auth", f"{shlex.quote(Settings.cvat_username)}:{shlex.quote(Settings.cvat_password)}",
-                "--server-host", shlex.quote(Settings.cvat_host),
-                "--server-port", str(Settings.cvat_port),
+                "--auth", f"{shlex.quote(settings.cvat_username)}:{shlex.quote(settings.cvat_password)}",
+                "--server-host", shlex.quote(settings.cvat_host),
+                "--server-port", str(settings.cvat_port),
                 "create", shlex.quote(filename),
                 "local", shlex.quote(file_path),
                 "--project_id", str(project_id),

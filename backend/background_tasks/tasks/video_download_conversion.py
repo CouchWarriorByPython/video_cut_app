@@ -10,9 +10,11 @@ from backend.services.azure_service import AzureService
 from backend.models.database import AzureFilePath, VideoStatus
 from backend.utils.azure_path_utils import extract_filename_from_azure_path
 from backend.utils.video_utils import get_local_video_path, cleanup_file
-from backend.config.settings import Settings
+from backend.config.settings import get_settings
+
 from backend.utils.logger import get_logger
 
+settings = get_settings()
 logger = get_logger(__name__, "tasks.log")
 
 
@@ -78,7 +80,8 @@ def download_and_convert_video(self, azure_path_dict: Dict[str, str]) -> Dict[st
         )
 
         if not download_result["success"]:
-            repo.update_by_field("azure_file_path.blob_path", azure_path.blob_path, {"status": VideoStatus.DOWNLOAD_ERROR})
+            repo.update_by_field("azure_file_path.blob_path", azure_path.blob_path,
+                                 {"status": VideoStatus.DOWNLOAD_ERROR})
             self.update_state(
                 state='FAILURE',
                 meta={
@@ -102,7 +105,8 @@ def download_and_convert_video(self, azure_path_dict: Dict[str, str]) -> Dict[st
 
         video_info = get_video_info(local_path)
         if not video_info:
-            repo.update_by_field("azure_file_path.blob_path", azure_path.blob_path, {"status": VideoStatus.DOWNLOAD_ERROR})
+            repo.update_by_field("azure_file_path.blob_path", azure_path.blob_path,
+                                 {"status": VideoStatus.DOWNLOAD_ERROR})
             cleanup_file(local_path)
             self.update_state(
                 state='FAILURE',
@@ -122,7 +126,7 @@ def download_and_convert_video(self, azure_path_dict: Dict[str, str]) -> Dict[st
             }
         )
 
-        if Settings.skip_conversion_for_compatible and is_web_compatible(video_info):
+        if settings.skip_conversion_for_compatible and is_web_compatible(video_info):
             logger.info(f"Video is already web-compatible, skipping conversion: {azure_path.blob_path}")
             self.update_state(
                 state='PROGRESS',
@@ -142,7 +146,8 @@ def download_and_convert_video(self, azure_path_dict: Dict[str, str]) -> Dict[st
             )
 
             if not success:
-                repo.update_by_field("azure_file_path.blob_path", azure_path.blob_path, {"status": VideoStatus.DOWNLOAD_ERROR})
+                repo.update_by_field("azure_file_path.blob_path", azure_path.blob_path,
+                                     {"status": VideoStatus.DOWNLOAD_ERROR})
                 cleanup_file(local_path)
                 self.update_state(
                     state='FAILURE',
@@ -196,7 +201,8 @@ def download_and_convert_video(self, azure_path_dict: Dict[str, str]) -> Dict[st
         try:
             annotation = repo.find_by_field("azure_file_path.blob_path", azure_path.blob_path)
             if annotation:
-                repo.update_by_field("azure_file_path.blob_path", azure_path.blob_path, {"status": VideoStatus.DOWNLOAD_ERROR})
+                repo.update_by_field("azure_file_path.blob_path", azure_path.blob_path,
+                                     {"status": VideoStatus.DOWNLOAD_ERROR})
 
             if 'local_path' in locals():
                 cleanup_file(local_path)
@@ -283,8 +289,8 @@ def convert_to_web_format_with_progress(
 
         command.extend([
             "-c:v", "libx264",
-            "-preset", Settings.video_conversion_preset,
-            "-crf", str(Settings.video_conversion_crf),
+            "-preset", settings.video_conversion_preset,
+            "-crf", str(settings.video_conversion_crf),
             "-profile:v", "high",
             "-level", "4.0",
             "-c:a", "aac",

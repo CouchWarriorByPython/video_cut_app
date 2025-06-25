@@ -1,164 +1,129 @@
-import os
-from typing import ClassVar
-from dotenv import load_dotenv
+from functools import lru_cache
+from pydantic import Field, field_validator, computed_field
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from pathlib import Path
 
 
-class Settings:
-    """Централізовані налаштування програми з завантаженням з .env файлу"""
+class Settings(BaseSettings):
+    """Централізовані налаштування програми"""
 
-    mongo_uri: ClassVar[str] = ""
-    mongo_db_name: ClassVar[str] = ""
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        extra="ignore"
+    )
 
-    celery_broker_url: ClassVar[str] = ""
-    celery_result_backend: ClassVar[str] = ""
+    # MongoDB - обов'язкові
+    mongo_uri: str
+    mongo_db: str = Field(default="video_annotator")
 
-    azure_tenant_id: ClassVar[str] = ""
-    azure_client_id: ClassVar[str] = ""
-    azure_client_secret: ClassVar[str] = ""
-    azure_storage_account_name: ClassVar[str] = ""
-    azure_storage_container_name: ClassVar[str] = ""
-    azure_output_folder_path: ClassVar[str] = ""
+    # Redis & Celery - дефолти для локальної розробки
+    redis_url: str = Field(default="redis://redis:6379/0")
+    celery_broker_url: str = Field(default="redis://redis:6379/0")
+    celery_result_backend: str = Field(default="redis://redis:6379/0")
 
-    cvat_host: ClassVar[str] = ""
-    cvat_port: ClassVar[int] = 8080
-    cvat_username: ClassVar[str] = ""
-    cvat_password: ClassVar[str] = ""
+    # Azure - всі обов'язкові, без дефолтів
+    azure_tenant_id: str
+    azure_client_id: str
+    azure_client_secret: str
+    azure_storage_account_name: str
+    azure_storage_container_name: str
+    azure_input_folder_path: str = Field(default="input/")
+    azure_output_folder_path: str = Field(default="output/")
 
-    temp_folder: ClassVar[str] = ""
-    logs_folder: ClassVar[str] = ""
+    # CVAT - обов'язкові
+    cvat_host: str
+    cvat_port: int = Field(default=8080)
+    cvat_username: str
+    cvat_password: str
 
-    log_level: ClassVar[str] = ""
-    log_max_bytes: ClassVar[int] = 0
-    log_backup_count: ClassVar[int] = 0
+    # Paths - дефолти для структури проєкту
+    temp_folder: str = Field(default="temp")
+    logs_folder: str = Field(default="logs")
 
-    ffmpeg_log_level: ClassVar[str] = ""
+    # Logging - розумні дефолти
+    log_level: str = Field(default="INFO")
+    log_max_bytes: int = Field(default=10485760)  # 10MB
+    log_backup_count: int = Field(default=5)
 
-    fast_api_host: ClassVar[str] = ""
-    fast_api_port: ClassVar[int] = 0
-    reload: ClassVar[bool] = False
+    # FFmpeg
+    ffmpeg_log_level: str = Field(default="error")
 
-    azure_download_chunk_size: ClassVar[int] = 16777216
-    azure_max_concurrency: ClassVar[int] = 4
+    # FastAPI
+    fast_api_host: str = Field(default="0.0.0.0")
+    fast_api_port: int = Field(default=8000)
+    reload: bool = Field(default=False)
 
-    video_conversion_preset: ClassVar[str] = "fast"
-    video_conversion_crf: ClassVar[int] = 23
-    enable_hardware_acceleration: ClassVar[bool] = True
-    skip_conversion_for_compatible: ClassVar[bool] = True
-    max_conversion_workers: ClassVar[int] = 2
+    # Azure processing - технічні дефолти
+    azure_download_chunk_size: int = Field(default=16777216)  # 16MB
+    azure_max_concurrency: int = Field(default=4)
 
-    jwt_secret_key: ClassVar[str] = ""
-    jwt_algorithm: ClassVar[str] = "HS256"
-    access_token_expire_minutes: ClassVar[int] = 30
-    refresh_token_expire_minutes: ClassVar[int] = 10080  # 7 днів
+    # Video conversion - технічні дефолти
+    video_conversion_preset: str = Field(default="fast")
+    video_conversion_crf: int = Field(default=23)
+    enable_hardware_acceleration: bool = Field(default=True)
+    skip_conversion_for_compatible: bool = Field(default=True)
+    max_conversion_workers: int = Field(default=2)
 
-    admin_email: ClassVar[str] = ""
-    admin_password: ClassVar[str] = ""
+    # JWT - обов'язковий secret_key
+    secret_key: str = Field(alias="SECRET_KEY")
+    jwt_algorithm: str = Field(default="HS256")
+    access_token_expire_minutes: int = Field(default=30)
+    refresh_token_expire_minutes: int = Field(default=10080)  # 7 days
 
+    # Admin - обов'язкові
+    super_admin_email: str
+    super_admin_password: str
+
+    # Environment
+    environment: str = Field(default="development")
+
+    @field_validator("reload", mode="before")
     @classmethod
-    def load_from_env(cls) -> None:
-        """Завантаження налаштувань з .env файлу"""
-        load_dotenv(".env", override=True)
+    def parse_bool(cls, v: str | bool) -> bool:
+        """Парсинг булевих значень з рядків"""
+        if isinstance(v, bool):
+            return v
+        return v.lower() in ("true", "1", "yes")
 
-        cls.mongo_uri = os.getenv("MONGO_URI", "")
-        cls.mongo_db_name = os.getenv("MONGO_DB", "video_annotator")
-
-        cls.redis_url = os.getenv("REDIS_URL", "redis://redis:6379/0")
-        cls.celery_broker_url = os.getenv("CELERY_BROKER_URL", "redis://redis:6379/0")
-        cls.celery_result_backend = os.getenv("CELERY_RESULT_BACKEND", "redis://redis:6379/0")
-
-        cls.azure_tenant_id = os.getenv("AZURE_TENANT_ID", "")
-        cls.azure_client_id = os.getenv("AZURE_CLIENT_ID", "")
-        cls.azure_client_secret = os.getenv("AZURE_CLIENT_SECRET", "")
-        cls.azure_storage_account_name = os.getenv("AZURE_STORAGE_ACCOUNT_NAME", "")
-        cls.azure_storage_container_name = os.getenv("AZURE_STORAGE_CONTAINER_NAME", "")
-        cls.azure_input_folder_path = os.getenv("AZURE_INPUT_FOLDER_PATH", "input/")
-        cls.azure_output_folder_path = os.getenv("AZURE_OUTPUT_FOLDER_PATH", "output/")
-
-        cls.cvat_host = os.getenv("CVAT_HOST", "localhost")
-        cls.cvat_port = int(os.getenv("CVAT_PORT", "8080"))
-        cls.cvat_username = os.getenv("CVAT_USERNAME", "")
-        cls.cvat_password = os.getenv("CVAT_PASSWORD", "")
-
-        cls.temp_folder = os.getenv("TEMP_FOLDER", "temp")
-        cls.logs_folder = os.getenv("LOGS_FOLDER", "logs")
-
-        cls.log_level = os.getenv("LOG_LEVEL", "INFO")
-        cls.log_max_bytes = int(os.getenv("LOG_MAX_BYTES", str(10 * 1024 * 1024)))
-        cls.log_backup_count = int(os.getenv("LOG_BACKUP_COUNT", "5"))
-
-        cls.ffmpeg_log_level = os.getenv("FFMPEG_LOG_LEVEL", "error")
-
-        cls.fast_api_host = os.getenv("FAST_API_HOST", "0.0.0.0")
-        cls.fast_api_port = int(os.getenv("FAST_API_PORT", "8000"))
-        cls.reload = os.getenv("RELOAD", "false").lower() in ("true", "1", "yes")
-
-        cls.azure_download_chunk_size = int(os.getenv("AZURE_DOWNLOAD_CHUNK_SIZE", "16777216"))
-        cls.azure_max_concurrency = int(os.getenv("AZURE_MAX_CONCURRENCY", "4"))
-
-        cls.video_conversion_preset = os.getenv("VIDEO_CONVERSION_PRESET", "fast")
-        cls.video_conversion_crf = int(os.getenv("VIDEO_CONVERSION_CRF", "23"))
-        cls.enable_hardware_acceleration = os.getenv("ENABLE_HARDWARE_ACCELERATION", "true").lower() in ("true", "1",
-                                                                                                         "yes")
-        cls.skip_conversion_for_compatible = os.getenv("SKIP_CONVERSION_FOR_COMPATIBLE", "true").lower() in ("true",
-                                                                                                             "1", "yes")
-        cls.max_conversion_workers = int(os.getenv("MAX_CONVERSION_WORKERS", "2"))
-
-        cls.jwt_secret_key = os.getenv("SECRET_KEY", "your-super-secret-key-change-in-production")
-        cls.jwt_algorithm = os.getenv("JWT_ALGORITHM", "HS256")
-        cls.access_token_expire_minutes = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "30"))
-        cls.refresh_token_expire_minutes = int(os.getenv("REFRESH_TOKEN_EXPIRE_MINUTES", "10080"))
-
-        cls.admin_email = os.getenv("SUPER_ADMIN_EMAIL", "admin@example.com")
-        cls.admin_password = os.getenv("SUPER_ADMIN_PASSWORD", "SuperAdmin123!")
-
-        cls._create_directories()
-        cls._validate_required_settings()
-
+    @field_validator("enable_hardware_acceleration", "skip_conversion_for_compatible", mode="before")
     @classmethod
-    def _create_directories(cls) -> None:
+    def parse_bool_fields(cls, v: str | bool) -> bool:
+        """Парсинг булевих полів"""
+        if isinstance(v, bool):
+            return v
+        return v.lower() in ("true", "1", "yes")
+
+    @computed_field
+    @property
+    def azure_account_url(self) -> str:
+        """URL до Azure Storage Account"""
+        return f"https://{self.azure_storage_account_name}.blob.core.windows.net"
+
+    @computed_field
+    @property
+    def is_local_environment(self) -> bool:
+        """Перевіряє чи це локальне середовище"""
+        return self.environment.lower() in ("development", "dev", "local")
+
+    @computed_field
+    @property
+    def mongo_db_name(self) -> str:
+        """Для зворотної сумісності"""
+        return self.mongo_db
+
+    def create_directories(self) -> None:
         """Створює необхідні директорії"""
-        for folder in [cls.temp_folder, cls.logs_folder]:
+        for folder in [self.temp_folder, self.logs_folder]:
             Path(folder).mkdir(exist_ok=True)
 
-    @classmethod
-    def _validate_required_settings(cls) -> None:
-        """Перевіряє наявність обов'язкових налаштувань"""
-        required_settings = [
-            ("MONGO_URI", cls.mongo_uri),
-            ("AZURE_TENANT_ID", cls.azure_tenant_id),
-            ("AZURE_CLIENT_ID", cls.azure_client_id),
-            ("AZURE_CLIENT_SECRET", cls.azure_client_secret),
-            ("AZURE_STORAGE_ACCOUNT_NAME", cls.azure_storage_account_name),
-            ("AZURE_STORAGE_CONTAINER_NAME", cls.azure_storage_container_name),
-            ("CVAT_HOST", cls.cvat_host),
-            ("CVAT_USERNAME", cls.cvat_username),
-            ("CVAT_PASSWORD", cls.cvat_password),
-        ]
-
-        missing = []
-        for name, value in required_settings:
-            if not value:
-                missing.append(name)
-
-        if missing:
-            raise ValueError(f"Відсутні обов'язкові налаштування: {', '.join(missing)}")
-
-    @classmethod
-    def get_azure_account_url(cls) -> str:
-        """Повертає URL до Azure Storage Account"""
-        return f"https://{cls.azure_storage_account_name}.blob.core.windows.net"
-
-    @classmethod
-    def is_local_environment(cls) -> bool:
-        """Перевіряє чи це локальне середовище"""
-        env = os.getenv("ENVIRONMENT", "development").lower()
-        return env in ("development", "dev", "local")
-
-    @classmethod
-    def get_environment_name(cls) -> str:
-        """Повертає назву поточного середовища"""
-        return os.getenv("ENVIRONMENT", "development")
+    def model_post_init(self, __context) -> None:
+        """Ініціалізація після створення моделі"""
+        self.create_directories()
 
 
-Settings.load_from_env()
+@lru_cache
+def get_settings() -> Settings:
+    """Повертає singleton інстанс Settings"""
+    return Settings()

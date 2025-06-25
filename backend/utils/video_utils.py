@@ -3,8 +3,9 @@ import subprocess
 import json
 from typing import Optional, Dict, Any
 from backend.utils.logger import get_logger
-from backend.config.settings import Settings
+from backend.config.settings import get_settings
 
+settings = get_settings()
 logger = get_logger(__name__, "utils.log")
 
 
@@ -96,7 +97,7 @@ def trim_video_clip(source_path: str, output_path: str, start_time: str, end_tim
             "-to", end_time,
             "-i", source_path,
             "-c", "copy",
-            "-loglevel", Settings.ffmpeg_log_level,
+            "-loglevel", settings.ffmpeg_log_level,
             output_path,
         ]
 
@@ -153,5 +154,5 @@ def cleanup_file(file_path: str) -> None:
 
 def get_local_video_path(filename: str) -> str:
     """Конструює локальний шлях для відео файлу"""
-    local_videos_dir = os.path.join(Settings.temp_folder, "source_videos")
+    local_videos_dir = os.path.join(settings.temp_folder, "source_videos")
     return os.path.join(local_videos_dir, filename)

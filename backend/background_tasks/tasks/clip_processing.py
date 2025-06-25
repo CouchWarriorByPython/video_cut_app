@@ -14,9 +14,11 @@ from backend.utils.video_utils import (
 )
 from backend.services.azure_service import AzureService
 from backend.services.cvat_service import CVATService
-from backend.config.settings import Settings
+from backend.config.settings import get_settings
+
 from backend.utils.logger import get_logger
 
+settings = get_settings()
 logger = get_logger(__name__, "tasks.log")
 
 
@@ -59,7 +61,7 @@ def process_video_clip(self, clip_video_id: str) -> Dict[str, Any]:
         temp_clip_file = tempfile.NamedTemporaryFile(
             delete=False,
             suffix=f".{clip_data['extension']}",
-            dir=Settings.temp_folder
+            dir=settings.temp_folder
         )
         temp_clip_path = temp_clip_file.name
         temp_clip_file.close()

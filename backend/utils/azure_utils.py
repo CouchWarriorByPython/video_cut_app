@@ -10,9 +10,11 @@ from azure.storage.blob import BlobServiceClient, ContainerClient
 from azure.identity import ClientSecretCredential
 from azure.core.exceptions import ResourceNotFoundError
 
-from backend.config.settings import Settings
+from backend.config.settings import get_settings
+
 from backend.utils.logger import get_logger
 
+settings = get_settings()
 logger = get_logger(__name__, "utils.log")
 
 # Зменшуємо вербальність Azure логів
@@ -24,13 +26,13 @@ def get_blob_service_client() -> BlobServiceClient:
     """Отримує BlobServiceClient на основі service principal credentials"""
     try:
         credential = ClientSecretCredential(
-            tenant_id=Settings.azure_tenant_id,
-            client_id=Settings.azure_client_id,
-            client_secret=Settings.azure_client_secret
+            tenant_id=settings.azure_tenant_id,
+            client_id=settings.azure_client_id,
+            client_secret=settings.azure_client_secret
         )
 
         return BlobServiceClient(
-            account_url=Settings.get_azure_account_url(),
+            account_url=settings.azure_account_url,
             credential=credential
         )
     except Exception as e:
@@ -40,7 +42,7 @@ def get_blob_service_client() -> BlobServiceClient:
 
 def get_blob_container_client(blob_service_client: BlobServiceClient) -> ContainerClient:
     """Отримує ContainerClient для налаштованого контейнера"""
-    return blob_service_client.get_container_client(container=Settings.azure_storage_container_name)
+    return blob_service_client.get_container_client(container=settings.azure_storage_container_name)
 
 
 def parse_azure_blob_url(azure_url: str) -> Dict[str, str]:
@@ -104,18 +106,18 @@ def download_blob_to_local_parallel_with_progress(
         os.makedirs(os.path.dirname(local_path), exist_ok=True)
 
         # Якщо файл невеликий, завантажуємо звичайним способом
-        if file_size < Settings.azure_download_chunk_size * 2:
+        if file_size < settings.azure_download_chunk_size * 2:
             return download_blob_to_local_simple_with_progress(blob_client, local_path, file_size, progress_callback)
 
         # Розбиваємо на частини
         chunks = []
-        for i in range(0, file_size, Settings.azure_download_chunk_size):
+        for i in range(0, file_size, settings.azure_download_chunk_size):
             start = i
-            end = min(i + Settings.azure_download_chunk_size - 1, file_size - 1)
+            end = min(i + settings.azure_download_chunk_size - 1, file_size - 1)
             chunks.append((start, end, len(chunks)))
 
         logger.info(
-            f"Завантаження {len(chunks)} частин по {Settings.azure_download_chunk_size / (1024 * 1024):.1f} MB з {Settings.azure_max_concurrency} потоками")
+            f"Завантаження {len(chunks)} частин по {settings.azure_download_chunk_size / (1024 * 1024):.1f} MB з {settings.azure_max_concurrency} потоками")
 
         # Прогрес-трекінг
         completed_chunks = 0
@@ -132,7 +134,7 @@ def download_blob_to_local_parallel_with_progress(
                     progress_callback(estimated_bytes, file_size)
 
         # Паралельне завантаження частин з оригінальною логікою
-        with ThreadPoolExecutor(max_workers=Settings.azure_max_concurrency) as executor:
+        with ThreadPoolExecutor(max_workers=settings.azure_max_concurrency) as executor:
             futures = []
 
             for start, end, chunk_index in chunks:

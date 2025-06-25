@@ -14,9 +14,11 @@ from backend.utils.azure_path_utils import (
     extract_filename_from_azure_path, validate_azure_path_structure
 )
 
-from backend.config.settings import Settings
+from backend.config.settings import get_settings
+
 from backend.utils.logger import get_logger
 
+settings = get_settings()
 logger = get_logger(__name__, "services.log")
 
 
@@ -46,10 +48,10 @@ class AzureService:
         try:
             azure_path = parse_azure_blob_url_to_path(url)
 
-            if azure_path.account_name != Settings.azure_storage_account_name:
+            if azure_path.account_name != settings.azure_storage_account_name:
                 return {
                     "valid": False,
-                    "error": f"URL must be from storage account '{Settings.azure_storage_account_name}'"
+                    "error": f"URL must be from storage account '{settings.azure_storage_account_name}'"
                 }
 
             if not validate_azure_path_structure(azure_path):

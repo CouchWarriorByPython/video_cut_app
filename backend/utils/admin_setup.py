@@ -1,9 +1,11 @@
 from backend.database import create_repository
 from backend.utils.logger import get_logger
-from backend.config.settings import Settings
+from backend.config.settings import get_settings
+
 from datetime import datetime, UTC
 from passlib.context import CryptContext
 
+settings = get_settings()
 logger = get_logger(__name__, "admin_setup.log")
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
@@ -14,7 +16,7 @@ def create_super_admin() -> None:
         user_repo = create_repository("users", async_mode=False)
         user_repo.create_indexes()
 
-        existing_admin = user_repo.find_by_field("email", Settings.admin_email)
+        existing_admin = user_repo.find_by_field("email", settings.super_admin_email)
 
         if existing_admin:
             current_time = datetime.now(UTC).isoformat(sep=" ", timespec="seconds")
@@ -33,23 +35,23 @@ def create_super_admin() -> None:
                 updates["role"] = "super_admin"
                 logger.warning(f"Виправлено роль супер адміна з '{existing_admin['role']}' на 'super_admin'")
 
-            if not verify_password(Settings.admin_password, existing_admin["hashed_password"]):
-                updates["hashed_password"] = hash_password(Settings.admin_password)
+            if not verify_password(settings.super_admin_password, existing_admin["hashed_password"]):
+                updates["hashed_password"] = hash_password(settings.super_admin_password)
                 logger.info("Оновлено пароль супер адміна згідно з поточними налаштуваннями")
 
             if updates:
                 success = user_repo.update_by_id(existing_admin["_id"], updates)
                 if success:
-                    logger.info(f"Оновлено поля супер адміна: {Settings.admin_email}")
+                    logger.info(f"Оновлено поля супер адміна: {settings.super_admin_email}")
                 else:
-                    logger.error(f"Не вдалося оновити супер адміна: {Settings.admin_email}")
+                    logger.error(f"Не вдалося оновити супер адміна: {settings.super_admin_email}")
             else:
-                logger.info(f"Супер адмін {Settings.admin_email} вже існує та актуальний")
+                logger.info(f"Супер адмін {settings.super_admin_email} вже існує та актуальний")
             return
 
         admin_data = {
-            "email": Settings.admin_email,
-            "hashed_password": hash_password(Settings.admin_password),
+            "email": settings.super_admin_email,
+            "hashed_password": hash_password(settings.super_admin_password),
             "role": "super_admin",
             "is_active": True,
             "created_at_utc": datetime.now(UTC).isoformat(sep=" ", timespec="seconds"),
@@ -57,7 +59,7 @@ def create_super_admin() -> None:
         }
 
         admin_id = user_repo.save_document(admin_data)
-        logger.info(f"Створено супер адміна: {Settings.admin_email} (ID: {admin_id})")
+        logger.info(f"Створено супер адміна: {settings.super_admin_email} (ID: {admin_id})")
 
     except Exception as e:
         logger.error(f"Помилка створення супер адміна: {str(e)}")
@@ -66,11 +68,11 @@ def create_super_admin() -> None:
 
 def validate_admin_configuration() -> bool:
     """Валідує конфігурацію адміністратора"""
-    if not Settings.admin_email or "@" not in Settings.admin_email:
+    if not settings.super_admin_email or "@" not in settings.super_admin_email:
         logger.error("Невірний email адміністратора в конфігурації")
         return False
 
-    if not Settings.admin_password or len(Settings.admin_password) < 8:
+    if not settings.super_admin_password or len(settings.super_admin_password) < 8:
         logger.error("Пароль адміністратора повинен містити мінімум 8 символів")
         return False
 

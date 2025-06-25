@@ -3,9 +3,11 @@ from typing import Dict, Any
 from datetime import datetime, timedelta
 import json
 
-from backend.config.settings import Settings
+from backend.config.settings import get_settings
+
 from backend.utils.logger import get_logger
 
+settings = get_settings()
 logger = get_logger(__name__, "services.log")
 
 
@@ -13,7 +15,7 @@ class VideoLockService:
     """Сервіс для блокування відео через Redis"""
 
     def __init__(self):
-        self.redis_client = redis.from_url(Settings.redis_url, decode_responses=True)
+        self.redis_client = redis.from_url(settings.redis_url, decode_responses=True)
         self.lock_timeout = 3600  # 1 година в секундах
 
     def lock_video(self, video_id: str, user_id: str, user_email: str) -> Dict[str, Any]:

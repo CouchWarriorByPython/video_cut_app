@@ -1,6 +1,8 @@
 from pymongo import MongoClient
 from motor.motor_asyncio import AsyncIOMotorClient
-from backend.config.settings import Settings
+from backend.config.settings import get_settings
+
+settings = get_settings()
 from backend.utils.logger import get_logger
 
 logger = get_logger(__name__, "database.log")
@@ -17,8 +19,8 @@ class DatabaseConnection:
         """Отримує синхронний клієнт MongoDB"""
         if cls._sync_client is None:
             try:
-                cls._sync_client = MongoClient(Settings.mongo_uri)
-                logger.debug(f"Створено синхронне підключення до MongoDB: {Settings.mongo_db_name}")
+                cls._sync_client = MongoClient(settings.mongo_uri)
+                logger.debug(f"Створено синхронне підключення до MongoDB: {settings.mongo_db}")
             except Exception as e:
                 logger.error(f"Помилка підключення до MongoDB: {str(e)}")
                 raise
@@ -29,8 +31,8 @@ class DatabaseConnection:
         """Отримує асинхронний клієнт MongoDB"""
         if cls._async_client is None:
             try:
-                cls._async_client = AsyncIOMotorClient(Settings.mongo_uri)
-                logger.debug(f"Створено асинхронне підключення до MongoDB: {Settings.mongo_db_name}")
+                cls._async_client = AsyncIOMotorClient(settings.mongo_uri)
+                logger.debug(f"Створено асинхронне підключення до MongoDB: {settings.mongo_db}")
             except Exception as e:
                 logger.error(f"Помилка асинхронного підключення до MongoDB: {str(e)}")
                 raise
@@ -40,13 +42,13 @@ class DatabaseConnection:
     def get_sync_database(cls):
         """Отримує синхронну базу даних"""
         client = cls.get_sync_client()
-        return client[Settings.mongo_db_name]
+        return client[settings.mongo_db]
 
     @classmethod
     def get_async_database(cls):
         """Отримує асинхронну базу даних"""
         client = cls.get_async_client()
-        return client[Settings.mongo_db_name]
+        return client[settings.mongo_db]
 
     @classmethod
     def close_connections(cls) -> None:

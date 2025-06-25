@@ -1,7 +1,9 @@
-from backend.config.settings import Settings
+from backend.config.settings import get_settings
 
-broker_url = Settings.celery_broker_url
-result_backend = Settings.celery_result_backend
+settings = get_settings()
+
+broker_url = settings.celery_broker_url
+result_backend = settings.celery_result_backend
 
 task_serializer = 'json'
 result_serializer = 'json'
@@ -26,7 +28,7 @@ task_routes = {
 }
 
 task_annotations = {
-    'download_and_convert_video': {'rate_limit': f'{Settings.max_conversion_workers}/m'},
+    'download_and_convert_video': {'rate_limit': f'{settings.max_conversion_workers}/m'},
 }
 
 worker_prefetch_multiplier = 1
@@ -39,7 +41,6 @@ result_compression = 'gzip'
 broker_connection_retry_on_startup = True
 broker_connection_retry = True
 
-# Налаштування для збереження прогресу задач
 result_expires = 86400  # 24 години
 task_ignore_result = False
 task_store_eager_result = True

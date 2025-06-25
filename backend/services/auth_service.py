@@ -7,7 +7,7 @@ from passlib.context import CryptContext
 from backend.database import create_repository
 from backend.models.user import Token
 from backend.utils.logger import get_logger
-from backend.config.settings import Settings
+from backend.config.settings import get_settings
 
 logger = get_logger(__name__, "services.log")
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -18,10 +18,7 @@ class AuthService:
 
     def __init__(self):
         self.user_repo = create_repository("users", async_mode=False)
-        self.secret_key = Settings.jwt_secret_key
-        self.algorithm = Settings.jwt_algorithm
-        self.access_token_expire_minutes = Settings.access_token_expire_minutes
-        self.refresh_token_expire_minutes = Settings.refresh_token_expire_minutes
+        self.settings = get_settings()
 
     def authenticate_user(self, email: EmailStr, password: str) -> Optional[Dict]:
         """Аутентифікує користувача"""
@@ -49,18 +46,18 @@ class AuthService:
                 "role": user["role"]
             }
 
-            access_expire = now + timedelta(minutes=self.access_token_expire_minutes)
+            access_expire = now + timedelta(minutes=self.settings.access_token_expire_minutes)
             access_token = jwt.encode(
                 {**token_data, "exp": access_expire, "type": "access"},
-                self.secret_key,
-                algorithm=self.algorithm
+                self.settings.secret_key,
+                algorithm=self.settings.jwt_algorithm
             )
 
-            refresh_expire = now + timedelta(minutes=self.refresh_token_expire_minutes)
+            refresh_expire = now + timedelta(minutes=self.settings.refresh_token_expire_minutes)
             refresh_token = jwt.encode(
                 {**token_data, "exp": refresh_expire, "type": "refresh"},
-                self.secret_key,
-                algorithm=self.algorithm
+                self.settings.secret_key,
+                algorithm=self.settings.jwt_algorithm
             )
 
             return Token(
@@ -76,7 +73,7 @@ class AuthService:
     def verify_token(self, token: str, token_type: str = "access") -> Optional[Dict]:
         """Перевіряє та декодує токен"""
         try:
-            payload = jwt.decode(token, self.secret_key, algorithms=[self.algorithm])
+            payload = jwt.decode(token, self.settings.secret_key, algorithms=[self.settings.jwt_algorithm])
 
             if payload.get("type") != token_type:
                 return None

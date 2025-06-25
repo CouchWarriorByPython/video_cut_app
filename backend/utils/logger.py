@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Optional
 from logging.handlers import RotatingFileHandler
 
-from backend.config.settings import Settings
+from backend.config.settings import get_settings
 
 
 class LoggerConfig:
@@ -14,18 +14,20 @@ class LoggerConfig:
             self,
             name: str = "annotator",
             level: str = "INFO",
-            log_dir: Path = Path(Settings.logs_folder),
-            max_bytes: int = Settings.log_max_bytes,
-            backup_count: int = Settings.log_backup_count,
+            log_dir: Optional[Path] = None,
+            max_bytes: Optional[int] = None,
+            backup_count: Optional[int] = None,
             console_output: bool = True,
             is_production: bool = False,
-            log_file: Optional[str] = None  # Додаємо можливість явно вказати файл
+            log_file: Optional[str] = None
     ):
+        settings = get_settings()
+
         self.name = name
         self.level = getattr(logging, level.upper())
-        self.log_dir = log_dir or Path("logs")
-        self.max_bytes = max_bytes
-        self.backup_count = backup_count
+        self.log_dir = log_dir or Path(settings.logs_folder)
+        self.max_bytes = max_bytes or settings.log_max_bytes
+        self.backup_count = backup_count or settings.log_backup_count
         self.console_output = console_output
         self.is_production = is_production
         self.log_file = log_file or "app.log"
@@ -95,8 +97,7 @@ def get_logger(name: Optional[str] = None, log_file: Optional[str] = None) -> lo
         name: Ім'я логера (зазвичай __name__)
         log_file: Файл для логування (api.log, tasks.log, тощо)
     """
-    from backend.config.settings import Settings
-
+    settings = get_settings()
     logger_name = name or "annotator"
 
     # Якщо логер вже існує, повертаємо його
@@ -105,10 +106,10 @@ def get_logger(name: Optional[str] = None, log_file: Optional[str] = None) -> lo
         return existing_logger
 
     # Визначаємо чи це продакшен
-    is_production = not Settings.is_local_environment()
+    is_production = not settings.is_local_environment
 
     # В продакшені використовуємо WARNING, в розробці - DEBUG/INFO
-    log_level = "WARNING" if is_production else Settings.log_level
+    log_level = "WARNING" if is_production else settings.log_level
 
     # Створюємо новий логер
     config = LoggerConfig(

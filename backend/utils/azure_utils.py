@@ -7,7 +7,7 @@ from typing import Dict, Any, Callable, Optional
 from urllib.parse import urlparse
 
 from azure.storage.blob import BlobServiceClient, ContainerClient
-from azure.identity import ClientSecretCredential
+from azure.identity import ClientSecretCredential, DefaultAzureCredential
 from azure.core.exceptions import ResourceNotFoundError
 
 from backend.config.settings import get_settings
@@ -23,13 +23,23 @@ AZURE_LOGGER.setLevel(logging.WARNING)
 
 
 def get_blob_service_client() -> BlobServiceClient:
-    """Отримує BlobServiceClient на основі service principal credentials"""
+    """Отримує BlobServiceClient з підтримкою service principal та az login"""
     try:
-        credential = ClientSecretCredential(
-            tenant_id=settings.azure_tenant_id,
-            client_id=settings.azure_client_id,
-            client_secret=settings.azure_client_secret
-        )
+        # Перевіряємо чи є credentials для service principal
+        if all([
+            hasattr(settings, 'azure_tenant_id') and settings.azure_tenant_id,
+            hasattr(settings, 'azure_client_id') and settings.azure_client_id,
+            hasattr(settings, 'azure_client_secret') and settings.azure_client_secret
+        ]):
+            logger.info("Using ClientSecretCredential for Azure authentication")
+            credential = ClientSecretCredential(
+                tenant_id=settings.azure_tenant_id,
+                client_id=settings.azure_client_id,
+                client_secret=settings.azure_client_secret
+            )
+        else:
+            logger.info("Using DefaultAzureCredential (az login) for Azure authentication")
+            credential = DefaultAzureCredential()
 
         return BlobServiceClient(
             account_url=settings.azure_account_url,
@@ -129,7 +139,7 @@ def download_blob_to_local_parallel_with_progress(
             with progress_lock:
                 completed_chunks += 1
                 if progress_callback:
-                    progress_percent = (completed_chunks / len(chunks)) * 50  # 50% для завантаження
+                    progress_percent = (completed_chunks / len(chunks)) * 50
                     estimated_bytes = int((completed_chunks / len(chunks)) * file_size)
                     progress_callback(estimated_bytes, file_size)
 

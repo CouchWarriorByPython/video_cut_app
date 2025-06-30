@@ -1,4 +1,5 @@
 from typing import Dict, Any, Optional
+from backend.background_tasks.tasks.clip_processing import process_all_video_clips
 
 from backend.database import create_source_video_repository, create_clip_video_repository, create_cvat_settings_repository
 from backend.services.cvat_service import CVATService
@@ -67,8 +68,12 @@ class AnnotationService:
                 task_id = None
             else:
                 self._prepare_clips_for_processing(str(existing.id), azure_file_path, clips, metadata)
+
+                task = process_all_video_clips.delay(str(existing.id))
+                task_id = task.id
+
                 success_message = "Data successfully saved. Processing started."
-                task_id = None
+                logger.info(f"Started clips processing for video: {azure_file_path.blob_path}, task_id: {task_id}")
 
             return {
                 "success": True,

@@ -1,4 +1,5 @@
 from functools import lru_cache
+from typing import Optional
 from pydantic import Field, field_validator, computed_field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pathlib import Path
@@ -23,14 +24,16 @@ class Settings(BaseSettings):
     celery_broker_url: str = Field(default="redis://redis:6379/0")
     celery_result_backend: str = Field(default="redis://redis:6379/0")
 
-    # Azure - всі обов'язкові, без дефолтів
-    azure_tenant_id: str
-    azure_client_id: str
-    azure_client_secret: str
+    # Azure - обов'язкові лише account і container
     azure_storage_account_name: str
     azure_storage_container_name: str
     azure_input_folder_path: str = Field(default="input/")
     azure_output_folder_path: str = Field(default="output/")
+
+    # Azure credentials - опціональні для підтримки az login
+    azure_tenant_id: Optional[str] = Field(default=None)
+    azure_client_id: Optional[str] = Field(default=None)
+    azure_client_secret: Optional[str] = Field(default=None)
 
     # CVAT - обов'язкові
     cvat_host: str
@@ -112,6 +115,12 @@ class Settings(BaseSettings):
     def mongo_db_name(self) -> str:
         """Для зворотної сумісності"""
         return self.mongo_db
+
+    @computed_field
+    @property
+    def has_azure_credentials(self) -> bool:
+        """Перевіряє наявність Azure service principal credentials"""
+        return bool(self.azure_tenant_id and self.azure_client_id and self.azure_client_secret)
 
     def create_directories(self) -> None:
         """Створює необхідні директорії"""

@@ -164,22 +164,37 @@ def validation_exception_handler(request: Request, exc: Exception) -> JSONRespon
     validation_error = cast(RequestValidationError, exc)
 
     errors = []
+    field_names = []
     for error in validation_error.errors():
         field_name = '.'.join(str(x) for x in error['loc'][1:]) if len(error['loc']) > 1 else 'unknown'
+        
+        # Покращуємо повідомлення помилки для кращого розуміння
+        error_msg = error['msg']
+        if error['type'] == 'value_error':
+            error_msg = error_msg.replace('Value error, ', '')
+        elif error['type'] == 'missing':
+            error_msg = "Поле обов'язкове"
+        elif error['type'] == 'type_error':
+            error_msg = "Неправильний тип даних"
+        
         errors.append({
             "field": field_name,
-            "message": error['msg'],
+            "message": error_msg,
             "input": error.get('input'),
             "type": error.get('type')
         })
+        field_names.append(field_name)
 
-    logger.warning(f"Помилка валідації для {request.method} {request.url.path}: {len(errors)} помилок")
+    # Створюємо більш інформативне повідомлення
+    detailed_message = f"Помилка валідації даних у полях: {', '.join(field_names)}"
+    
+    logger.warning(f"Помилка валідації для {request.method} {request.url.path}: {len(errors)} помилок у полях: {', '.join(field_names)}")
 
     return JSONResponse(
         status_code=422,
         content={
             "success": False,
-            "message": "Помилка валідації даних",
+            "message": detailed_message,
             "error_code": "VALIDATION_ERROR",
             "errors": errors,
             "timestamp": getattr(request.state, 'request_time', None)

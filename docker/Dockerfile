@@ -8,13 +8,20 @@ ENV PYTHONPATH=/app \
     LC_ALL=C.UTF-8 \
     LANG=C.UTF-8 \
     TZ=Europe/Kiev
-#    PIP_NO_CACHE_DIR=1 \
+
 # Встановлення системних залежностей
 RUN apt-get update && apt-get install -y \
     ffmpeg \
     curl \
     tzdata \
-    && rm -rf /var/lib/apt/lists/*
+    # Додаємо залежності для Azure CLI
+    ca-certificates \
+    apt-transport-https \
+    lsb-release \
+    gnupg
+
+# Встановлення Azure CLI
+RUN curl -sL https://aka.ms/InstallAzureCLIDeb | bash
 
 # Налаштування часового поясу
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
@@ -24,7 +31,7 @@ WORKDIR /app
 
 # Копіювання requirements та встановлення Python залежностей
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install -r requirements.txt
 
 # Встановлення CVAT CLI
 RUN pip install cvat-cli==2.3.0
@@ -35,5 +42,5 @@ COPY . .
 # Створення необхідних директорій
 RUN mkdir -p temp logs temp/source_videos
 
-# Команда за замовчуванням - запуск через main.py щоб використати Settings
+# Команда за замовчуванням
 CMD ["python", "backend/main.py"]

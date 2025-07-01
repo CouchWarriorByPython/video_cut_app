@@ -10,6 +10,7 @@ class VideoStatus(str, Enum):
     DOWNLOADING = "downloading"
     NOT_ANNOTATED = "not_annotated"
     IN_PROGRESS = "in_progress"
+    PROCESSING_CLIPS = "processing_clips"
     ANNOTATED = "annotated"
     DOWNLOAD_ERROR = "download_error"
     ANNOTATION_ERROR = "annotation_error"
@@ -50,7 +51,31 @@ class AzureFilePath(BaseModel):
 class CVATSettings(BaseModel):
     """CVAT project settings - unified model"""
     project_name: MLProject
-    project_id: Annotated[int, Field(ge=1, le=1000)]
-    overlap: Annotated[int, Field(ge=0, le=100)]
-    segment_size: Annotated[int, Field(ge=50, le=2000)]
-    image_quality: Annotated[int, Field(ge=1, le=100)]
+    project_id: Annotated[int, Field(ge=1, le=1000, description="ID проєкту CVAT (від 1 до 1000)")]
+    overlap: Annotated[int, Field(ge=0, le=100, description="Перекриття сегментів у відсотках (від 0 до 100)")]
+    segment_size: Annotated[int, Field(ge=50, le=2000, description="Розмір сегмента (від 50 до 2000)")]
+    image_quality: Annotated[int, Field(ge=1, le=100, description="Якість зображення у відсотках (від 1 до 100)")]
+
+    @field_validator('project_id')
+    def validate_project_id(cls, v: int) -> int:
+        if not (1 <= v <= 1000):
+            raise ValueError("Project ID повинен бути від 1 до 1000")
+        return v
+
+    @field_validator('overlap')
+    def validate_overlap(cls, v: int) -> int:
+        if not (0 <= v <= 100):
+            raise ValueError("Overlap повинен бути від 0 до 100 відсотків")
+        return v
+
+    @field_validator('segment_size')
+    def validate_segment_size(cls, v: int) -> int:
+        if not (50 <= v <= 2000):
+            raise ValueError("Segment size повинен бути від 50 до 2000")
+        return v
+
+    @field_validator('image_quality')
+    def validate_image_quality(cls, v: int) -> int:
+        if not (1 <= v <= 100):
+            raise ValueError("Image quality повинна бути від 1 до 100 відсотків")
+        return v

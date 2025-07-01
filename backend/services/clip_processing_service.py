@@ -107,6 +107,7 @@ class ClipProcessingService:
 
             if not clips:
                 logger.warning(f"No clips found for source video: {source_video_id}")
+                self.source_repo.update_by_id(source_video_id, {"status": "annotation_error"})
                 return {"status": "error", "message": "No clips found for processing"}
 
             results = self._process_clips_batch(clips)
@@ -120,6 +121,7 @@ class ClipProcessingService:
                     **results
                 }
             else:
+                self.source_repo.update_by_id(source_video_id, {"status": "annotation_error"})
                 return {
                     "status": "partial_success",
                     "message": f"Processing completed with errors. {results['successful_clips'] + results['partial_success_clips']} of {results['total_clips']} clips processed",
@@ -128,6 +130,7 @@ class ClipProcessingService:
 
         except Exception as e:
             logger.error(f"Error processing clips for video {source_video_id}: {str(e)}")
+            self.source_repo.update_by_id(source_video_id, {"status": "annotation_error"})
             return {"status": "error", "message": str(e)}
 
     def _create_clip_file(self, clip_data, source_video) -> Optional[str]:

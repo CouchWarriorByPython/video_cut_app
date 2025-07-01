@@ -7,23 +7,8 @@ from pydantic import (
 )
 from backend.models.shared import AzureFilePath, UserRole, MLProject, VideoStatus, CVATSettings
 
-
-class PasswordStr(constr(min_length=8, max_length=128)):
-    """Password with validation"""
-
-    @classmethod
-    def __get_validators__(cls):
-        yield cls.validate
-
-    @classmethod
-    def validate(cls, v: str) -> str:
-        if not any(c.isupper() for c in v):
-            raise ValueError('Password must contain at least one uppercase letter')
-        if not any(c.islower() for c in v):
-            raise ValueError('Password must contain at least one lowercase letter')
-        if not any(c.isdigit() for c in v):
-            raise ValueError('Password must contain at least one digit')
-        return v
+# Simple password validation - only minimum length requirement
+PasswordStr = Annotated[str, Field(min_length=8, max_length=128)]
 
 
 class AzureUrl(HttpUrl):
@@ -232,7 +217,7 @@ class VideoUploadResponse(BaseResponse):
     filename: str
     conversion_task_id: Optional[str] = None
     message: str
-    batch_results: Optional[Dict[str, List[Dict[str, Any]]]] = None
+    batch_results: Optional[Dict[str, Any]] = None
 
 
 class VideoInfoResponse(BaseModel):

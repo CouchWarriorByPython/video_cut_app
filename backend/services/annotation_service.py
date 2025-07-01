@@ -24,8 +24,8 @@ class AnnotationService:
         self.cvat_settings_repo = create_cvat_settings_repository()  # Додаємо цей рядок
         self.cvat_service = CVATService()
 
-    def save_fragments_and_metadata(self, azure_file_path: AzureFilePath, annotation_data: Dict[str, Any]) -> Dict[
-        str, Any]:
+    async def save_fragments_and_metadata(self, azure_file_path: AzureFilePath, annotation_data: Dict[str, Any]) -> \
+    Dict[str, Any]:
         """Save fragments and metadata with comprehensive validation"""
         existing = None
         try:
@@ -49,7 +49,7 @@ class AnnotationService:
 
             update_data = {
                 "skip_annotation": skip_annotation,
-                "status": "annotated"
+                "status": "annotated" if skip_annotation else "processing_clips"
             }
 
             success = self.source_repo.update_by_id(str(existing.id), update_data)

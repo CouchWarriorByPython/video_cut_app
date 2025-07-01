@@ -1,6 +1,27 @@
 class VideoAnnotator {
     constructor() {
+        const requiredElements = [
+            'videos-list-section',
+            'video-editor',
+            'videos-count-text',
+            'status-filter',
+            'videos-table-body',
+            'pagination-container',
+            'loading-status',
+            'empty-state'
+        ];
+
+        const missingElements = requiredElements.filter(id => !document.getElementById(id));
+        if (missingElements.length > 0) {
+            console.error('Missing required elements:', missingElements);
+            return;
+        }
+
         this.elements = this._initElements();
+        if (!this.elements) {
+            console.error('Failed to initialize elements');
+            return;
+        }
 
         this._boundHandlers = {
             timeupdate: this._updateTimelineProgress.bind(this),
@@ -27,17 +48,19 @@ class VideoAnnotator {
         };
 
         this.refreshInterval = null;
-        this.jsonModal = new BaseModal('json-modal');
-        this.projectModal = new BaseModal('project-modal');
+
+        if (document.getElementById('project-modal')) {
+            this.projectModal = new BaseModal('project-modal');
+        }
+
         this._init();
     }
 
     _initElements() {
         const $ = id => document.getElementById(id);
-        return {
+        const elements = {
             videosListSection: $('videos-list-section'),
             videoEditor: $('video-editor'),
-            refreshBtn: $('refresh-videos-btn'),
             videosCountText: $('videos-count-text'),
             statusFilter: $('status-filter'),
             videosTableBody: $('videos-table-body'),
@@ -76,6 +99,13 @@ class VideoAnnotator {
             videoWhere: $('video-where'),
             videoWhen: $('video-when'),
         };
+
+        if (!elements.videosListSection || !elements.videoEditor) {
+            console.error('Critical elements missing');
+            return null;
+        }
+
+        return elements;
     }
 
     async _init() {
@@ -87,7 +117,8 @@ class VideoAnnotator {
     }
 
     _setupEvents() {
-        this.elements.refreshBtn?.addEventListener('click', () => this._refreshVideosList());
+        if (!this.elements) return;
+
         this.elements.statusFilter?.addEventListener('change', () => this._applyFilters());
 
         this.elements.backToListBtn?.addEventListener('click', () => this._goBackToList());
@@ -95,10 +126,9 @@ class VideoAnnotator {
         this.elements.endFragmentBtn?.addEventListener('click', () => this._handleFragmentAction('end'));
         this.elements.cancelFragmentBtn?.addEventListener('click', () => this._handleFragmentAction('cancel'));
         this.elements.saveFragmentsBtn?.addEventListener('click', () => this._handleSaveFragments());
-        document.getElementById('view-json')?.addEventListener('click', () => this._showJson());
 
         this.elements.timeline?.addEventListener('click', e => this._handleTimelineClick(e));
-        this.elements.metadataForm.skipVideo?.addEventListener('change', () => this._handleSkipChange());
+        this.elements.metadataForm?.skipVideo?.addEventListener('change', () => this._handleSkipChange());
 
         this.elements.projectCheckboxes?.forEach(cb =>
             cb.addEventListener('change', () => this._syncActiveProjects())
@@ -200,6 +230,9 @@ class VideoAnnotator {
         const lockStatus = video.lock_status || { locked: false };
         const canStart = video.can_start_work;
         const isLockedByMe = lockStatus.locked && lockStatus.user_id === this._getCurrentUserId();
+        const isProcessing = ['downloading', 'in_progress', 'processing_clips'].includes(video.status);
+
+        row.classList.toggle('processing-row', isProcessing);
 
         const statusBadge = row.querySelector('.status-badge');
         statusBadge.className = `status-badge ${video.status}`;
@@ -226,6 +259,7 @@ class VideoAnnotator {
         const lockStatus = video.lock_status || { locked: false };
         const canStart = video.can_start_work;
         const isLockedByMe = lockStatus.locked && lockStatus.user_id === this._getCurrentUserId();
+        const isProcessing = ['downloading', 'in_progress', 'processing_clips'].includes(video.status);
 
         return `
             <td>
@@ -445,19 +479,13 @@ class VideoAnnotator {
             }
 
             if (needUnlock) {
-                const confirmed = await confirm('Розблокувати відео при поверненні до списку?');
-                if (confirmed) {
-                    this.state.isUnlocking = true;
-                    try {
-                        const result = await api.post(`/video/${this.state.currentVideoId}/unlock`, {});
-                        if (result.success) {
-                            notify('Відео розблоковано', 'success');
-                        }
-                    } catch (error) {
-                        console.error('Помилка розблокування:', error);
-                    } finally {
-                        this.state.isUnlocking = false;
+                try {
+                    const result = await api.post(`/video/${this.state.currentVideoId}/unlock`, {});
+                    if (result.success) {
+                        console.log('Відео розблоковано при поверненні');
                     }
+                } catch (error) {
+                    console.error('Помилка розблокування:', error);
                 }
             }
 
@@ -583,6 +611,8 @@ class VideoAnnotator {
 
                     if (data?.success) {
                         const oldVideosCount = this.state.videos.length;
+                        const hasProcessingVideos = data.videos.some(v => v.status === 'processing_clips');
+
                         this.state.videos = this._deduplicateVideos(data.videos);
                         this.state.pagination = data.pagination;
 
@@ -594,6 +624,11 @@ class VideoAnnotator {
                             const filteredVideos = this._applyFiltersToVideos();
                             this._updateVideosTable(filteredVideos);
                             this._updateVideosCount();
+                        }
+
+                        if (hasProcessingVideos && this.refreshInterval) {
+                            clearInterval(this.refreshInterval);
+                            this.refreshInterval = setInterval(() => this._startAutoRefresh(), 5000);
                         }
                     }
                 } catch (error) {
@@ -636,6 +671,7 @@ class VideoAnnotator {
             'downloading': 'Завантаження',
             'not_annotated': 'Не анотоване',
             'in_progress': 'В процесі анотації',
+            'processing_clips': 'Обробка кліпів',
             'annotated': 'Анотоване',
             'download_error': 'Помилка завантаження',
             'annotation_error': 'Помилка анотації'
@@ -1000,7 +1036,12 @@ class VideoAnnotator {
 
     _handleSkipChange() {
         const metaFields = document.querySelectorAll('.meta-form .form-control, .meta-form input[type="checkbox"]:not(#skip-video)');
-        metaFields.forEach(field => field.disabled = this.elements.metadataForm.skipVideo.checked);
+        metaFields.forEach(field => {
+            field.disabled = this.elements.metadataForm.skipVideo.checked;
+            if (this.elements.metadataForm.skipVideo.checked) {
+                field.classList.remove('error');
+            }
+        });
     }
 
     _handleVideoError(e) {
@@ -1014,16 +1055,22 @@ class VideoAnnotator {
         notify('Помилка відтворення відео', 'error');
     }
 
-    _showJson() {
-        document.getElementById('json-content').textContent = JSON.stringify(this._prepareJsonData(), null, 2);
-        this.jsonModal.open();
-    }
-
     _validateRequiredFields() {
         const form = this.elements.metadataForm;
         const errors = [];
-        if (!form.uavType.value.trim()) errors.push('UAV (тип дрона)');
-        if (!form.videoContent.value.trim()) errors.push('Контент відео');
+
+        form.uavType.classList.remove('error');
+        form.videoContent.classList.remove('error');
+
+        if (!form.uavType.value.trim()) {
+            errors.push('UAV (тип дрона)');
+            form.uavType.classList.add('error');
+        }
+        if (!form.videoContent.value.trim()) {
+            errors.push('Контент відео');
+            form.videoContent.classList.add('error');
+        }
+
         return errors;
     }
 
@@ -1097,16 +1144,26 @@ class VideoAnnotator {
             });
 
             if (data?.success) {
-                await notify(data.message || 'Анотацію успішно завершено. Відео відправлено на обробку.', 'success');
-                if (data.task_id) console.log('Task ID:', data.task_id);
+                notify(data.message || 'Анотацію успішно завершено. Відео відправлено на обробку.', 'success');
 
-                this.state.isUnlocking = true;
-                this._goBackToList();
+                // Розблоковуємо відео після успішного збереження
+                if (this.state.currentVideoId) {
+                    try {
+                        await api.post(`/video/${this.state.currentVideoId}/unlock`, {});
+                    } catch (error) {
+                        console.error('Помилка розблокування після збереження:', error);
+                    }
+                }
+
+                // Затримка для показу повідомлення, потім повертаємося до списку
+                setTimeout(() => {
+                    this._goBackToList();
+                }, 1500);
             } else {
-                await notify('Помилка: ' + (data?.error || 'Невідома помилка'), 'error');
+                notify('Помилка: ' + (data?.error || 'Невідома помилка'), 'error');
             }
         } catch (error) {
-            await notify(error.message, 'error');
+            notify(error.message, 'error');
         }
     }
 

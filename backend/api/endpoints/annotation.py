@@ -57,7 +57,7 @@ async def save_fragments(
     """Зберегти фрагменти відео та метадані"""
     annotation_service = AnnotationService()
 
-    result = annotation_service.save_fragments_and_metadata(
+    result = await annotation_service.save_fragments_and_metadata(
         data.azure_file_path, data.data
     )
 

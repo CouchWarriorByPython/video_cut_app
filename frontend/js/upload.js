@@ -76,10 +76,17 @@ class VideoUploader {
         }
 
         data.video_urls.forEach((url, index) => {
-            if (!validators.azureUrl(url) && !data.download_all_folder) {
-                errors.push(`URL #${index + 1} некоректний`);
-            } else if (data.download_all_folder && !url.includes('.blob.core.windows.net')) {
-                errors.push('URL папки має бути з Azure Blob Storage');
+            if (data.download_all_folder) {
+                if (!validators.azureFolderUrl(url) && !validators.azureUrl(url)) {
+                    errors.push('URL папки має бути з Azure Blob Storage');
+                }
+            } else {
+                if (!validators.azureUrl(url)) {
+                    errors.push(`URL #${index + 1} некоректний`);
+                }
+                if (!['.mp4', '.avi', '.mov', '.mkv'].some(ext => url.toLowerCase().includes(ext))) {
+                    errors.push(`URL #${index + 1} має містити відео файл`);
+                }
             }
         });
 
@@ -109,28 +116,56 @@ class VideoUploader {
 
     _handleUploadResponse(data) {
         if (data.batch_results) {
-            // Багато відео
-            const { successful, errors } = data.batch_results;
+            this._handleBatchResponse(data);
+        } else {
+            this._handleSingleResponse(data);
+        }
+        this._saveUploadsToStorage();
+    }
 
+    _handleBatchResponse(data) {
+        const { successful, errors, info } = data.batch_results;
+        
+        this._showDetailedInfo(data, successful, errors, info);
+
+        if (successful && successful.length > 0) {
+            this._createBatchProgressDisplay(successful, data.message);
             successful.forEach(task => {
+                if (task.task_id) {
+                    const uploadData = {
+                        id: utils.generateId(),
+                        taskId: task.task_id,
+                        filename: task.filename,
+                        message: data.message,
+                        timestamp: Date.now()
+                    };
+                    this.activeUploads.set(uploadData.id, uploadData);
+                    this._showProgressBar(uploadData);
+                    this._startProgressTracking(uploadData.id);
+                }
+            });
+        }
+    }
+
+    _handleSingleResponse(data) {
+        if (data.message.includes('вже існує') || data.message.includes('готове для анотації') || 
+            data.message.includes('перезавантажується')) {
+            this._showSingleVideoInfo(data);
+            
+            if (data.conversion_task_id) {
                 const uploadData = {
                     id: utils.generateId(),
-                    taskId: task.task_id,
-                    filename: task.filename,
+                    taskId: data.conversion_task_id,
+                    azure_file_path: data.azure_file_path,
+                    filename: data.filename,
                     message: data.message,
                     timestamp: Date.now()
                 };
-
                 this.activeUploads.set(uploadData.id, uploadData);
                 this._showProgressBar(uploadData);
                 this._startProgressTracking(uploadData.id);
-            });
-
-            if (errors.length > 0) {
-                notify(`Помилки:\n${errors.join('\n')}`, 'warning');
             }
         } else {
-            // Одне відео
             const uploadData = {
                 id: utils.generateId(),
                 taskId: data.conversion_task_id,
@@ -139,13 +174,233 @@ class VideoUploader {
                 message: data.message,
                 timestamp: Date.now()
             };
-
             this.activeUploads.set(uploadData.id, uploadData);
             this._showProgressBar(uploadData);
             this._startProgressTracking(uploadData.id);
         }
+    }
 
-        this._saveUploadsToStorage();
+    _showDetailedInfo(data, successful, errors, info) {
+        const sections = [];
+
+        if (info?.existing_ready && info.existing_ready.length > 0) {
+            sections.push({
+                type: 'success',
+                title: 'Відео готові для анотації',
+                icon: '✓',
+                files: info.existing_ready.map(v => ({
+                    name: v.filename,
+                    status: this._getStatusLabel(v.status),
+                    type: 'ready'
+                }))
+            });
+        }
+
+        if (info?.redownloading && info.redownloading.length > 0) {
+            sections.push({
+                type: 'info',
+                title: 'Перезавантажуються (відсутні локально)',
+                icon: '↻',
+                files: info.redownloading.map(v => ({
+                    name: v.filename,
+                    status: 'Завантажується заново',
+                    type: 'downloading'
+                }))
+            });
+        }
+
+        if (successful && successful.length > 0) {
+            const newDownloads = successful.filter(v => v.task_id);
+            if (newDownloads.length > 0) {
+                sections.push({
+                    type: 'info',
+                    title: 'Нові завантаження',
+                    icon: '⬇',
+                    files: newDownloads.map(v => ({
+                        name: v.filename,
+                        status: 'Додано в чергу завантаження',
+                        type: 'downloading'
+                    }))
+                });
+            }
+        }
+
+        if (errors && errors.length > 0) {
+            sections.push({
+                type: 'error', 
+                title: 'Помилки',
+                icon: '✗',
+                files: errors.map(e => ({
+                    name: this._extractFilenameFromUrl(e.url),
+                    status: e.error,
+                    type: 'error'
+                }))
+            });
+        }
+
+        this._showInfoModal(sections, data.message);
+    }
+
+    _showSingleVideoInfo(data) {
+        const sections = [];
+        
+        if (data.message.includes('готове для анотації') || data.message.includes('вже існує')) {
+            sections.push({
+                type: 'success',
+                title: 'Відео готове',
+                icon: '✓',
+                files: [{
+                    name: data.filename,
+                    status: 'Готове для анотації',
+                    type: 'ready'
+                }]
+            });
+        } else if (data.message.includes('перезавантажується')) {
+            sections.push({
+                type: 'info',
+                title: 'Перезавантаження',
+                icon: '↻',
+                files: [{
+                    name: data.filename,
+                    status: 'Відсутнє локально, перезавантажується',
+                    type: 'downloading'
+                }]
+            });
+        }
+
+        this._showInfoModal(sections, data.message);
+    }
+
+    _showInfoModal(sections, title) {
+        const modal = document.createElement('div');
+        modal.className = 'info-modal';
+        
+        const content = document.createElement('div');
+        content.className = 'info-modal-content';
+        
+        const header = `
+            <div class="info-modal-header">
+                <h3 class="info-modal-title">${utils.escapeHtml(title)}</h3>
+                <button class="info-modal-close">&times;</button>
+            </div>
+        `;
+        
+        const sectionsHTML = sections.map(section => `
+            <div class="info-section">
+                <div class="info-section-title">
+                    <span class="info-section-icon ${section.type}">${section.icon}</span>
+                    ${section.title}
+                </div>
+                <ul class="file-list">
+                    ${section.files.map(file => `
+                        <li class="file-item">
+                            <span class="file-icon ${file.type}">
+                                ${file.type === 'ready' ? '✓' : 
+                                  file.type === 'downloading' ? '⬇' : '✗'}
+                            </span>
+                            <div class="file-info">
+                                <div class="file-name">${utils.escapeHtml(file.name)}</div>
+                                <div class="file-status ${file.type}">${utils.escapeHtml(file.status)}</div>
+                            </div>
+                        </li>
+                    `).join('')}
+                </ul>
+            </div>
+        `).join('');
+        
+        const actions = `
+            <div class="modal-actions">
+                <button class="btn btn-primary modal-close-btn">Зрозуміло</button>
+            </div>
+        `;
+        
+        content.innerHTML = header + sectionsHTML + actions;
+        modal.appendChild(content);
+        document.body.appendChild(modal);
+        
+        const closeModal = () => {
+            modal.remove();
+        };
+        
+        content.querySelector('.info-modal-close').addEventListener('click', closeModal);
+        content.querySelector('.modal-close-btn').addEventListener('click', closeModal);
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) closeModal();
+        });
+        
+        const handleEsc = (e) => {
+            if (e.key === 'Escape') {
+                closeModal();
+                document.removeEventListener('keydown', handleEsc);
+            }
+        };
+        document.addEventListener('keydown', handleEsc);
+    }
+
+    _createBatchProgressDisplay(tasks, message) {
+        const total = tasks.length;
+        let completed = 0;
+        
+        const progressId = utils.generateId();
+        const progressHTML = `
+            <div id="batch-progress-${progressId}" class="batch-progress">
+                <div class="batch-progress-header">
+                    <span class="batch-progress-title">Пакетне завантаження</span>
+                    <span class="batch-progress-summary">0/${total}</span>
+                </div>
+                <div class="batch-progress-bar">
+                    <div class="batch-progress-fill" style="width: 0%"></div>
+                </div>
+                <div class="batch-progress-details">${utils.escapeHtml(message)}</div>
+            </div>
+        `;
+        
+        this.elements.result.insertAdjacentHTML('afterbegin', progressHTML);
+        this.elements.result.classList.remove('hidden');
+        
+        const updateBatchProgress = () => {
+            const activeCount = Array.from(this.activeUploads.values())
+                .filter(upload => tasks.some(task => task.task_id === upload.taskId)).length;
+            
+            completed = total - activeCount;
+            const percentage = Math.round((completed / total) * 100);
+            
+            const element = document.getElementById(`batch-progress-${progressId}`);
+            if (element) {
+                element.querySelector('.batch-progress-summary').textContent = `${completed}/${total}`;
+                element.querySelector('.batch-progress-fill').style.width = `${percentage}%`;
+                
+                if (completed === total) {
+                    setTimeout(() => element.remove(), 3000);
+                }
+            }
+        };
+        
+        const interval = setInterval(() => {
+            updateBatchProgress();
+            if (completed === total) {
+                clearInterval(interval);
+            }
+        }, 5000);
+    }
+
+    _extractFilenameFromUrl(url) {
+        try {
+            const urlParts = url.split('/');
+            return urlParts[urlParts.length - 1];
+        } catch {
+            return url;
+        }
+    }
+
+    _getStatusLabel(status) {
+        const labels = {
+            'not_annotated': 'готове для анотації',
+            'in_progress': 'в процесі анотації',
+            'annotated': 'вже анотоване',
+            'processing_clips': 'обробляються кліпи'
+        };
+        return labels[status] || status;
     }
 
     _showProgressBar(uploadData) {
@@ -184,7 +439,7 @@ class VideoUploader {
     }
 
     _startProgressTracking(uploadId) {
-        const interval = setInterval(() => this._checkTaskProgress(uploadId), 2000);
+        const interval = setInterval(() => this._checkTaskProgress(uploadId), 5000);
         this.progressIntervals.set(uploadId, interval);
     }
 

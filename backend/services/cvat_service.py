@@ -165,6 +165,13 @@ class CVATService:
             existing_settings = self.settings_repo.get_by_field("project_name", cvat_settings.project_name.value)
 
             if existing_settings:
+                # Check if project_id is being changed and if it conflicts with another project
+                if existing_settings.project_id != cvat_settings.project_id:
+                    conflicting_project = self.settings_repo.get_by_field("project_id", cvat_settings.project_id)
+                    if conflicting_project and str(conflicting_project.id) != str(existing_settings.id):
+                        logger.error(f"Cannot update project_id to {cvat_settings.project_id}: already used by project {conflicting_project.project_name}")
+                        return False
+
                 success = self.settings_repo.update_by_id(
                     str(existing_settings.id),
                     {
@@ -175,6 +182,12 @@ class CVATService:
                     }
                 )
             else:
+                # Check if project_id is already used by another project
+                conflicting_project = self.settings_repo.get_by_field("project_id", cvat_settings.project_id)
+                if conflicting_project:
+                    logger.error(f"Cannot create project with project_id {cvat_settings.project_id}: already used by project {conflicting_project.project_name}")
+                    return False
+
                 new_settings = self.settings_repo.create(
                     project_name=cvat_settings.project_name.value,
                     project_id=cvat_settings.project_id,

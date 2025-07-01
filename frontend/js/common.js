@@ -18,24 +18,44 @@ class BaseModal {
     constructor(modalId, formId = null) {
         this.modal = document.getElementById(modalId);
         this.form = formId ? document.getElementById(formId) : null;
+
+        if (!this.modal) {
+            console.warn(`Modal with id "${modalId}" not found`);
+            return;
+        }
+
         this.closeBtn = this.modal.querySelector('.modal-close');
         this._setupEvents();
     }
 
     _setupEvents() {
-        this.closeBtn?.addEventListener('click', () => this.close());
-        window.addEventListener('click', e => e.target === this.modal && this.close());
+        if (this.closeBtn) {
+            this.closeBtn.addEventListener('click', () => this.close());
+        }
+
+        window.addEventListener('click', e => {
+            if (this.modal && e.target === this.modal) {
+                this.close();
+            }
+        });
     }
 
-    open() { this.modal.style.display = 'block'; }
+    open() {
+        if (this.modal) {
+            this.modal.style.display = 'block';
+        }
+    }
 
     close() {
-        this.modal.style.display = 'none';
-        this.form?.reset();
-        this.clearErrors();
+        if (this.modal) {
+            this.modal.style.display = 'none';
+            this.form?.reset();
+            this.clearErrors();
+        }
     }
 
     clearErrors() {
+        if (!this.modal) return;
         this.modal.querySelectorAll('.field-error').forEach(el => el.remove());
         this.modal.querySelectorAll('.form-control').forEach(field => field.style.borderColor = '');
     }
@@ -153,6 +173,13 @@ const api = {
         });
 
         if (response.status === 401) {
+            // Спеціальна обробка для ендпоінту логіну - не робимо logout, а кидаємо помилку
+            if (url === '/auth/login') {
+                const data = await response.json().catch(() => ({}));
+                const errorMessage = data.message || data.detail || 'Невірний email або пароль';
+                throw new Error(errorMessage);
+            }
+
             // Якщо отримали 401 і не намагалися оновити токен
             if (!api.isRefreshing && token) {
                 api.isRefreshing = true;
@@ -177,7 +204,14 @@ const api = {
         const data = await response.json().catch(() => ({}));
 
         if (!response.ok) {
-            const errorMessage = data.message || data.detail || data.error || `HTTP ${response.status}`;
+            let errorMessage = data.message || data.detail || data.error || `HTTP ${response.status}`;
+            
+            // Якщо є детальні помилки валідації, додаємо їх до повідомлення
+            if (data.errors && Array.isArray(data.errors)) {
+                const fieldErrors = data.errors.map(err => `${err.field}: ${err.message}`).join('; ');
+                errorMessage = `${errorMessage}. Деталі: ${fieldErrors}`;
+            }
+            
             throw new Error(errorMessage);
         }
 
@@ -247,8 +281,13 @@ const validators = {
     azureUrl: url => {
         try {
             const u = new URL(url);
-            return u.hostname.includes('.blob.core.windows.net') &&
-                   ['.mp4', '.avi', '.mov', '.mkv'].some(ext => url.toLowerCase().endsWith(ext));
+            return u.hostname.includes('.blob.core.windows.net');
+        } catch { return false; }
+    },
+    azureFolderUrl: url => {
+        try {
+            const u = new URL(url);
+            return u.hostname.includes('.blob.core.windows.net') && url.endsWith('/');
         } catch { return false; }
     },
     password: pwd => pwd && pwd.length >= 8
@@ -258,10 +297,14 @@ const createNotificationModal = (message, type) => {
     const modal = document.createElement('div');
     modal.className = 'notification-modal';
     const title = type === 'error' ? 'Помилка' : type === 'success' ? 'Успіх' : 'Інформація';
+    
+    // Перетворюємо \n на <br> для правильного відображення багаторядкових повідомлень
+    const formattedMessage = utils.escapeHtml(message).replace(/\n/g, '<br>');
+    
     modal.innerHTML = `
         <div class="notification-modal-content">
             <h3>${title}</h3>
-            <p>${utils.escapeHtml(message)}</p>
+            <p>${formattedMessage}</p>
             <button class="btn btn-success" onclick="this.closest('.notification-modal').remove()">OK</button>
         </div>
     `;

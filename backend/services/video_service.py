@@ -51,9 +51,49 @@ class VideoService:
             size_bytes = validation_result["size_bytes"]
 
             existing_video = self.source_repo.get_by_field("azure_file_path.blob_path", azure_path.blob_path)
-            if existing_video:
-                raise BusinessLogicException(f"Відео вже зареєстровано: {filename}")
 
+            if existing_video:
+                local_path = get_local_video_path(filename)
+
+                # Відео є в БД і локально
+                if os.path.exists(local_path):
+                    if existing_video.status in [VideoStatus.NOT_ANNOTATED, VideoStatus.IN_PROGRESS]:
+                        return VideoUploadResponse(
+                            id=str(existing_video.id),
+                            azure_file_path=azure_path,
+                            filename=filename,
+                            conversion_task_id=None,
+                            message=f"Відео '{filename}' вже існує локально та готове для анотації"
+                        )
+                    else:
+                        return VideoUploadResponse(
+                            id=str(existing_video.id),
+                            azure_file_path=azure_path,
+                            filename=filename,
+                            conversion_task_id=None,
+                            message=f"Відео '{filename}' вже існує локально. Статус: {self._format_status_message(existing_video.status)}"
+                        )
+                else:
+                    # Відео є в БД але відсутнє локально
+                    logger.info(f"Відео {filename} є в БД але відсутнє локально. Перезавантажуємо.")
+
+                    self.source_repo.update_by_id(
+                        str(existing_video.id),
+                        {"status": VideoStatus.DOWNLOADING}
+                    )
+
+                    from backend.background_tasks.tasks.video_download_conversion import download_and_convert_video
+                    task = download_and_convert_video.delay(azure_path.model_dump())
+
+                    return VideoUploadResponse(
+                        id=str(existing_video.id),
+                        azure_file_path=azure_path,
+                        filename=filename,
+                        conversion_task_id=task.id,
+                        message=f"Відео '{filename}' перезавантажується (було відсутнє локально)"
+                    )
+
+            # Нове відео - створюємо запис і завантажуємо
             azure_file_path_doc = AzureFilePathDocument(
                 account_name=azure_path.account_name,
                 container_name=azure_path.container_name,
@@ -69,14 +109,14 @@ class VideoService:
             from backend.background_tasks.tasks.video_download_conversion import download_and_convert_video
             task = download_and_convert_video.delay(azure_path.model_dump())
 
-            logger.info(f"Відео зареєстровано та додано в чергу: {filename}, task_id: {task.id}")
+            logger.info(f"Нове відео зареєстровано та додано в чергу: {filename}, task_id: {task.id}")
 
             return VideoUploadResponse(
                 id=str(video_document.id),
                 azure_file_path=azure_path,
                 filename=filename,
                 conversion_task_id=task.id,
-                message="Відео зареєстровано та додано в чергу обробки"
+                message=f"Нове відео '{filename}' зареєстровано та додано в чергу обробки"
             )
 
         except BusinessLogicException:
@@ -85,41 +125,172 @@ class VideoService:
             logger.error(f"Помилка реєстрації відео: {str(e)}")
             raise BusinessLogicException(f"Помилка реєстрації відео: {str(e)}")
 
+    @staticmethod
+    def _format_status_message(status: VideoStatus) -> str:
+        """Форматування статусу для відображення користувачу"""
+        status_messages = {
+            VideoStatus.DOWNLOADING: "завантажується",
+            VideoStatus.DOWNLOAD_ERROR: "помилка завантаження",
+            VideoStatus.NOT_ANNOTATED: "готове для анотації",
+            VideoStatus.IN_PROGRESS: "в процесі анотації",
+            VideoStatus.ANNOTATED: "вже анотоване",
+            VideoStatus.PROCESSING_CLIPS: "обробляються кліпи"
+        }
+        return status_messages.get(status, str(status))
+
     def register_multiple_videos(self, video_urls: List[str]) -> VideoUploadResponse:
         """Реєстрація кількох відео з URLs"""
         try:
-            results = []
-            errors = []
+            processing_results = {
+                "new_videos": [],
+                "existing_ready": [],
+                "redownloading": [],
+                "errors": []
+            }
 
             for url in video_urls:
                 try:
-                    result = self.register_single_video(url)
-                    results.append({
-                        "filename": result.filename,
-                        "task_id": result.conversion_task_id
-                    })
-                except BusinessLogicException as e:
-                    errors.append(f"{url}: {str(e)}")
+                    validation_result = self.azure_service.validate_azure_url(url)
 
-            if not results and errors:
-                raise BusinessLogicException(
-                    f"Всі відео не вдалося зареєструвати:\n" + "\n".join(errors)
-                )
+                    if not validation_result["valid"]:
+                        processing_results["errors"].append({
+                            "url": url,
+                            "error": validation_result['error']
+                        })
+                        continue
+
+                    azure_path = validation_result["azure_path"]
+                    filename = validation_result["filename"]
+                    size_bytes = validation_result["size_bytes"]
+
+                    # Проверяем существование в БД
+                    existing_video = self.source_repo.get_by_field("azure_file_path.blob_path", azure_path.blob_path)
+
+                    if existing_video:
+                        local_path = get_local_video_path(filename)
+
+                        # Видео есть в БД и локально
+                        if os.path.exists(local_path):
+                            # Проверяем статус - готово ли для работы
+                            if existing_video.status in [VideoStatus.NOT_ANNOTATED, VideoStatus.IN_PROGRESS]:
+                                processing_results["existing_ready"].append({
+                                    "filename": filename,
+                                    "status": existing_video.status,
+                                    "local_exists": True,
+                                    "message": "Готове для анотації"
+                                })
+                            else:
+                                processing_results["existing_ready"].append({
+                                    "filename": filename,
+                                    "status": existing_video.status,
+                                    "local_exists": True,
+                                    "message": f"Статус: {existing_video.status}"
+                                })
+                            continue
+                        else:
+                            # Видео есть в БД но отсутствует локально - перезагружаем
+                            logger.info(f"Відео {filename} є в БД але відсутнє локально. Перезавантажуємо.")
+                            
+                            # Обновляем статус на downloading
+                            self.source_repo.update_by_id(
+                                str(existing_video.id),
+                                {"status": VideoStatus.DOWNLOADING}
+                            )
+
+                            from backend.background_tasks.tasks.video_download_conversion import \
+                                download_and_convert_video
+                            task = download_and_convert_video.apply_async(
+                                args=[azure_path.model_dump()],
+                                priority=5
+                            )
+
+                            processing_results["redownloading"].append({
+                                "filename": filename,
+                                "task_id": task.id,
+                                "local_exists": False,
+                                "message": "Відсутнє локально, перезавантажується"
+                            })
+                            continue
+
+                    # Видео не существует в БД - создаем новое
+                    azure_file_path_doc = AzureFilePathDocument(
+                        account_name=azure_path.account_name,
+                        container_name=azure_path.container_name,
+                        blob_path=azure_path.blob_path
+                    )
+
+                    video_document = self.source_repo.create(
+                        azure_file_path=azure_file_path_doc,
+                        status=VideoStatus.DOWNLOADING,
+                        size_MB=round(size_bytes / (1024 * 1024), 2) if size_bytes else None
+                    )
+
+                    from backend.background_tasks.tasks.video_download_conversion import download_and_convert_video
+                    task = download_and_convert_video.apply_async(
+                        args=[azure_path.model_dump()],
+                        priority=5
+                    )
+
+                    processing_results["new_videos"].append({
+                        "filename": filename,
+                        "task_id": task.id,
+                        "video_id": str(video_document.id),
+                        "message": "Нове відео додано в чергу завантаження"
+                    })
+
+                except BusinessLogicException as e:
+                    processing_results["errors"].append({
+                        "url": url,
+                        "error": str(e)
+                    })
+                except Exception as e:
+                    logger.error(f"Помилка обробки відео {url}: {str(e)}")
+                    processing_results["errors"].append({
+                        "url": url,
+                        "error": f"Помилка обробки: {str(e)}"
+                    })
+
+            # Формируем успешные результаты для создания прогресс-баров
+            successful_tasks = []
+            successful_tasks.extend(processing_results["new_videos"])
+            successful_tasks.extend(processing_results["redownloading"])
+
+            # Формируем информационный блок
+            info_data = {}
+            if processing_results["existing_ready"]:
+                info_data["existing_ready"] = processing_results["existing_ready"]
+            if processing_results["redownloading"]:
+                info_data["redownloading"] = processing_results["redownloading"]
+
+            # Создаем сводное сообщение
+            summary_parts = []
+            if processing_results["new_videos"]:
+                summary_parts.append(f"{len(processing_results['new_videos'])} нових відео")
+            if processing_results["existing_ready"]:
+                summary_parts.append(f"{len(processing_results['existing_ready'])} вже готових")
+            if processing_results["redownloading"]:
+                summary_parts.append(f"{len(processing_results['redownloading'])} перезавантажується")
+            if processing_results["errors"]:
+                summary_parts.append(f"{len(processing_results['errors'])} помилок")
+
+            main_message = f"Обробка завершена: {', '.join(summary_parts)}"
 
             return VideoUploadResponse(
                 id="batch_upload",
                 azure_file_path=None,
-                filename=f"{len(results)} відео",
+                filename=f"Пакетне завантаження ({len(video_urls)} відео)",
                 conversion_task_id=None,
-                message=f"Зареєстровано {len(results)} відео з {len(video_urls)}",
-                batch_results={"successful": results, "errors": errors}
+                message=main_message,
+                batch_results={
+                    "successful": successful_tasks,
+                    "errors": processing_results["errors"],
+                    "info": info_data if info_data else None
+                }
             )
 
-        except BusinessLogicException:
-            raise
         except Exception as e:
-            logger.error(f"Помилка реєстрації кількох відео: {str(e)}")
-            raise BusinessLogicException(f"Помилка реєстрації відео: {str(e)}")
+            logger.error(f"Помилка пакетної реєстрації відео: {str(e)}")
+            raise BusinessLogicException(f"Помилка пакетної реєстрації відео: {str(e)}")
 
     def register_videos_from_folder(self, folder_url: str) -> VideoUploadResponse:
         """Реєстрація всіх відео з Azure папки"""
@@ -129,27 +300,18 @@ class VideoService:
             if not videos_in_folder:
                 raise BusinessLogicException("Не знайдено відео файлів у вказаній папці")
 
-            results = []
-            errors = []
-
-            for video_info in videos_in_folder:
-                try:
-                    result = self.register_single_video(video_info["url"])
-                    results.append({
-                        "filename": result.filename,
-                        "task_id": result.conversion_task_id
-                    })
-                except BusinessLogicException as e:
-                    errors.append(f"{video_info['filename']}: {str(e)}")
-
-            return VideoUploadResponse(
-                id="folder_upload",
-                azure_file_path=None,
-                filename=f"Папка з {len(results)} відео",
-                conversion_task_id=None,
-                message=f"Зареєстровано {len(results)} відео з папки",
-                batch_results={"successful": results, "errors": errors}
-            )
+            # Извлекаем URLs видео
+            video_urls = [video_info["url"] for video_info in videos_in_folder]
+            
+            # Используем улучшенную логику обработки множественных видео
+            result = self.register_multiple_videos(video_urls)
+            
+            # Обновляем сообщение для папки
+            folder_name = folder_url.split('/')[-1] or folder_url.split('/')[-2]
+            result.filename = f"Папка: {folder_name} ({len(videos_in_folder)} відео)"
+            result.message = f"Обробка папки завершена: знайдено {len(videos_in_folder)} відео файлів"
+            
+            return result
 
         except BusinessLogicException:
             raise
@@ -237,10 +399,17 @@ class VideoService:
             logger.error(f"Помилка отримання статусу відео: {str(e)}")
             raise BusinessLogicException(f"Помилка отримання статусу відео: {str(e)}")
 
-    def get_videos_list_paginated(self, page: int = 1, per_page: int = 20, user_id: Optional[str] = None) -> VideoListResponse:
+    def get_videos_list_paginated(self, page: int = 1, per_page: int = 20,
+                                  user_id: Optional[str] = None) -> VideoListResponse:
         """Отримання пагінованого списку відео"""
         try:
-            valid_statuses = [VideoStatus.NOT_ANNOTATED, VideoStatus.IN_PROGRESS, VideoStatus.ANNOTATED]
+            # Показуємо відео які можна анотувати, які обробляються та анотовані
+            valid_statuses = [
+                VideoStatus.NOT_ANNOTATED,
+                VideoStatus.IN_PROGRESS,
+                VideoStatus.PROCESSING_CLIPS,  # Відео в процесі обробки кліпів
+                VideoStatus.ANNOTATED  # Анотовані відео також показуємо
+            ]
             all_videos = [v for v in self.source_repo.get_all() if v.status in valid_statuses]
 
             all_videos.sort(key=lambda x: x.created_at_utc, reverse=True)
@@ -260,7 +429,6 @@ class VideoService:
                 lock_status = lock_statuses.get(video_id, {"locked": False})
                 can_start_work = self._can_user_start_work(video, lock_status, user_id)
 
-                # Отримуємо метадані з першого кліпу
                 first_clip_data = self.clip_repo.get_all({"source_video_id": video_id}, limit=1)
                 metadata = first_clip_data[0] if first_clip_data else None
 
@@ -396,7 +564,10 @@ class VideoService:
         """Визначення чи може користувач почати роботу з відео"""
         video_status = video.status
 
-        if video_status == VideoStatus.ANNOTATED:
+        if video_status in [VideoStatus.ANNOTATED, VideoStatus.PROCESSING_CLIPS]:
+            return False
+
+        if video_status == VideoStatus.DOWNLOAD_ERROR:
             return False
 
         if video_status == VideoStatus.NOT_ANNOTATED:

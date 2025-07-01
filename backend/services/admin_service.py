@@ -228,10 +228,22 @@ class AdminService:
             from backend.services.cvat_service import CVATService
             cvat_service = CVATService()
 
+            # Additional validation for project_id conflicts
+            existing_with_same_id = cvat_service.settings_repo.get_by_field("project_id", settings.project_id)
+            if existing_with_same_id and existing_with_same_id.project_name != settings.project_name.value:
+                project_names = {
+                    'motion-det': 'Motion Detection',
+                    'tracking': 'Tracking',
+                    'mil-hardware': 'Mil Hardware',
+                    're-id': 'Re-ID'
+                }
+                current_project_name = project_names.get(existing_with_same_id.project_name, existing_with_same_id.project_name)
+                raise_business_error(f"Project ID {settings.project_id} вже використовується проєктом '{current_project_name}'. Будь ласка, оберіть інший ID.")
+
             success = cvat_service.update_project_settings(settings)
 
             if not success:
-                raise_business_error("Помилка оновлення налаштувань")
+                raise_business_error("Помилка оновлення налаштувань. Спробуйте ще раз.")
 
             return {
                 "success": True,
@@ -240,15 +252,19 @@ class AdminService:
 
         except Exception as e:
             logger.error(f"Error updating CVAT settings: {str(e)}")
-            raise_business_error(f"Помилка оновлення налаштувань CVAT: {str(e)}")
+            # Передаємо оригінальну помилку, якщо вона вже інформативна
+            if "вже використовується" in str(e):
+                raise_business_error(str(e))
+            else:
+                raise_business_error(f"Помилка оновлення налаштувань CVAT: {str(e)}")
 
     @staticmethod
     def _validate_role_creation(role: str, current_user_role: str) -> bool:
         """Validate if current user can create user with specified role"""
-        if current_user_role == UserRole.SUPER_ADMIN:
-            return role in [UserRole.ANNOTATOR, UserRole.ADMIN]
-        elif current_user_role == UserRole.ADMIN:
-            return role == UserRole.ANNOTATOR
+        if current_user_role == UserRole.SUPER_ADMIN.value:
+            return role in [UserRole.ANNOTATOR.value, UserRole.ADMIN.value]
+        elif current_user_role == UserRole.ADMIN.value:
+            return role == UserRole.ANNOTATOR.value
         return False
 
     @staticmethod
@@ -296,3 +312,47 @@ class AdminService:
     def _initialize_default_cvat_settings(self) -> None:
         """Private wrapper for backward compatibility"""
         self.initialize_default_cvat_settings()
+
+    def reset_cvat_settings_to_defaults(self) -> Dict[str, Any]:
+        """Reset all CVAT settings to default values"""
+        try:
+            default_settings = [
+                {"project_name": "motion-det", "project_id": 5, "overlap": 5, "segment_size": 400,
+                 "image_quality": 100},
+                {"project_name": "tracking", "project_id": 6, "overlap": 5, "segment_size": 400, "image_quality": 100},
+                {"project_name": "mil-hardware", "project_id": 7, "overlap": 5, "segment_size": 400,
+                 "image_quality": 100},
+                {"project_name": "re-id", "project_id": 8, "overlap": 5, "segment_size": 400, "image_quality": 100},
+            ]
+
+            reset_count = 0
+            for settings_data in default_settings:
+                existing = self.cvat_settings_repo.get_by_field("project_name", settings_data["project_name"])
+                if existing:
+                    # Update existing settings to default values
+                    success = self.cvat_settings_repo.update_by_id(
+                        str(existing.id),
+                        {
+                            "project_id": settings_data["project_id"],
+                            "overlap": settings_data["overlap"],
+                            "segment_size": settings_data["segment_size"],
+                            "image_quality": settings_data["image_quality"]
+                        }
+                    )
+                    if success:
+                        reset_count += 1
+                        logger.info(f"Reset CVAT settings for {settings_data['project_name']} to defaults")
+                else:
+                    # Create new settings with default values
+                    self.cvat_settings_repo.create(**settings_data)
+                    reset_count += 1
+                    logger.info(f"Created default CVAT settings for {settings_data['project_name']}")
+
+            return {
+                "success": True,
+                "message": f"Скинуто {reset_count} CVAT налаштувань до дефолтних значень"
+            }
+
+        except Exception as e:
+            logger.error(f"Error resetting CVAT settings: {str(e)}")
+            raise_business_error(f"Помилка скидання CVAT налаштувань: {str(e)}")

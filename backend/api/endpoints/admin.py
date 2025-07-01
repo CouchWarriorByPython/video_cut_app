@@ -1,5 +1,5 @@
 from typing import List, Annotated
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 
 from backend.models.api import (
     UserCreate, UserResponse, UserCreateResponse, UserDeleteResponse,
@@ -8,7 +8,7 @@ from backend.models.api import (
 from backend.models.shared import CVATSettings
 from backend.services.admin_service import AdminService
 from backend.api.dependencies import require_admin_role
-from backend.api.exceptions import ValidationException
+from backend.api.exceptions import ValidationException, ConflictException
 from backend.utils.logger import get_logger
 
 logger = get_logger(__name__, "api.log")
@@ -68,15 +68,24 @@ async def create_user_admin(
         admin_service: Annotated[AdminService, Depends(AdminService)]
 ) -> UserCreateResponse:
     """Створити нового користувача"""
-    result = admin_service.create_user_with_validation(
-        email=user_data.email,
-        password=user_data.password,
-        role=user_data.role,
-        current_user_role=current_user["role"]
-    )
+    try:
+        result = admin_service.create_user_with_validation(
+            email=user_data.email,
+            password=user_data.password,
+            role=user_data.role,
+            current_user_role=current_user["role"]
+        )
 
-    logger.info(f"User {user_data.email} created by admin {current_user['email']}")
-    return result
+        logger.info(f"User {user_data.email} created by admin {current_user['email']}")
+        return result
+
+    except ValidationException as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    except ConflictException as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error creating user: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Помилка створення користувача: {str(e)}")
 
 
 @router.put(
@@ -170,4 +179,23 @@ async def update_cvat_settings(
     result = admin_service.update_cvat_settings_with_model(settings_data)
 
     logger.info(f"CVAT settings for {project_name} updated by admin {current_user['email']}")
+    return result
+
+
+@router.post(
+    "/reset-cvat-settings",
+    summary="Скинути CVAT налаштування до дефолтних",
+    description="Скидає всі CVAT налаштування проєктів до дефолтних значень",
+    responses={
+        400: {"model": ErrorResponse, "description": "Помилка скидання налаштувань"}
+    }
+)
+async def reset_cvat_settings(
+        current_user: Annotated[dict, Depends(require_admin_role)],
+        admin_service: Annotated[AdminService, Depends(AdminService)]
+):
+    """Скинути всі CVAT налаштування до дефолтних значень"""
+    result = admin_service.reset_cvat_settings_to_defaults()
+    
+    logger.info(f"CVAT settings reset to defaults by admin {current_user['email']}")
     return result

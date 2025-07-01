@@ -7,8 +7,7 @@ services:
       - "6380:6379"
     volumes:
       - redis_data_prod:/data
-    command: redis-server --maxmemory 512mb --maxmemory-policy allkeys-lru
-
+    command: redis-server --maxmemory 1gb --maxmemory-policy allkeys-lru --save "" --appendonly no
   app:
     build:
       context: .
@@ -64,7 +63,7 @@ services:
       dockerfile: docker/Dockerfile
     container_name: video_annotator_celery_conversion_prod
     restart: unless-stopped
-    command: celery -A backend.background_tasks.app worker --loglevel=info --concurrency=2 --queues=video_conversion --max-tasks-per-child=5
+    command: celery -A backend.background_tasks.app worker --loglevel=info --concurrency=8 --queues=video_conversion --max-tasks-per-child=5
     env_file:
       - .env
     volumes:

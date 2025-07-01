@@ -14,7 +14,6 @@
     <div class="section-header">
         <h2>Доступні відео для анотування</h2>
         <div class="section-controls">
-            <button id="refresh-videos-btn" class="btn btn-secondary">🔄 Оновити</button>
             <div class="videos-count">
                 <span id="videos-count-text">Завантаження...</span>
             </div>
@@ -226,24 +225,12 @@
     </div>
 
     <div style="display: flex; gap: 10px; margin-top: 20px;">
-        <button id="view-json" class="btn btn-secondary">Перегляд JSON</button>
         <button id="save-fragments" class="btn btn-success full-width">Завершити анотацію</button>
     </div>
 </div>
 {% endblock %}
 
 {% block modals %}
-<!-- JSON модальне вікно -->
-<div id="json-modal" class="modal">
-    <div class="modal-content">
-        <span class="modal-close">&times;</span>
-        <h3 class="modal-title">Перегляд JSON</h3>
-        <div class="modal-body">
-            <pre id="json-content" class="json-preview"></pre>
-        </div>
-    </div>
-</div>
-
 <!-- Модальне вікно вибору проєкту -->
 <div id="project-modal" class="modal">
     <div class="modal-content">

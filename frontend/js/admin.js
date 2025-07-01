@@ -35,7 +35,8 @@ class AdminPanel {
             ['#add-user-btn', () => this.userModal.open()],
             ['#save-user-btn', () => this.saveUser()],
             ['#save-edit-user-btn', () => this.saveEditUser()],
-            ['#save-cvat-btn', () => this.saveCvat()]
+            ['#save-cvat-btn', () => this.saveCvat()],
+            ['#reset-cvat-btn', () => this.resetCvatSettings()]
         ];
 
         eventMappings.forEach(([selector, handler]) =>
@@ -74,12 +75,10 @@ class AdminPanel {
         this.renderCvat(cvat);
     }
 
-    renderStats({ total_users, active_users, total_videos, processing_videos }) {
+    renderStats({ total_users, total_videos }) {
         const statsMap = {
             'total-users': total_users,
-            'active-users': active_users,
-            'total-videos': total_videos,
-            'processing-videos': processing_videos
+            'total-videos': total_videos
         };
 
         Object.entries(statsMap).forEach(([id, value]) =>
@@ -226,7 +225,14 @@ class AdminPanel {
                 if (input) input.value = setting[key];
             });
 
+            // Update project ID hint with general validation info
+            const hintElement = document.getElementById('project-id-hint');
+            if (hintElement) {
+                hintElement.textContent = 'ID повинен бути унікальним та від 1 до 1000';
+            }
+
             this.cvatModal.currentProject = project;
+            this.cvatModal.clearErrors(); // Очищаємо попередні помилки
             this.cvatModal.open();
         } catch (e) {
             notify(e.message, 'error');
@@ -236,10 +242,40 @@ class AdminPanel {
     async saveCvat() {
         const data = this.cvatForm.getData();
 
+        // Валідація полів на фронтенді
+        const validationRules = {
+            projectId: { 
+                required: true, 
+                validator: (v) => v >= 1 && v <= 1000, 
+                message: 'Project ID повинен бути від 1 до 1000' 
+            },
+            overlap: { 
+                required: true, 
+                validator: (v) => v >= 0 && v <= 100, 
+                message: 'Overlap повинен бути від 0 до 100%' 
+            },
+            segmentSize: { 
+                required: true, 
+                validator: (v) => v >= 50 && v <= 2000, 
+                message: 'Segment Size повинен бути від 50 до 2000' 
+            },
+            imageQuality: { 
+                required: true, 
+                validator: (v) => v >= 1 && v <= 100, 
+                message: 'Image Quality повинна бути від 1 до 100%' 
+            }
+        };
+
+        if (!this.cvatForm.validate(validationRules)) {
+            return;
+        }
+
+        const projectId = +data.projectId;
+
         try {
             const response = await api.put(`/admin/cvat-settings/${this.cvatModal.currentProject}`, {
                 project_name: this.cvatModal.currentProject,
-                project_id: +data.projectId,
+                project_id: projectId,
                 overlap: +data.overlap,
                 segment_size: +data.segmentSize,
                 image_quality: +data.imageQuality
@@ -251,6 +287,34 @@ class AdminPanel {
                 this.loadData();
             } else {
                 notify(response.message || 'Помилка', 'error');
+            }
+        } catch (e) {
+            // Показуємо детальну інформацію про помилку
+            let errorMessage = e.message;
+            
+            // Якщо це помилка валідації, показуємо кожне поле окремо
+            if (errorMessage.includes('Деталі:')) {
+                const [mainMsg, details] = errorMessage.split('. Деталі: ');
+                errorMessage = `${mainMsg}\n\nДеталі помилок:\n${details.split('; ').join('\n')}`;
+            }
+            
+            notify(errorMessage, 'error');
+        }
+    }
+
+    async resetCvatSettings() {
+        if (!await confirm('Скинути всі CVAT налаштування до дефолтних значень? Ця дія незворотна.')) {
+            return;
+        }
+
+        try {
+            const response = await api.post('/admin/reset-cvat-settings');
+            
+            if (response.success) {
+                notify('CVAT налаштування скинуті до дефолтних значень', 'success');
+                this.loadData(); // Перезавантажуємо дані
+            } else {
+                notify(response.message || 'Помилка скидання налаштувань', 'error');
             }
         } catch (e) {
             notify(e.message, 'error');

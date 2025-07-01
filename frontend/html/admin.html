@@ -15,28 +15,14 @@
         <div class="stat-icon">👥</div>
         <div class="stat-info">
             <div class="stat-number" id="total-users">-</div>
-            <div class="stat-label">Всього користувачів</div>
-        </div>
-    </div>
-    <div class="stat-card">
-        <div class="stat-icon">✅</div>
-        <div class="stat-info">
-            <div class="stat-number" id="active-users">-</div>
-            <div class="stat-label">Активні користувачі</div>
+            <div class="stat-label">Користувачів</div>
         </div>
     </div>
     <div class="stat-card">
         <div class="stat-icon">🎬</div>
         <div class="stat-info">
             <div class="stat-number" id="total-videos">-</div>
-            <div class="stat-label">Всього відео</div>
-        </div>
-    </div>
-    <div class="stat-card">
-        <div class="stat-icon">⚙️</div>
-        <div class="stat-info">
-            <div class="stat-number" id="processing-videos">-</div>
-            <div class="stat-label">В обробці</div>
+            <div class="stat-label">Відео</div>
         </div>
     </div>
 </div>
@@ -167,6 +153,9 @@
                 <div class="form-group">
                     <label for="cvat-project-id">Project ID:</label>
                     <input type="number" id="cvat-project-id" name="projectId" class="form-control" required min="1" max="1000">
+                    <small class="form-text" id="project-id-hint">
+                        ID повинен бути унікальним та від 1 до 1000
+                    </small>
                 </div>
                 <div class="form-group">
                     <label for="cvat-overlap">Overlap (%):</label>

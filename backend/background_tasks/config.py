@@ -27,13 +27,15 @@ task_routes = {
     'finalize_video_processing': {'queue': 'video_processing'},
 }
 
+# Видаляємо rate_limit для швидшої обробки
 task_annotations = {
-    'download_and_convert_video': {'rate_limit': f'{settings.max_conversion_workers}/m'},
+    'download_and_convert_video': {'rate_limit': None},
 }
 
-worker_prefetch_multiplier = 1
+# Оптимізація для швидкої обробки черги
+worker_prefetch_multiplier = 4  # Збільшуємо з 1 до 4
 task_acks_late = True
-worker_max_tasks_per_child = 20
+worker_max_tasks_per_child = 50  # Збільшуємо з 20 до 50
 
 task_compression = 'gzip'
 result_compression = 'gzip'
@@ -41,6 +43,10 @@ result_compression = 'gzip'
 broker_connection_retry_on_startup = True
 broker_connection_retry = True
 
-result_expires = 86400  # 24 години
+result_expires = 86400
 task_ignore_result = False
 task_store_eager_result = True
+
+# Додаємо для швидшої обробки
+task_soft_time_limit = 3600
+task_reject_on_worker_lost = True

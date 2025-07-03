@@ -34,6 +34,7 @@ class Settings(BaseSettings):
     azure_tenant_id: Optional[str] = Field(default=None)
     azure_client_id: Optional[str] = Field(default=None)
     azure_client_secret: Optional[str] = Field(default=None)
+    azure_storage_connection_string: Optional[str] = Field(default=None)
 
     # CVAT - обов'язкові
     cvat_host: str
@@ -65,9 +66,8 @@ class Settings(BaseSettings):
     # Video conversion - технічні дефолти
     video_conversion_preset: str = Field(default="fast")
     video_conversion_crf: int = Field(default=23)
-    enable_hardware_acceleration: bool = Field(default=True)
+    enable_hardware_acceleration: bool = Field(default=False)
     skip_conversion_for_compatible: bool = Field(default=True)
-    max_conversion_workers: int = Field(default=2)
 
     # JWT - обов'язковий secret_key
     secret_key: str = Field(alias="SECRET_KEY")
@@ -75,9 +75,11 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = Field(default=30)
     refresh_token_expire_minutes: int = Field(default=10080)  # 7 days
 
-    # Admin - обов'язкові
-    super_admin_email: str
-    super_admin_password: str
+    # Super Admins - обов'язкові
+    super_admin_email_1: Optional[str] = Field(default=None)
+    super_admin_password_1: Optional[str] = Field(default=None)
+    super_admin_email_2: Optional[str] = Field(default=None)
+    super_admin_password_2: Optional[str] = Field(default=None)
 
     # Environment
     environment: str = Field(default="development")

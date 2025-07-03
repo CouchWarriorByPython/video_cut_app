@@ -7,11 +7,10 @@ from typing import Dict, Any, Callable, Optional
 from urllib.parse import urlparse
 
 from azure.storage.blob import BlobServiceClient, ContainerClient
-from azure.identity import ClientSecretCredential, DefaultAzureCredential
+from azure.identity import ClientSecretCredential
 from azure.core.exceptions import ResourceNotFoundError
 
 from backend.config.settings import get_settings
-
 from backend.utils.logger import get_logger
 
 settings = get_settings()
@@ -23,28 +22,37 @@ AZURE_LOGGER.setLevel(logging.WARNING)
 
 
 def get_blob_service_client() -> BlobServiceClient:
-    """Отримує BlobServiceClient з підтримкою service principal та az login"""
+    """Отримує BlobServiceClient з підтримкою connection string або service principal"""
     try:
-        # Перевіряємо чи є credentials для service principal
+        # Варіант 1: Connection String (найпростіший і найнадійніший)
+        if hasattr(settings, 'azure_storage_connection_string') and settings.azure_storage_connection_string:
+            logger.info("Using Azure Storage connection string for authentication")
+            return BlobServiceClient.from_connection_string(settings.azure_storage_connection_string)
+
+        # Варіант 2: Service Principal
         if all([
             hasattr(settings, 'azure_tenant_id') and settings.azure_tenant_id,
             hasattr(settings, 'azure_client_id') and settings.azure_client_id,
             hasattr(settings, 'azure_client_secret') and settings.azure_client_secret
         ]):
-            logger.info("Using ClientSecretCredential for Azure authentication")
+            logger.info("Using Service Principal for Azure authentication")
             credential = ClientSecretCredential(
                 tenant_id=settings.azure_tenant_id,
                 client_id=settings.azure_client_id,
                 client_secret=settings.azure_client_secret
             )
-        else:
-            logger.info("Using DefaultAzureCredential (az login) for Azure authentication")
-            credential = DefaultAzureCredential()
+            return BlobServiceClient(
+                account_url=settings.azure_account_url,
+                credential=credential
+            )
 
-        return BlobServiceClient(
-            account_url=settings.azure_account_url,
-            credential=credential
+        # Якщо нічого не налаштовано - помилка
+        raise ValueError(
+            "Azure authentication not configured. Please set either:\n"
+            "1. AZURE_STORAGE_CONNECTION_STRING in .env\n"
+            "2. AZURE_TENANT_ID, AZURE_CLIENT_ID, and AZURE_CLIENT_SECRET for Service Principal"
         )
+
     except Exception as e:
         logger.error(f"Помилка створення BlobServiceClient: {str(e)}")
         raise

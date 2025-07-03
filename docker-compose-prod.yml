@@ -1,4 +1,38 @@
 services:
+  mongodb:
+    image: mongo:7.0
+    container_name: video_annotator_mongodb_prod
+    restart: unless-stopped
+    ports:
+      - "27018:27017"
+    env_file:
+      - .env
+    volumes:
+      - mongodb_data_prod:/data/db
+      - ./mongo/mongod.conf:/etc/mongod.conf:ro
+    command: ["mongod", "--config", "/etc/mongod.conf"]
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: '2048M'
+        reservations:
+          cpus: '1.0'
+          memory: '1024M'
+
+  mongo-express:
+    image: mongo-express:latest
+    container_name: video_annotator_mongo_express_prod
+    restart: unless-stopped
+    ports:
+      - "8082:8081"
+    environment:
+      ME_CONFIG_MONGODB_URL: ${MONGO_URI}
+      ME_CONFIG_BASICAUTH_USERNAME: ${MONGO_EXPRESS_USERNAME:-admin}
+      ME_CONFIG_BASICAUTH_PASSWORD: ${MONGO_EXPRESS_PASSWORD:-changeme}
+    depends_on:
+      - mongodb
+
   redis:
     image: redis:7.2-alpine
     container_name: video_annotator_redis_prod
@@ -8,10 +42,11 @@ services:
     volumes:
       - redis_data_prod:/data
     command: redis-server --maxmemory 1gb --maxmemory-policy allkeys-lru --save "" --appendonly no
+
   app:
     build:
       context: .
-      dockerfile: docker/Dockerfile
+      dockerfile: docker/Dockerfile.gpu
     container_name: video_annotator_app_prod
     restart: unless-stopped
     ports:
@@ -21,6 +56,9 @@ services:
     volumes:
       - ./temp:/app/temp
       - ./logs:/app/logs
+      - ~/.azure:/root/.azure:ro
+    environment:
+      - AZURE_CONFIG_DIR=/root/.azure
     depends_on:
       - mongodb
       - redis
@@ -36,7 +74,7 @@ services:
   celery-general:
     build:
       context: .
-      dockerfile: docker/Dockerfile
+      dockerfile: docker/Dockerfile.gpu
     container_name: video_annotator_celery_general_prod
     restart: unless-stopped
     command: celery -A backend.background_tasks.app worker --loglevel=info --concurrency=4 --queues=default,video_processing,clip_processing
@@ -45,6 +83,9 @@ services:
     volumes:
       - ./temp:/app/temp
       - ./logs:/app/logs
+      - ~/.azure:/root/.azure:ro
+    environment:
+      - AZURE_CONFIG_DIR=/root/.azure
     depends_on:
       - mongodb
       - redis
@@ -60,7 +101,7 @@ services:
   celery-conversion:
     build:
       context: .
-      dockerfile: docker/Dockerfile
+      dockerfile: docker/Dockerfile.gpu
     container_name: video_annotator_celery_conversion_prod
     restart: unless-stopped
     command: celery -A backend.background_tasks.app worker --loglevel=info --concurrency=8 --queues=video_conversion --max-tasks-per-child=5
@@ -69,6 +110,9 @@ services:
     volumes:
       - ./temp:/app/temp
       - ./logs:/app/logs
+      - ~/.azure:/root/.azure:ro
+    environment:
+      - AZURE_CONFIG_DIR=/root/.azure
     depends_on:
       - mongodb
       - redis
@@ -76,10 +120,14 @@ services:
       resources:
         limits:
           cpus: '4.0'
-          memory: '4096M'
+          memory: '8192M'
         reservations:
           cpus: '2.0'
-          memory: '2048M'
+          memory: '4096M'
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
 
   flower:
     build:
@@ -109,11 +157,3 @@ services:
 volumes:
   mongodb_data_prod:
   redis_data_prod:
-
-# Для GPU доступу потрібно:
-# 1. Встановити nvidia-container-toolkit:
-#    sudo apt install nvidia-container-toolkit
-#    sudo systemctl restart docker
-# 
-# 2. Запускати з GPU підтримкою:
-#    docker-compose -f docker-compose-prod.yml up celery-conversion --gpus all

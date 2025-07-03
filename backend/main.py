@@ -16,7 +16,7 @@ from backend.middlewares.log_middleware import log_middleware
 from backend.database.connection import DatabaseConnection
 from backend.config.settings import get_settings
 from backend.utils.logger import get_logger
-from backend.utils.admin_setup import create_super_admin, validate_admin_configuration
+from backend.utils.admin_setup import create_super_admins, validate_admin_configuration
 
 logger = get_logger(__name__, "main.log")
 
@@ -31,7 +31,7 @@ async def lifespan(_app: FastAPI):
         if not validate_admin_configuration():
             raise ValueError("Невірна конфігурація супер адміна")
 
-        create_super_admin()
+        create_super_admins()
 
         from backend.utils.cvat_setup import initialize_default_cvat_settings
         initialize_default_cvat_settings()

@@ -87,32 +87,66 @@ def get_video_fps(video_path: str) -> Optional[float]:
         return None
 
 
-def trim_video_clip(source_path: str, output_path: str, start_time: str, end_time: str) -> bool:
-    """Нарізає відео фрагмент за допомогою FFmpeg"""
+def check_gpu_available() -> bool:
+    """Перевірка доступності NVIDIA GPU"""
     try:
-        command = [
-            "ffmpeg",
-            "-y",
+        result = subprocess.run(
+            ["nvidia-smi", "-L"],
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+        if result.returncode == 0 and "GPU" in result.stdout:
+            return True
+    except (subprocess.TimeoutExpired, FileNotFoundError):
+        pass
+    return False
+
+
+def trim_video_clip(source_path: str, output_path: str, start_time: str, end_time: str) -> bool:
+    """Нарізає відео фрагмент за допомогою FFmpeg з GPU підтримкою"""
+    try:
+        gpu_available = check_gpu_available()
+
+        command = ["ffmpeg", "-y"]
+
+        # GPU декодування для швидкої нарізки
+        if gpu_available and settings.enable_hardware_acceleration:
+            command.extend([
+                "-hwaccel", "cuda",
+                "-hwaccel_output_format", "cuda"
+            ])
+
+        command.extend([
             "-ss", start_time,
             "-to", end_time,
-            "-i", source_path,
-            "-c", "copy",
-            "-loglevel", settings.ffmpeg_log_level,
-            output_path,
-        ]
+            "-i", source_path
+        ])
 
-        logger.debug(f"Запуск команди: {' '.join(command)}")
+        # При нарізці використовуємо копіювання потоків без перекодування
+        # для максимальної швидкості
+        command.extend([
+            "-c", "copy",
+            "-avoid_negative_ts", "make_zero",
+            "-loglevel", settings.ffmpeg_log_level,
+            output_path
+        ])
+
+        logger.debug(f"Trim command: {' '.join(command)}")
 
         result = subprocess.run(command, capture_output=True, text=True)
 
-        if os.path.exists(output_path) and os.path.getsize(output_path) > 0:
-            logger.debug(f"Кліп успішно створено: {output_path}")
-            return True
-        else:
-            logger.error(f"Помилка при створенні кліпу: {result.stderr}")
-            return False
+        if result.returncode == 0 and os.path.exists(output_path):
+            file_size = os.path.getsize(output_path)
+            if file_size > 0:
+                logger.info(f"Кліп успішно створено: {output_path} (розмір: {file_size} bytes)")
+                return True
+
+        logger.error(f"Помилка нарізки відео. FFmpeg stderr: {result.stderr}")
+        return False
+
     except Exception as e:
-        logger.error(f"Помилка при нарізці відео: {e}")
+        logger.error(f"Помилка при нарізці відео: {str(e)}")
         return False
 
 

@@ -23,10 +23,10 @@ class UserRole(str, Enum):
 
 
 class MLProject(str, Enum):
-    MOTION_DET = "motion-det"
-    TRACKING = "tracking"
-    MIL_HARDWARE = "mil-hardware"
-    RE_ID = "re-id"
+    MOTION_DETECTION = "motion_detection"
+    MILITARY_TARGETS_MOVING = "military_targets_detection_and_tracking_moving"
+    MILITARY_TARGETS_STATIC = "military_targets_detection_and_tracking_static"
+    RE_ID = "re_id"
 
 
 class AzureFilePath(BaseModel):

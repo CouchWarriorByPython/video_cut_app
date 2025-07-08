@@ -103,16 +103,16 @@
         <h3>Виберіть проєкти для розмітки:</h3>
         <div class="checkbox-grid">
             <label class="checkbox-label">
-                <input type="checkbox" name="project" value="motion-det" checked> Motion Detection
+                <input type="checkbox" name="project" value="motion_detection" checked> Motion Detection
             </label>
             <label class="checkbox-label">
-                <input type="checkbox" name="project" value="tracking"> Tracking & Re-identification
+                <input type="checkbox" name="project" value="military_targets_detection_and_tracking_moving"> Military Targets Moving
             </label>
             <label class="checkbox-label">
-                <input type="checkbox" name="project" value="mil-hardware"> Mil Hardware Detection
+                <input type="checkbox" name="project" value="military_targets_detection_and_tracking_static"> Military Targets Static
             </label>
             <label class="checkbox-label">
-                <input type="checkbox" name="project" value="re-id"> Re-ID
+                <input type="checkbox" name="project" value="re_id"> Re-identification
             </label>
         </div>
     </div>
@@ -146,7 +146,7 @@
                 <div class="form-group">
                     <label class="checkbox-label">
                         <input type="checkbox" id="skip-video" name="skip">
-                        <span>Skip - Відео повністю нерелевантне</span>
+                        <span>Skip - Відео повністю нерелевантне (зберігає без обробки кліпів)</span>
                     </label>
                 </div>
 
@@ -202,30 +202,26 @@
                     </div>
                 </div>
 
-                <!-- Додати після checkbox-grid з проєктами -->
-                <div class="card">
-                    <h3>Інформація про відео</h3>
+                <div class="form-group">
+                    <label for="video-where">Локація:</label>
+                    <input type="text" id="video-where" name="where" class="form-control"
+                           placeholder="Наприклад: Kyiv region або Kharkiv city">
+                    <small class="form-text">Тільки англійські літери. Пробіли замінюються на "_" при завершенні вводу</small>
+                </div>
 
-                    <div class="form-group">
-                        <label for="video-where">Локація:</label>
-                        <input type="text" id="video-where" name="where" class="form-control"
-                               placeholder="Наприклад: Kyiv, Kharkiv">
-                        <small class="form-text">Локація де було знято відео (англійською)</small>
-                    </div>
-
-                    <div class="form-group">
-                        <label for="video-when">Дата зйомки:</label>
-                        <input type="text" id="video-when" name="when" class="form-control"
-                               placeholder="РРРРММДД (наприклад: 20250527)">
-                        <small class="form-text">Дата коли було знято відео</small>
-                    </div>
+                <div class="form-group">
+                    <label for="video-when">Дата зйомки:</label>
+                    <input type="text" id="video-when" name="when" class="form-control"
+                           placeholder="20241220" maxlength="8">
+                    <small class="form-text">Формат: РРРРММДД (рік, місяць, день). Приклад: 20241220 = 20 грудня 2024</small>
                 </div>
             </div>
         </div>
     </div>
 
     <div style="display: flex; gap: 10px; margin-top: 20px;">
-        <button id="save-fragments" class="btn btn-success full-width">Завершити анотацію</button>
+        <button id="save-annotation" class="btn btn-primary" style="flex: 1;">💾 Зберегти анотацію</button>
+        <button id="save-fragments" class="btn btn-success" style="flex: 1;">✅ Завершити анотацію</button>
     </div>
 </div>
 {% endblock %}

@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Dict, List, Optional, Any, Annotated
 from pydantic import (
     BaseModel, Field, field_validator, model_validator,
-    EmailStr, HttpUrl, conint, constr, ConfigDict
+    EmailStr, HttpUrl, ConfigDict
 )
 from backend.models.shared import AzureFilePath, UserRole, MLProject, VideoStatus, CVATSettings
 
@@ -53,12 +53,12 @@ class TokenPayload(BaseModel):
     user_id: str
     role: UserRole
     exp: int
-    type: constr(pattern='^(access|refresh)$')
+    type: Annotated[str, Field(pattern='^(access|refresh)$')]
 
 
 class ClipInfoRequest(BaseModel):
     """Clip information in request"""
-    id: conint(ge=0)
+    id: Annotated[int, Field(ge=0)]
     start_time: Annotated[str, Field(pattern=r'^\d{2}:\d{2}:\d{2}$')]
     end_time: Annotated[str, Field(pattern=r'^\d{2}:\d{2}:\d{2}$')]
 
@@ -100,8 +100,8 @@ class VideoMetadataRequest(BaseModel):
     skip: bool = False
     where: Optional[Annotated[str, Field(pattern=r'^[A-Za-z\s\-_]+$', max_length=100)]] = None
     when: Optional[Annotated[str, Field(pattern=r'^\d{8}$')]] = None
-    uav_type: constr(max_length=100) = ""
-    video_content: constr(max_length=100) = ""
+    uav_type: Annotated[str, Field(max_length=100)] = ""
+    video_content: Annotated[str, Field(max_length=100)] = ""
     is_urban: bool = False
     has_osd: bool = False
     is_analog: bool = False
@@ -145,8 +145,8 @@ class SaveFragmentsRequest(BaseModel):
 
 class PaginationRequest(BaseModel):
     """Pagination parameters"""
-    page: conint(ge=1) = 1
-    per_page: conint(ge=1, le=100) = 20
+    page: Annotated[int, Field(ge=1)] = 1
+    per_page: Annotated[int, Field(ge=1, le=100)] = 20
 
 
 class UserCreate(BaseModel):
@@ -192,7 +192,7 @@ class LoginRequest(BaseModel):
 
 class RefreshTokenRequest(BaseModel):
     """Refresh token request"""
-    refresh_token: constr(min_length=10)
+    refresh_token: Annotated[str, Field(min_length=10)]
 
 
 class BaseResponse(BaseModel):
@@ -345,4 +345,25 @@ class UserCreateResponse(BaseResponse):
 
 class UserDeleteResponse(BaseResponse):
     """User deletion response"""
+    message: str
+
+
+class SaveAnnotationRequest(BaseModel):
+    """Save annotation request schema"""
+    azure_file_path: AzureFilePath
+    data: Dict[str, Any]
+
+    @field_validator('data')
+    def validate_data_structure(cls, v: Dict[str, Any]) -> Dict[str, Any]:
+        """Валідація структури даних анотації"""
+        required_fields = ['metadata']
+        for field in required_fields:
+            if field not in v:
+                raise ValueError(f"Missing required field: {field}")
+        return v
+
+
+class SaveAnnotationResponse(BaseResponse):
+    """Save annotation response"""
+    id: str
     message: str

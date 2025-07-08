@@ -84,7 +84,7 @@ class VideoUploader {
                 if (!validators.azureUrl(url)) {
                     errors.push(`URL #${index + 1} некоректний`);
                 }
-                if (!['.mp4', '.avi', '.mov', '.mkv'].some(ext => url.toLowerCase().includes(ext))) {
+                if (!['.mp4', '.avi', '.mov', '.mkv', '.ts'].some(ext => url.toLowerCase().includes(ext))) {
                     errors.push(`URL #${index + 1} має містити відео файл`);
                 }
             }

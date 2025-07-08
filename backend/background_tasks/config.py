@@ -25,11 +25,22 @@ task_routes = {
     'process_video_annotation': {'queue': 'video_processing'},
     'process_video_clip': {'queue': 'clip_processing'},
     'finalize_video_processing': {'queue': 'video_processing'},
+    'periodic_system_cleanup': {'queue': 'maintenance'},
+}
+
+# Періодичні задачі
+beat_schedule = {
+    'system-cleanup': {
+        'task': 'periodic_system_cleanup',
+        'schedule': 3600.0,  # Кожну годину
+        'options': {'queue': 'maintenance'}
+    },
 }
 
 # Видаляємо rate_limit для швидшої обробки
 task_annotations = {
     'download_and_convert_video': {'rate_limit': None},
+    'periodic_system_cleanup': {'rate_limit': '1/h'},  # Не більше 1 разу на годину
 }
 
 # Оптимізація для швидкої обробки черги

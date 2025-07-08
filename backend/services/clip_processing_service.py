@@ -61,7 +61,7 @@ class ClipProcessingService:
 
             update_data = {
                 "cvat_task_id": int(cvat_task_id) if cvat_task_id else None,
-                "status": "processing" if cvat_task_id else "cvat_failed",
+                "status": "not_annotated" if cvat_task_id else "cvat_failed",
                 "fps": clip_video_info.get("fps"),
                 "resolution_width": clip_video_info.get("width"),
                 "resolution_height": clip_video_info.get("height"),

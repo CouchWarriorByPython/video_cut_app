@@ -9,28 +9,12 @@
 {% block content %}
 <h1>Адміністративна панель</h1>
 
-<!-- Statistics Cards -->
-<div class="stats-grid">
-    <div class="stat-card">
-        <div class="stat-icon">👥</div>
-        <div class="stat-info">
-            <div class="stat-number" id="total-users">-</div>
-            <div class="stat-label">Користувачів</div>
-        </div>
-    </div>
-    <div class="stat-card">
-        <div class="stat-icon">🎬</div>
-        <div class="stat-info">
-            <div class="stat-number" id="total-videos">-</div>
-            <div class="stat-label">Відео</div>
-        </div>
-    </div>
-</div>
-
 <!-- Navigation Tabs -->
 <div class="admin-tabs">
     <button class="tab-button active" data-tab="users">Користувачі</button>
+    <button class="tab-button" data-tab="videos">Відео</button>
     <button class="tab-button" data-tab="cvat-settings">CVAT Налаштування</button>
+    <button class="tab-button" data-tab="diagnostics">Діагностика</button>
 </div>
 
 <!-- Users Tab -->
@@ -38,6 +22,21 @@
     <div class="section-header">
         <h2>Управління користувачами</h2>
         <button class="btn btn-success" id="add-user-btn">Додати користувача</button>
+    </div>
+
+    <div class="videos-stats">
+        <div class="stat-item">
+            <span class="stat-label">Всього користувачів:</span>
+            <span class="stat-value" id="users-total">-</span>
+        </div>
+        <div class="stat-item">
+            <span class="stat-label">Активних:</span>
+            <span class="stat-value" id="users-active">-</span>
+        </div>
+        <div class="stat-item">
+            <span class="stat-label">Неактивних:</span>
+            <span class="stat-value" id="users-inactive">-</span>
+        </div>
     </div>
 
     <div class="table-container">
@@ -58,6 +57,51 @@
     </div>
 </div>
 
+<!-- Videos Tab -->
+<div id="videos-tab" class="tab-content">
+    <div class="section-header">
+        <h2>Управління відео</h2>
+        <div class="header-actions">
+            <button class="btn btn-warning" id="fix-orphaned-btn">Виправити завислі відео</button>
+        </div>
+    </div>
+
+    <div class="videos-stats">
+        <div class="stat-item">
+            <span class="stat-label">Всього відео:</span>
+            <span class="stat-value" id="videos-total">-</span>
+        </div>
+        <div class="stat-item">
+            <span class="stat-label">З локальними файлами:</span>
+            <span class="stat-value" id="videos-with-files">-</span>
+        </div>
+    </div>
+
+    <div class="table-container">
+        <table class="admin-table" id="videos-table">
+            <thead>
+                <tr>
+                    <th>Файл</th>
+                    <th>Статус</th>
+                    <th>Розмір</th>
+                    <th>Тривалість</th>
+                    <th>Створено</th>
+                    <th>Локальний файл</th>
+                    <th>Блокування</th>
+                    <th>Дії</th>
+                </tr>
+            </thead>
+            <tbody>
+                <!-- Заповнюється JavaScript -->
+            </tbody>
+        </table>
+    </div>
+
+    <div class="pagination-container" id="videos-pagination">
+        <!-- Заповнюється JavaScript -->
+    </div>
+</div>
+
 <!-- CVAT Settings Tab -->
 <div id="cvat-settings-tab" class="tab-content">
     <div class="section-header">
@@ -65,8 +109,24 @@
         <button class="btn btn-secondary" id="reset-cvat-btn">Скинути до дефолтних</button>
     </div>
 
-    <div class="cvat-settings-grid" id="cvat-settings-grid">
-        <!-- Заповнюється JavaScript -->
+    <div id="cvat-settings-grid" class="cvat-settings-grid">
+        <!-- CVAT settings will be loaded here -->
+    </div>
+</div>
+
+<!-- Diagnostics Tab -->
+<div id="diagnostics-tab" class="tab-content">
+    <div class="section-header">
+        <h2>Діагностика системи</h2>
+        <div class="button-group">
+            <button class="btn btn-primary" id="check-health-btn">Перевірити стан</button>
+            <button class="btn btn-warning" id="cleanup-locks-btn">Очистити блокування</button>
+            <button class="btn btn-danger" id="force-cleanup-btn">Примусове очищення</button>
+        </div>
+    </div>
+    
+    <div id="health-info" class="health-info-container">
+        <p class="text-muted">Натисніть "Перевірити стан" для діагностики системи</p>
     </div>
 </div>
 {% endblock %}

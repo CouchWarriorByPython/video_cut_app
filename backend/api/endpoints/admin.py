@@ -1,5 +1,5 @@
 from typing import List, Annotated
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from backend.models.api import (
     UserCreate, UserResponse, UserCreateResponse, UserDeleteResponse,
@@ -163,7 +163,7 @@ async def get_cvat_settings(
     description="Оновлює параметри CVAT для вказаного ML проєкту",
     responses={
         400: {"model": ErrorResponse, "description": "Помилка оновлення налаштувань"},
-        422: {"model": ErrorResponse, "description": "Project name в URL та body не співпадають"}
+        422: {"model": ErrorResponse, "description": "Project name in URL and body must match"}
     }
 )
 async def update_cvat_settings(
@@ -199,3 +199,113 @@ async def reset_cvat_settings(
     
     logger.info(f"CVAT settings reset to defaults by admin {current_user['email']}")
     return result
+
+
+@router.post(
+    "/fix-orphaned-videos",
+    summary="Виправити відео зі статусом IN_PROGRESS, які не заблоковані",
+    description="Виправляє відео, які мають статус 'В процесі анотації', але не заблоковані (виникає після перезапуску сервісу)",
+    responses={
+        400: {"model": ErrorResponse, "description": "Помилка виправлення відео"}
+    }
+)
+async def fix_orphaned_videos(
+        current_user: Annotated[dict, Depends(require_admin_role)],
+        admin_service: Annotated[AdminService, Depends(AdminService)]
+):
+    """Виправляти відео зі статусом IN_PROGRESS, які не заблоковані"""
+    result = admin_service.fix_orphaned_in_progress_videos()
+    
+    logger.info(f"Fixed orphaned IN_PROGRESS videos by admin {current_user['email']}")
+    return result
+
+
+@router.delete(
+    "/videos/{video_id}",
+    summary="Видалити відео",
+    description="Видаляє відео з системи: локальний файл та запис з бази даних",
+    responses={
+        404: {"model": ErrorResponse, "description": "Відео не знайдено"},
+        400: {"model": ErrorResponse, "description": "Помилка видалення відео"}
+    }
+)
+async def delete_video(
+        video_id: str,
+        current_user: Annotated[dict, Depends(require_admin_role)],
+        admin_service: Annotated[AdminService, Depends(AdminService)]
+):
+    """Видалити відео для адмінів"""
+    result = admin_service.delete_video(video_id)
+    
+    logger.info(f"Video {video_id} deleted by admin {current_user['email']}")
+    return result
+
+
+@router.get(
+    "/videos",
+    summary="Отримати список всіх відео для адмінів",
+    description="Повертає пагінований список всіх відео з додатковою інформацією для адмінів",
+    responses={
+        400: {"model": ErrorResponse, "description": "Помилка отримання списку відео"}
+    }
+)
+async def get_admin_videos(
+        current_user: Annotated[dict, Depends(require_admin_role)],
+        admin_service: Annotated[AdminService, Depends(AdminService)],
+        page: int = Query(1, ge=1, description="Номер сторінки"),
+        per_page: int = Query(20, ge=1, le=100, description="Кількість відео на сторінку")
+):
+    """Отримати список всіх відео для адмін панелі"""
+    logger.info(f"Admin {current_user['email']} requested videos list (page {page})")
+    return admin_service.get_admin_videos_list(page=page, per_page=per_page)
+
+
+@router.get(
+    "/system-health",
+    summary="Діагностика стану системи",
+    description="Повертає детальну інформацію про стан Redis, MongoDB та інших компонентів",
+    responses={
+        400: {"model": ErrorResponse, "description": "Помилка отримання інформації про систему"}
+    }
+)
+async def get_system_health(
+        current_user: Annotated[dict, Depends(require_admin_role)],
+        admin_service: Annotated[AdminService, Depends(AdminService)]
+):
+    """Діагностика стану системи"""
+    logger.info(f"Admin {current_user['email']} requested system health check")
+    return admin_service.get_system_health_info()
+
+
+@router.post(
+    "/cleanup-locks",
+    summary="Очистити застарілі блокування",
+    description="Видаляє всі прострочені блокування відео з Redis",
+    responses={
+        400: {"model": ErrorResponse, "description": "Помилка очищення блокувань"}
+    }
+)
+async def cleanup_video_locks(
+        current_user: Annotated[dict, Depends(require_admin_role)],
+        admin_service: Annotated[AdminService, Depends(AdminService)]
+):
+    """Очистити застарілі блокування відео"""
+    logger.info(f"Admin {current_user['email']} requested video locks cleanup")
+    return admin_service.cleanup_video_locks()
+
+
+@router.post(
+    "/force-cleanup-locks",
+    summary="Примусове видалення всіх блокувань",
+    description="УВАГА: Видаляє ВСІ блокування відео, включно з активними. Використовувати тільки в екстрених ситуаціях",
+    responses={
+        400: {"model": ErrorResponse, "description": "Помилка примусового очищення"}
+    }
+)
+async def force_cleanup_all_locks(
+        current_user: Annotated[dict, Depends(require_admin_role)],
+        admin_service: Annotated[AdminService, Depends(AdminService)]
+):
+    """Примусове видалення всіх блокувань відео"""
+    logger.warning(f"Admin {current_user['email']} requested FORCE cleanup of all video locks")
+    return admin_service.force_cleanup_all_locks()

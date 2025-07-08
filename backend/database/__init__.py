@@ -1,7 +1,8 @@
 from backend.database.document_repository import BaseDocumentRepository
 from backend.models.documents import (
     SourceVideoDocument, ClipVideoDocument,
-    UserDocument, CVATProjectSettingsDocument
+    UserDocument, CVATProjectSettingsDocument,
+    VideoAnnotationDraftDocument
 )
 
 
@@ -23,3 +24,8 @@ def create_user_repository() -> BaseDocumentRepository[UserDocument]:
 def create_cvat_settings_repository() -> BaseDocumentRepository[CVATProjectSettingsDocument]:
     """Create CVAT settings repository"""
     return BaseDocumentRepository(CVATProjectSettingsDocument)
+
+
+def create_annotation_draft_repository() -> BaseDocumentRepository[VideoAnnotationDraftDocument]:
+    """Create annotation draft repository"""
+    return BaseDocumentRepository(VideoAnnotationDraftDocument)

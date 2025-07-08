@@ -175,3 +175,81 @@ class VideoLockService:
         except Exception as e:
             logger.error(f"Помилка очищення блокувань: {str(e)}")
             return 0
+
+    def get_redis_health_info(self) -> Dict[str, Any]:
+        """Отримує інформацію про стан Redis та блокувань"""
+        try:
+            # Базова інформація про Redis
+            info = self.redis_client.info()
+            
+            # Кількість всіх video locks
+            pattern = "video_lock:*"
+            all_locks = self.redis_client.keys(pattern)
+            
+            locks_info = []
+            expired_locks = 0
+            
+            for key in all_locks:
+                try:
+                    ttl = self.redis_client.ttl(key)
+                    lock_data = self.redis_client.get(key)
+                    
+                    if ttl == -1:
+                        expired_locks += 1
+                    
+                    if lock_data:
+                        parsed_data = json.loads(lock_data)
+                        locks_info.append({
+                            "key": key,
+                            "ttl": ttl,
+                            "user_email": parsed_data.get("user_email"),
+                            "locked_at": parsed_data.get("locked_at"),
+                            "expired": ttl == -1
+                        })
+                except Exception as e:
+                    logger.warning(f"Error processing lock key {key}: {str(e)}")
+            
+            return {
+                "redis_connected": True,
+                "redis_memory_used": info.get("used_memory_human", "Unknown"),
+                "redis_total_connections": info.get("total_connections_received", 0),
+                "total_video_locks": len(all_locks),
+                "expired_locks_without_ttl": expired_locks,
+                "locks_detail": locks_info[:10],  # Показуємо перші 10 для діагностики
+                "redis_uptime": info.get("uptime_in_seconds", 0)
+            }
+            
+        except Exception as e:
+            logger.error(f"Error getting Redis health info: {str(e)}")
+            return {
+                "redis_connected": False,
+                "error": str(e)
+            }
+    
+    def force_cleanup_all_locks(self) -> Dict[str, Any]:
+        """Примусове очищення всіх блокувань (для екстрених ситуацій)"""
+        try:
+            pattern = "video_lock:*"
+            keys = self.redis_client.keys(pattern)
+            
+            if keys:
+                deleted = self.redis_client.delete(*keys)
+                logger.warning(f"Force deleted {deleted} video locks")
+                return {
+                    "success": True,
+                    "deleted_locks": deleted,
+                    "message": f"Примусово видалено {deleted} блокувань"
+                }
+            else:
+                return {
+                    "success": True,
+                    "deleted_locks": 0,
+                    "message": "Немає блокувань для видалення"
+                }
+                
+        except Exception as e:
+            logger.error(f"Error in force cleanup: {str(e)}")
+            return {
+                "success": False,
+                "error": str(e)
+            }

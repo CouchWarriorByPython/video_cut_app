@@ -1,5 +1,5 @@
 from typing import Annotated, Dict
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, HTTPException
 from fastapi.responses import FileResponse
 
 from backend.models.api import (
@@ -7,6 +7,7 @@ from backend.models.api import (
     VideoListResponse, LockVideoResponse, ErrorResponse
 )
 from backend.services.video_service import VideoService
+from backend.services.auth_service import AuthService
 from backend.api.dependencies import get_current_user, get_azure_path_from_query, get_pagination_params
 
 from backend.models.shared import AzureFilePath
@@ -143,23 +144,33 @@ async def unlock_video(
 
 
 @router.get(
-    "/stream",
-    summary="Стрімінг відео",
-    description="Повертає відео файл для перегляду в анотаторі. Підтримує range requests для відео плеєрів",
+    "/{video_id}/stream",
+    summary="Безпечний стрімінг відео",
+    description="Повертає відео файл для перегляду в анотаторі використовуючи video_id. Безпечніший варіант без Azure деталей в URL",
     responses={
         404: {"model": ErrorResponse, "description": "Відео не знайдено"},
         400: {"model": ErrorResponse, "description": "Відео не готове або файл не знайдено"},
-        401: {"model": ErrorResponse, "description": "Невалідний токен"},
         403: {"model": ErrorResponse, "description": "Недостатньо прав для перегляду"}
     }
 )
-async def stream_video(
+async def stream_video_by_id(
+        video_id: str,
         video_service: Annotated[VideoService, Depends(VideoService)],
-        azure_path: Annotated[AzureFilePath, Depends(get_azure_path_from_query)],
-        token: str = Query(..., description="Токен авторизації")
+        token: str = Query(..., description="Authorization token")
 ) -> FileResponse:
-    """Стрімінг локального відео"""
-    file_info = video_service.get_video_file_for_streaming(azure_path, token)
+    """Безпечний стрімінг локального відео за video_id"""
+    # Перевіряємо токен вручну
+    auth_service = AuthService()
+    current_user = auth_service.get_current_user_from_token(token)
+    
+    if not current_user:
+        raise HTTPException(status_code=401, detail="Невалідний або прострочений токен")
+    
+    # Перевіряємо права доступу (annotator, admin, super_admin)
+    if current_user.role not in ["annotator", "admin", "super_admin"]:
+        raise HTTPException(status_code=403, detail="Недостатньо прав для перегляду відео")
+    
+    file_info = video_service.get_video_file_for_streaming_by_id(video_id, current_user.user_id)
 
     return FileResponse(
         path=file_info["file_path"],
@@ -171,3 +182,6 @@ async def stream_video(
             "Content-Type": "video/mp4"
         }
     )
+
+
+

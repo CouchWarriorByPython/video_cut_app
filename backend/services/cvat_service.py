@@ -23,7 +23,7 @@ class CVATService:
         try:
             if not self._validate_project_name(project_name):
                 logger.warning(f"Invalid project name: {project_name}, using default")
-                return self._get_hardcoded_defaults("motion-det")
+                return self._get_hardcoded_defaults("motion_detection")
 
             settings_doc = self.settings_repo.get_by_field("project_name", project_name)
 
@@ -142,9 +142,9 @@ class CVATService:
     def _get_hardcoded_defaults(project_name: str) -> Dict[str, Any]:
         """Get hardcoded default parameters for CVAT projects"""
         default_projects: Dict[str, Dict[str, int]] = {
-            MLProject.MOTION_DET.value: {"project_id": 5, "overlap": 5, "segment_size": 400, "image_quality": 100},
-            MLProject.TRACKING.value: {"project_id": 6, "overlap": 5, "segment_size": 400, "image_quality": 100},
-            MLProject.MIL_HARDWARE.value: {"project_id": 7, "overlap": 5, "segment_size": 400, "image_quality": 100},
+            MLProject.MOTION_DETECTION.value: {"project_id": 5, "overlap": 5, "segment_size": 400, "image_quality": 100},
+            MLProject.MILITARY_TARGETS_MOVING.value: {"project_id": 6, "overlap": 5, "segment_size": 400, "image_quality": 100},
+            MLProject.MILITARY_TARGETS_STATIC.value: {"project_id": 7, "overlap": 5, "segment_size": 400, "image_quality": 100},
             MLProject.RE_ID.value: {"project_id": 8, "overlap": 5, "segment_size": 400, "image_quality": 100}
         }
 

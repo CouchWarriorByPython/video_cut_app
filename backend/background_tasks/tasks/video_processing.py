@@ -1,4 +1,5 @@
 import os
+from datetime import datetime
 
 from typing import Dict, Any
 
@@ -111,4 +112,77 @@ def cleanup_source_video_files(source_video_ids: list) -> Dict[str, Any]:
 
     except Exception as e:
         logger.error(f"Error in cleanup task: {str(e)}")
+        return {"status": "error", "message": str(e)}
+
+
+@app.task(name="periodic_system_cleanup")
+def periodic_system_cleanup() -> Dict[str, Any]:
+    """Періодичне очищення системи для запобігання накопиченню проблем"""
+    logger.info("Starting periodic system cleanup")
+    
+    try:
+        # Ensure database connection
+        if not DatabaseConnection.is_connected():
+            DatabaseConnection.connect()
+
+        cleanup_results = {
+            "timestamp": datetime.now().isoformat(),
+            "redis_locks_cleaned": 0,
+            "orphaned_videos_fixed": 0,
+            "errors": []
+        }
+
+        # 1. Очищення застарілих Redis блокувань
+        try:
+            from backend.services.video_lock_service import VideoLockService
+            lock_service = VideoLockService()
+            cleaned_locks = lock_service.cleanup_expired_locks()
+            cleanup_results["redis_locks_cleaned"] = cleaned_locks
+            logger.info(f"Cleaned {cleaned_locks} expired Redis locks")
+        except Exception as e:
+            error_msg = f"Redis cleanup failed: {str(e)}"
+            cleanup_results["errors"].append(error_msg)
+            logger.error(error_msg)
+
+        # 2. Виправлення orphaned відео
+        try:
+            from backend.services.video_service import VideoService
+            video_service = VideoService()
+            orphaned_result = video_service.fix_orphaned_in_progress_videos()
+            cleanup_results["orphaned_videos_fixed"] = orphaned_result.get("fixed_count", 0)
+            logger.info(f"Fixed {cleanup_results['orphaned_videos_fixed']} orphaned videos")
+        except Exception as e:
+            error_msg = f"Orphaned videos cleanup failed: {str(e)}"
+            cleanup_results["errors"].append(error_msg)
+            logger.error(error_msg)
+
+        # 3. Перевірка стану системи
+        try:
+            from backend.services.admin_service import AdminService
+            admin_service = AdminService()
+            health_info = admin_service.get_system_health_info()
+            
+            # Логування критичних проблем
+            if not health_info.get("redis", {}).get("redis_connected", False):
+                logger.warning("CRITICAL: Redis connection lost during cleanup")
+            
+            if not health_info.get("mongodb", {}).get("connected", False):
+                logger.warning("CRITICAL: MongoDB connection lost during cleanup")
+                
+        except Exception as e:
+            error_msg = f"Health check failed: {str(e)}"
+            cleanup_results["errors"].append(error_msg)
+            logger.error(error_msg)
+
+        total_actions = cleanup_results["redis_locks_cleaned"] + cleanup_results["orphaned_videos_fixed"]
+        logger.info(f"Periodic cleanup completed: {total_actions} actions performed, {len(cleanup_results['errors'])} errors")
+
+        return {
+            "status": "completed",
+            "results": cleanup_results,
+            "message": f"Cleanup completed: {total_actions} actions, {len(cleanup_results['errors'])} errors"
+        }
+
+    except Exception as e:
+        logger.error(f"Error in periodic system cleanup: {str(e)}")
         return {"status": "error", "message": str(e)}

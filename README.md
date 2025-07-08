@@ -307,6 +307,65 @@ celery -A backend.background_tasks.app worker --loglevel=info
 docker-compose -f docker-compose-prod.yml up -d
 ```
 
+## Docker деплоймент
+
+### Розробка
+
+```bash
+# Запуск всіх сервісів
+docker-compose -f docker-compose-dev.yml up --build
+
+# Перегляд логів
+docker-compose -f docker-compose-dev.yml logs -f
+
+# Зупинка сервісів
+docker-compose -f docker-compose-dev.yml down
+```
+
+### Продакшн
+
+```bash
+# Запуск всіх сервісів у фоні
+docker-compose -f docker-compose-prod.yml up --build -d
+
+# Перегляд логів додатку
+docker-compose -f docker-compose-prod.yml logs -f app
+
+# Зупинка сервісів
+docker-compose -f docker-compose-prod.yml down
+```
+
+### Docker сервіси
+
+Система включає наступні Docker контейнери:
+- **app**: Основний FastAPI додаток
+- **celery-general**: Обробка загальних задач (відео/кліп обробка)
+- **celery-conversion**: Конвертація відео
+- **celery-maintenance**: Системне обслуговування
+- **celery-beat**: Планувальник періодичних задач (автоматичне очищення)
+- **redis**: In-memory сховище для блокувань та кешування
+- **mongodb**: Основна база даних
+- **nginx**: Веб-сервер та reverse proxy
+- **flower**: Моніторинг Celery (доступний на http://localhost:5556)
+
+### Моніторинг Docker
+
+```bash
+# Перевірка статусу контейнерів
+docker-compose -f docker-compose-dev.yml ps
+
+# Перегляд логів конкретного сервісу
+docker-compose -f docker-compose-dev.yml logs -f celery-beat
+docker-compose -f docker-compose-dev.yml logs -f celery-maintenance
+
+# Виконання команд в контейнерах
+docker-compose -f docker-compose-dev.yml exec app bash
+docker-compose -f docker-compose-dev.yml exec redis redis-cli INFO
+
+# Перезапуск конкретних сервісів
+docker-compose -f docker-compose-dev.yml restart celery-beat
+```
+
 ## Моніторинг та логи
 
 ### Логи зберігаються в:
@@ -377,3 +436,93 @@ video_cut_app/
 ## Підтримка
 
 Для питань та проблем створюйте issues в репозиторії або звертайтесь до команди розробки.
+
+## Діагностика та усунення проблем
+
+### Проблеми з авторизацією після тривалої роботи
+
+Якщо через день-півтора система перестає працювати з авторизацією, використовуйте наступні кроки:
+
+#### 1. Діагностика системи
+1. Увійдіть в адмін панель (http://localhost:8888/admin)
+2. Перейдіть на вкладку "Діагностика" 
+3. Натисніть "Перевірити стан"
+4. Перевірте стан Redis та MongoDB
+
+#### 2. Docker-специфічна діагностика
+```bash
+# Перевірка всіх контейнерів
+docker-compose -f docker-compose-dev.yml ps
+
+# Перевірка роботи Celery Beat (має показувати periodic_system_cleanup)
+docker-compose -f docker-compose-dev.yml logs celery-beat
+
+# Перевірка Redis здоров'я
+docker-compose -f docker-compose-dev.yml exec redis redis-cli PING
+
+# Кількість ключів у Redis
+docker-compose -f docker-compose-dev.yml exec redis redis-cli DBSIZE
+
+# Перегляд блокувань
+docker-compose -f docker-compose-dev.yml exec redis redis-cli KEYS "video_lock:*"
+```
+
+#### 3. Очищення застарілих блокувань
+```bash
+# В адмін панелі натисніть "Очистити блокування"
+# Або виконайте API запит:
+curl -X POST http://localhost:8888/admin/cleanup-locks \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+
+#### 4. Примусове очищення (екстрений випадок)
+```bash
+# УВАГА: Видаляє ВСІ блокування
+curl -X POST http://localhost:8888/admin/force-cleanup-locks \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+
+#### 5. Перезапуск сервісів
+```bash
+# Перезапуск конкретних сервісів
+docker-compose -f docker-compose-dev.yml restart app
+docker-compose -f docker-compose-dev.yml restart celery-beat  
+docker-compose -f docker-compose-dev.yml restart redis
+
+# Перезапуск всіх сервісів
+docker-compose -f docker-compose-dev.yml restart
+```
+
+### Автоматичне очищення
+
+Система автоматично очищає застарілі дані кожну годину через Celery Beat.
+
+**В Docker**: Контейнер `celery-beat` керує автоматичним очищенням. Перевірте його логи:
+```bash
+docker-compose -f docker-compose-dev.yml logs -f celery-beat
+```
+
+#### Моніторинг URL (коли система запущена):
+- **Адмін панель**: http://localhost:8888/admin
+- **Celery Flower**: http://localhost:5556
+- **MongoDB Express**: http://localhost:8082
+
+#### Ручний запуск Celery Beat (без Docker):
+```bash
+cd backend && celery -A backend.background_tasks.app beat --loglevel=info
+```
+
+### Логування
+
+Детальне логування знаходиться в:
+- `logs/services.log` - основні сервіси
+- `logs/api.log` - API запити
+- `logs/middleware.log` - авторизація
+- `logs/tasks.log` - background задачі
+
+### Моніторинг стану
+
+#### Ендпоінти для моніторингу:
+- `GET /admin/system-health` - стан системи
+- `POST /admin/cleanup-locks` - очищення блокувань
+- `POST /admin/force-cleanup-locks` - примусове очищення

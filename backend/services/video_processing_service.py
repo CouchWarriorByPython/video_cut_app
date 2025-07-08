@@ -152,35 +152,13 @@ class VideoProcessingService:
 
         return is_h264 and is_aac_audio and is_mp4_container
 
-    # Додай цей метод до класу VideoProcessingService:
-
-    def _check_gpu_available(self) -> bool:
-        """Перевірка доступності NVIDIA GPU"""
-        try:
-            result = subprocess.run(
-                ["nvidia-smi", "-L"],
-                capture_output=True,
-                text=True,
-                timeout=5
-            )
-            if result.returncode == 0 and "GPU" in result.stdout:
-                logger.info("NVIDIA GPU detected")
-                return True
-        except (subprocess.TimeoutExpired, FileNotFoundError):
-            pass
-
-        logger.info("No NVIDIA GPU available, using CPU")
-        return False
-
-    # Заміни існуючий метод _convert_to_web_format на цей:
-
     def _convert_to_web_format(
             self,
             local_path: str,
             video_info: Dict[str, Any],
             progress_callback: Optional[Callable[[float], None]] = None
     ) -> bool:
-        """Convert video to web format з GPU підтримкою"""
+        """Convert video to web format using CPU only"""
         try:
             filename = os.path.basename(local_path)
             name_without_ext = os.path.splitext(filename)[0]
@@ -189,48 +167,14 @@ class VideoProcessingService:
 
             duration = video_info.get("duration", 0)
 
-            # Перевірка доступності GPU
-            gpu_available = self._check_gpu_available()
+            command = ["ffmpeg", "-y", "-i", local_path]
 
-            command = ["ffmpeg", "-y"]
-
-            # GPU декодування
-            if gpu_available and settings.enable_hardware_acceleration:
-                command.extend([
-                    "-hwaccel", "cuda",
-                    "-hwaccel_output_format", "cuda"
-                ])
-
-            command.extend(["-i", local_path])
-
-            # GPU або CPU кодування
-            if gpu_available and settings.enable_hardware_acceleration:
-                command.extend([
-                    "-c:v", "h264_nvenc",
-                    "-preset", "p4",  # NVENC preset (p1-p7, p4 = balanced)
-                    "-tune", "hq",
-                    "-rc", "vbr",
-                    "-cq", str(settings.video_conversion_crf),
-                    "-b:v", "5M",
-                    "-maxrate", "10M",
-                    "-bufsize", "20M",
-                    "-profile:v", "high",
-                    "-level", "4.0"
-                ])
-                logger.info("Using GPU (NVENC) for video conversion")
-            else:
-                # CPU fallback
-                command.extend([
-                    "-c:v", "libx264",
-                    "-preset", settings.video_conversion_preset,
-                    "-crf", str(settings.video_conversion_crf),
-                    "-profile:v", "high",
-                    "-level", "4.0"
-                ])
-                logger.info("Using CPU for video conversion")
-
-            # Аудіо та інші параметри
             command.extend([
+                "-c:v", "libx264",
+                "-preset", settings.video_conversion_preset,
+                "-crf", str(settings.video_conversion_crf),
+                "-profile:v", "high",
+                "-level", "4.0",
                 "-c:a", "aac",
                 "-b:a", "128k",
                 "-movflags", "+faststart",
@@ -242,6 +186,7 @@ class VideoProcessingService:
             ])
 
             logger.debug(f"Conversion command: {' '.join(command)}")
+            logger.info("Using CPU for video conversion")
 
             process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
 
@@ -267,7 +212,7 @@ class VideoProcessingService:
                     progress_callback(100)
                 cleanup_file(local_path)
                 os.rename(converted_path, local_path)
-                logger.info(f"Video successfully converted using {'GPU' if gpu_available else 'CPU'}")
+                logger.info("Video successfully converted using CPU")
                 return True
             else:
                 stderr_output = process.stderr.read() if process.stderr else ""

@@ -40,8 +40,8 @@ class VideoAnnotator {
             currentAzureFilePath: null,
             currentVideoId: null,
             videoFileName: null,
-            projectFragments: { 'motion-det': [], 'tracking': [], 'mil-hardware': [], 're-id': [] },
-            unfinishedFragments: { 'motion-det': null, 'tracking': null, 'mil-hardware': null, 're-id': null },
+            projectFragments: { 'motion_detection': [], 'military_targets_detection_and_tracking_moving': [], 'military_targets_detection_and_tracking_static': [], 're_id': [] },
+            unfinishedFragments: { 'motion_detection': null, 'military_targets_detection_and_tracking_moving': null, 'military_targets_detection_and_tracking_static': null, 're_id': null },
             activeProjects: [],
             renderedVideoIds: new Set(),
             isUnlocking: false
@@ -76,6 +76,7 @@ class VideoAnnotator {
             endFragmentBtn: $('end-fragment'),
             cancelFragmentBtn: $('cancel-fragment'),
             fragmentsList: $('fragments-list'),
+            saveAnnotationBtn: $('save-annotation'),
             saveFragmentsBtn: $('save-fragments'),
             projectCheckboxes: document.querySelectorAll('input[name="project"]'),
             videoFilenameSpan: document.querySelector('#video-filename span'),
@@ -125,6 +126,7 @@ class VideoAnnotator {
         this.elements.startFragmentBtn?.addEventListener('click', () => this._handleStartFragment());
         this.elements.endFragmentBtn?.addEventListener('click', () => this._handleFragmentAction('end'));
         this.elements.cancelFragmentBtn?.addEventListener('click', () => this._handleFragmentAction('cancel'));
+        this.elements.saveAnnotationBtn?.addEventListener('click', () => this._handleSaveAnnotation());
         this.elements.saveFragmentsBtn?.addEventListener('click', () => this._handleSaveFragments());
 
         this.elements.timeline?.addEventListener('click', e => this._handleTimelineClick(e));
@@ -133,7 +135,14 @@ class VideoAnnotator {
         this.elements.projectCheckboxes?.forEach(cb =>
             cb.addEventListener('change', () => this._syncActiveProjects())
         );
+
+        // Валідація полів локації та дати
+        this.elements.videoWhere?.addEventListener('input', (e) => this._validateLocationField(e));
+        this.elements.videoWhere?.addEventListener('blur', (e) => this._cleanupLocationField(e));
+        this.elements.videoWhen?.addEventListener('input', (e) => this._validateDateField(e));
     }
+
+
 
     async _loadVideosList() {
         try {
@@ -241,12 +250,8 @@ class VideoAnnotator {
         const lockStatusCell = row.querySelector('.lock-status');
         lockStatusCell.innerHTML = `
             ${this._renderLockBadge(lockStatus, isLockedByMe)}
-            ${lockStatus.locked && lockStatus.expires_in_seconds
-                ? `<div class="lock-expires">Залишилось: ${this._formatTimeRemaining(lockStatus.expires_in_seconds)}</div>`
-                : ''
-            }
-            ${lockStatus.locked && lockStatus.locked_at
-                ? `<div class="lock-expires">Заблоковано: ${new Date(lockStatus.locked_at).toLocaleTimeString()}</div>`
+            ${lockStatus.locked && this._getLockExpiresTime(lockStatus)
+                ? `<div class="lock-expires">До: ${this._getLockExpiresTime(lockStatus)}</div>`
                 : ''
             }
         `;
@@ -272,12 +277,8 @@ class VideoAnnotator {
             <td>
                 <div class="lock-status">
                     ${this._renderLockBadge(lockStatus, isLockedByMe)}
-                    ${lockStatus.locked && lockStatus.expires_in_seconds
-                        ? `<div class="lock-expires">Залишилось: ${this._formatTimeRemaining(lockStatus.expires_in_seconds)}</div>`
-                        : ''
-                    }
-                    ${lockStatus.locked && lockStatus.locked_at
-                        ? `<div class="lock-expires">Заблоковано: ${new Date(lockStatus.locked_at).toLocaleTimeString()}</div>`
+                    ${lockStatus.locked && this._getLockExpiresTime(lockStatus)
+                        ? `<div class="lock-expires">До: ${this._getLockExpiresTime(lockStatus)}</div>`
                         : ''
                     }
                 </div>
@@ -421,13 +422,8 @@ class VideoAnnotator {
                 }
             }
 
-            const params = new URLSearchParams();
-            Object.entries(video.azure_file_path).forEach(([key, value]) => {
-                params.append(key, value);
-            });
-            params.append('token', auth.token);
-
-            const videoUrl = `/video/stream?${params}`;
+            // Використовуємо новий безпечний endpoint з video_id замість Azure параметрів
+            const videoUrl = `/video/${video.id}/stream?token=${auth.token}`;
 
             this._removeVideoEventListeners();
             this._addVideoEventListeners();
@@ -436,7 +432,10 @@ class VideoAnnotator {
             this.elements.videoPlayer.load();
 
             this._resetFragments();
+            
+            // Завантажуємо існуючі анотації
             await this._loadExistingAnnotations(video.azure_file_path);
+            
             this._updateFragmentsList();
             this._clearAllMarkers();
             this._updateUnfinishedFragmentsUI();
@@ -463,6 +462,7 @@ class VideoAnnotator {
 
     async _goBackToList() {
         try {
+            
             if (this.state.isUnlocking) {
                 return;
             }
@@ -599,6 +599,8 @@ class VideoAnnotator {
     }
 
     _startAutoRefresh() {
+        this._stopAutoRefresh(); // Завжди спочатку зупиняємо попередній інтервал
+        
         this.refreshInterval = setInterval(async () => {
             if (this.elements.videosListSection.style.display !== 'none') {
                 try {
@@ -611,7 +613,6 @@ class VideoAnnotator {
 
                     if (data?.success) {
                         const oldVideosCount = this.state.videos.length;
-                        const hasProcessingVideos = data.videos.some(v => v.status === 'processing_clips');
 
                         this.state.videos = this._deduplicateVideos(data.videos);
                         this.state.pagination = data.pagination;
@@ -624,11 +625,6 @@ class VideoAnnotator {
                             const filteredVideos = this._applyFiltersToVideos();
                             this._updateVideosTable(filteredVideos);
                             this._updateVideosCount();
-                        }
-
-                        if (hasProcessingVideos && this.refreshInterval) {
-                            clearInterval(this.refreshInterval);
-                            this.refreshInterval = setInterval(() => this._startAutoRefresh(), 5000);
                         }
                     }
                 } catch (error) {
@@ -698,6 +694,20 @@ class VideoAnnotator {
         return `${minutes}хв`;
     }
 
+    _getLockExpiresTime(lockStatus) {
+        if (!lockStatus || !lockStatus.locked) return null;
+
+        let expiresAt = null;
+
+        if (lockStatus.expires_in_seconds) {
+            expiresAt = new Date(Date.now() + lockStatus.expires_in_seconds * 1000);
+        } else if (lockStatus.expires_at) {
+            expiresAt = new Date(lockStatus.expires_at);
+        }
+
+        return expiresAt ? expiresAt.toLocaleTimeString() : null;
+    }
+
     _getCurrentUserId() {
         try {
             const token = auth.token;
@@ -709,11 +719,55 @@ class VideoAnnotator {
         }
     }
 
-    _resetFragments() {
+        _resetFragments() {
         Object.assign(this.state, {
-            projectFragments: { 'motion-det': [], 'tracking': [], 'mil-hardware': [], 're-id': [] },
-            unfinishedFragments: { 'motion-det': null, 'tracking': null, 'mil-hardware': null, 're-id': null }
+            projectFragments: { 'motion_detection': [], 'military_targets_detection_and_tracking_moving': [], 'military_targets_detection_and_tracking_static': [], 're_id': [] },
+            unfinishedFragments: { 'motion_detection': null, 'military_targets_detection_and_tracking_moving': null, 'military_targets_detection_and_tracking_static': null, 're_id': null }
         });
+    }
+
+
+
+    _resetMetadataForm() {
+        const form = this.elements.metadataForm;
+        
+        // Скидаємо всі чекбокси
+        form.skipVideo.checked = false;
+        form.isUrban.checked = false;
+        form.hasOsd.checked = false;
+        form.isAnalog.checked = false;
+        form.nightVideo.checked = false;
+        form.multipleStreams.checked = false;
+        form.hasInfantry.checked = false;
+        form.hasExplosions.checked = false;
+        
+        // Скидаємо селекти до значення за замовчуванням (першої опції)
+        if (form.uavType.options.length > 0) {
+            form.uavType.selectedIndex = 0;
+        }
+        if (form.videoContent.options.length > 0) {
+            form.videoContent.selectedIndex = 0;
+        }
+        
+        // Очищаємо текстові поля
+        this.elements.videoWhere.value = '';
+        this.elements.videoWhen.value = '';
+        
+        // Очищаємо помилки валідації
+        const formElements = [form.uavType, form.videoContent, this.elements.videoWhere, this.elements.videoWhen];
+        formElements.forEach(element => {
+            if (element) {
+                element.classList.remove('error');
+            }
+        });
+        
+        // Скидаємо вибір проєктів
+        this.elements.projectCheckboxes.forEach(checkbox => {
+            checkbox.checked = false;
+        });
+        
+        // Включаємо всі поля (відключаємо режим Skip)
+        this._handleSkipChange();
     }
 
     async _loadExistingAnnotations(azureFilePath) {
@@ -739,8 +793,9 @@ class VideoAnnotator {
         const { metadata } = annotation;
         const form = this.elements.metadataForm;
 
-        if (annotation.where) this.elements.videoWhere.value = annotation.where;
-        if (annotation.when) this.elements.videoWhen.value = annotation.when;
+        // where та when тепер в metadata
+        if (metadata.where) this.elements.videoWhere.value = metadata.where;
+        if (metadata.when) this.elements.videoWhen.value = metadata.when;
 
         const mappings = [
             [form.skipVideo, 'checked', metadata.skip || false],
@@ -862,7 +917,9 @@ class VideoAnnotator {
         const unfinished = this.state.unfinishedFragments[project];
         if (!unfinished) return;
 
+        let finalEndTime = endTime;
         const duration = endTime - unfinished.start;
+        
         if (duration < 1) {
             const adjustedEndTime = unfinished.start + 1;
             if (adjustedEndTime > this.elements.videoPlayer.duration) {
@@ -871,16 +928,17 @@ class VideoAnnotator {
 
             const confirmed = await confirm('Мінімальна тривалість кліпу - 1 секунда. Автоматично збільшити до 1 сек?');
             if (confirmed) {
+                finalEndTime = adjustedEndTime;
                 this.elements.videoPlayer.currentTime = adjustedEndTime;
-                return this._setFragmentEnd(project);
+            } else {
+                return; // Користувач скасував
             }
-            return;
         }
 
         const completeFragment = {
             ...unfinished,
-            end: endTime,
-            end_formatted: utils.formatTime(endTime),
+            end: finalEndTime,
+            end_formatted: utils.formatTime(finalEndTime),
             id: Date.now() + Math.floor(Math.random() * 1000),
             project
         };
@@ -1055,12 +1113,125 @@ class VideoAnnotator {
         notify('Помилка відтворення відео', 'error');
     }
 
+    _validateLocationField(e) {
+        const input = e.target;
+        const value = input.value;
+        
+        // Під час вводу тільки видаляємо недозволені символи
+        let cleaned = value.replace(/[^a-zA-Z\s_]/g, '');
+        
+        if (cleaned !== value) {
+            const cursorPosition = input.selectionStart;
+            const lengthDiff = value.length - cleaned.length;
+            input.value = cleaned;
+            
+            // Відновлюємо позицію курсора
+            const newCursorPosition = Math.max(0, cursorPosition - lengthDiff);
+            setTimeout(() => {
+                input.setSelectionRange(newCursorPosition, newCursorPosition);
+            }, 0);
+        }
+        
+        // Прибираємо помилку якщо поле валідне
+        input.classList.remove('error');
+    }
+
+    _cleanupLocationField(e) {
+        const input = e.target;
+        const value = input.value;
+        
+        // При втраті фокусу робимо повне очищення: замінюємо пробіли на "_"
+        let cleaned = value.replace(/[^a-zA-Z\s_]/g, '');
+        cleaned = cleaned.replace(/\s+/g, '_');
+        cleaned = cleaned.replace(/_{2,}/g, '_'); // Замінюємо множинні "_" на одне
+        cleaned = cleaned.replace(/^_+|_+$/g, ''); // Видаляємо "_" на початку та в кінці
+        
+        if (cleaned !== value) {
+            input.value = cleaned;
+        }
+        
+        // Прибираємо помилку якщо поле валідне
+        input.classList.remove('error');
+    }
+
+    _validateDateField(e) {
+        const input = e.target;
+        const value = input.value;
+        
+        // Дозволяємо тільки цифри, максимум 8 символів
+        let cleaned = value.replace(/[^0-9]/g, ''); // Видаляємо всі символи крім цифр
+        
+        if (cleaned.length > 8) {
+            cleaned = cleaned.slice(0, 8); // Обрізаємо до 8 символів
+        }
+        
+        if (cleaned !== value) {
+            input.value = cleaned;
+        }
+        
+        // Прибираємо помилку якщо поле валідне
+        input.classList.remove('error');
+        
+        // Якщо введено 8 цифр, перевіряємо формат дати
+        if (cleaned.length === 8) {
+            const year = parseInt(cleaned.slice(0, 4));
+            const month = parseInt(cleaned.slice(4, 6));
+            const day = parseInt(cleaned.slice(6, 8));
+            
+            const isValidDate = this._isValidDate(year, month, day);
+            
+            if (!isValidDate) {
+                input.classList.add('error');
+                const year = parseInt(cleaned.slice(0, 4));
+                const month = parseInt(cleaned.slice(4, 6));
+                const day = parseInt(cleaned.slice(6, 8));
+                
+                let errorMsg = 'Некоректна дата. ';
+                if (month < 1 || month > 12) {
+                    errorMsg += `Місяць ${month} неіснуючий (1-12). `;
+                }
+                if (day < 1 || day > 31) {
+                    errorMsg += `День ${day} неіснуючий (1-31). `;
+                }
+                errorMsg += 'Приклад: 20201220 (20 грудня 2020)';
+                
+                input.title = errorMsg;
+            } else {
+                input.classList.remove('error');
+                input.title = '';
+            }
+        }
+    }
+
+    _isValidDate(year, month, day) {
+        // Перевіряємо базові умови
+        if (year < 1900 || year > 2100) return false;
+        if (month < 1 || month > 12) return false;
+        if (day < 1 || day > 31) return false;
+        
+        // Перевіряємо кількість днів у місяці
+        const daysInMonth = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+        
+        // Перевіряємо високосний рік
+        if (month === 2 && this._isLeapYear(year)) {
+            return day <= 29;
+        }
+        
+        return day <= daysInMonth[month - 1];
+    }
+
+    _isLeapYear(year) {
+        return (year % 4 === 0 && year % 100 !== 0) || (year % 400 === 0);
+    }
+
     _validateRequiredFields() {
         const form = this.elements.metadataForm;
         const errors = [];
 
         form.uavType.classList.remove('error');
         form.videoContent.classList.remove('error');
+        this.elements.videoWhere.classList.remove('error');
+        this.elements.videoWhen.classList.remove('error');
 
         if (!form.uavType.value.trim()) {
             errors.push('UAV (тип дрона)');
@@ -1069,6 +1240,39 @@ class VideoAnnotator {
         if (!form.videoContent.value.trim()) {
             errors.push('Контент відео');
             form.videoContent.classList.add('error');
+        }
+
+        // Валідація поля локації
+        const locationValue = this.elements.videoWhere.value.trim();
+        if (locationValue && !/^[a-zA-Z_]+$/.test(locationValue)) {
+            errors.push('Локація (тільки англійські літери та підкреслення)');
+            this.elements.videoWhere.classList.add('error');
+        }
+
+        // Валідація поля дати
+        const dateValue = this.elements.videoWhen.value.trim();
+        if (dateValue) {
+            if (!/^\d{8}$/.test(dateValue)) {
+                errors.push('Дата зйомки (формат: РРРРММДД, 8 цифр)');
+                this.elements.videoWhen.classList.add('error');
+            } else {
+                const year = parseInt(dateValue.slice(0, 4));
+                const month = parseInt(dateValue.slice(4, 6));
+                const day = parseInt(dateValue.slice(6, 8));
+                
+                if (!this._isValidDate(year, month, day)) {
+                    let errorMsg = 'Дата зйомки (некоректна дата';
+                    if (month < 1 || month > 12) {
+                        errorMsg += `, місяць ${month} неіснуючий`;
+                    }
+                    if (day < 1 || day > 31) {
+                        errorMsg += `, день ${day} неіснуючий`;
+                    }
+                    errorMsg += ')';
+                    errors.push(errorMsg);
+                    this.elements.videoWhen.classList.add('error');
+                }
+            }
         }
 
         return errors;
@@ -1109,8 +1313,19 @@ class VideoAnnotator {
         };
     }
 
+    async _handleSaveAnnotation() {
+        if (!this._validateRequiredFields()) return;
+
+        await this._saveAnnotation();
+    }
+
     async _handleSaveFragments() {
-        const confirmed = await confirm('Ви впевнені, що хочете завершити анотацію? Після завершення відео буде відправлено на обробку і ви повернетесь до вибору відео.');
+        const isSkipped = this.elements.metadataForm.skipVideo.checked;
+        const message = isSkipped 
+            ? 'Ви впевнені, що хочете завершити анотацію? Відео буде позначено як Skip (без обробки кліпів) і ви повернетесь до вибору відео.'
+            : 'Ви впевнені, що хочете завершити анотацію? Після завершення відео буде відправлено на обробку і ви повернетесь до вибору відео.';
+        
+        const confirmed = await confirm(message);
         if (!confirmed) return;
 
         await this._saveFragments();
@@ -1167,12 +1382,32 @@ class VideoAnnotator {
         }
     }
 
+    async _saveAnnotation() {
+        try {
+            const jsonData = this._prepareJsonData();
+
+            const response = await api.post('/save_annotation', {
+                azure_file_path: this.state.currentAzureFilePath,
+                data: jsonData
+            });
+
+            if (response.success) {
+                notify('Анотація успішно збережена в базу', 'success');
+            } else {
+                notify('Помилка збереження анотації', 'error');
+            }
+        } catch (error) {
+            console.error('Помилка збереження анотації:', error);
+            notify('Помилка збереження анотації', 'error');
+        }
+    }
+
     _getProjectName(projectKey) {
         const names = {
-            'motion-det': 'Motion Detection',
-            'tracking': 'Tracking & Re-identification',
-            'mil-hardware': 'Mil Hardware Detection',
-            're-id': 'Re-ID'
+            'motion_detection': 'Motion Detection',
+            'military_targets_detection_and_tracking_moving': 'Military Targets Moving',
+            'military_targets_detection_and_tracking_static': 'Military Targets Static',
+            're_id': 'Re-identification'
         };
         return names[projectKey] || projectKey;
     }

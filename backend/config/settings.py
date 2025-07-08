@@ -66,7 +66,6 @@ class Settings(BaseSettings):
     # Video conversion - технічні дефолти
     video_conversion_preset: str = Field(default="fast")
     video_conversion_crf: int = Field(default=23)
-    enable_hardware_acceleration: bool = Field(default=False)
     skip_conversion_for_compatible: bool = Field(default=True)
 
     # JWT - обов'язковий secret_key
@@ -92,7 +91,7 @@ class Settings(BaseSettings):
             return v
         return v.lower() in ("true", "1", "yes")
 
-    @field_validator("enable_hardware_acceleration", "skip_conversion_for_compatible", mode="before")
+    @field_validator("skip_conversion_for_compatible", mode="before")
     @classmethod
     def parse_bool_fields(cls, v: str | bool) -> bool:
         """Парсинг булевих полів"""

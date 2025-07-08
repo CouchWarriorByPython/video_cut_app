@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 from jose import jwt, JWTError
+from jose.exceptions import ExpiredSignatureError
 from pydantic import EmailStr
 
 from backend.database import create_user_repository
@@ -29,27 +30,41 @@ class AuthService:
         Returns None if authentication fails
         """
         try:
+            logger.debug(f"Attempting authentication for: {email}")
+            
             user = self.user_repo.get_by_field("email", str(email))
             if not user:
+                logger.info(f"Authentication failed: user not found: {email}")
                 return None
 
+            logger.debug(f"User found: {email}, checking status")
+            
             if not user.is_active:
-                logger.warning(f"Inactive user login attempt: {email}")
+                logger.warning(f"Authentication failed: inactive user: {email}")
                 return None
 
+            logger.debug(f"User is active, verifying password for: {email}")
+            
             if not verify_password(password, user.hashed_password):
+                logger.info(f"Authentication failed: invalid password for: {email}")
                 return None
 
+            logger.debug(f"Password verified, updating last login for: {email}")
+            
             # Update last login
-            self.user_repo.update_by_id(
+            update_success = self.user_repo.update_by_id(
                 str(user.id),
                 {"last_login_at_utc": datetime.now(timezone.utc)}
             )
+            
+            if not update_success:
+                logger.warning(f"Failed to update last_login_at_utc for user: {email}")
 
+            logger.info(f"Authentication successful for: {email}")
             return CurrentUser.from_document(user)
 
         except Exception as e:
-            logger.error(f"Authentication error: {str(e)}")
+            logger.error(f"Authentication error for {email}: {str(e)}")
             return None
 
     def create_tokens(self, user: CurrentUser) -> Token:
@@ -98,6 +113,8 @@ class AuthService:
         Returns None if token is invalid
         """
         try:
+            logger.debug(f"Verifying {token_type} token")
+            
             payload = jwt.decode(
                 token,
                 self.settings.secret_key,
@@ -105,20 +122,32 @@ class AuthService:
             )
 
             token_payload = TokenPayload(**payload)
+            logger.debug(f"Token decoded successfully for user: {token_payload.sub}, type: {token_payload.type}")
 
             if token_payload.type != token_type:
+                logger.warning(f"Token type mismatch: expected {token_type}, got {token_payload.type}")
                 return None
 
             # For access tokens, verify user is still active
             if token_type == "access":
                 user = self.user_repo.get_by_id(token_payload.user_id)
-                if not user or not user.is_active:
+                if not user:
+                    logger.warning(f"User not found during access token verification: {token_payload.user_id}")
+                    return None
+                if not user.is_active:
+                    logger.warning(f"Inactive user with valid access token: {token_payload.sub}")
                     return None
 
+            logger.debug(f"Token verification successful for {token_payload.sub}")
             return token_payload
 
+        except ExpiredSignatureError:
+            # Це нормальна поведінка, не логуємо як WARNING
+            logger.debug(f"{token_type.capitalize()} token expired")
+            return None
         except (JWTError, ValueError) as e:
-            logger.warning(f"Invalid token: {str(e)}")
+            # Це справжня помилка токена
+            logger.warning(f"Invalid {token_type} token format or signature: {str(e)}")
             return None
         except Exception as e:
             logger.error(f"Token verification error: {str(e)}")
@@ -131,16 +160,30 @@ class AuthService:
         Returns None if refresh fails
         """
         try:
+            logger.debug(f"Attempting to refresh token")
+            
             payload = self.verify_token(refresh_token, "refresh")
             if not payload:
+                logger.warning("Refresh token verification failed")
                 return None
+
+            logger.debug(f"Refresh token valid for user: {payload.sub} (ID: {payload.user_id})")
 
             user = self.user_repo.get_by_id(payload.user_id)
-            if not user or not user.is_active:
+            if not user:
+                logger.warning(f"User not found during refresh: {payload.user_id}")
+                return None
+                
+            if not user.is_active:
+                logger.warning(f"Inactive user attempted refresh: {payload.sub}")
                 return None
 
+            logger.debug(f"Creating new tokens for user: {payload.sub}")
             current_user = CurrentUser.from_document(user)
-            return self.create_tokens(current_user)
+            new_tokens = self.create_tokens(current_user)
+            
+            logger.info(f"Successfully refreshed tokens for user: {payload.sub}")
+            return new_tokens
 
         except Exception as e:
             logger.error(f"Token refresh error: {str(e)}")

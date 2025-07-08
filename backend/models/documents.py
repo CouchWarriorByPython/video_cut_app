@@ -5,6 +5,11 @@ from mongoengine import Document, EmbeddedDocument, fields, ValidationError
 from backend.models.shared import VideoStatus, MLProject, UserRole, CVATSettings
 
 
+def _utc_now():
+    """Helper function to get current UTC time"""
+    return datetime.now(UTC)
+
+
 class AzureFilePathDocument(EmbeddedDocument):
     """Azure file path structure for database documents"""
     account_name = fields.StringField(required=True, max_length=100)
@@ -72,16 +77,59 @@ class CVATProjectSettingsDocument(Document):
         )
 
 
+class VideoAnnotationDraftDocument(Document):
+    """Draft annotation document - stores work-in-progress annotations"""
+    source_video_id = fields.StringField(required=True)
+    
+    # Metadata fields
+    skip_annotation = fields.BooleanField(default=False)
+    where = fields.StringField(max_length=100)
+    when = fields.StringField(max_length=8)  # YYYYMMDD format
+    uav_type = fields.StringField(max_length=100)
+    video_content = fields.StringField(max_length=100)
+    is_urban = fields.BooleanField(default=False)
+    has_osd = fields.BooleanField(default=False)
+    is_analog = fields.BooleanField(default=False)
+    night_video = fields.BooleanField(default=False)
+    multiple_streams = fields.BooleanField(default=False)
+    has_infantry = fields.BooleanField(default=False)
+    has_explosions = fields.BooleanField(default=False)
+    
+    # Clips data as JSON structure
+    clips_data = fields.DictField(default=dict)  # Store project->clips mapping
+    
+    # Timestamps in UTC
+    created_at_utc = fields.DateTimeField(default=_utc_now)
+    updated_at_utc = fields.DateTimeField(default=_utc_now)
+
+    meta = {
+        'collection': 'video_annotation_drafts',
+        'indexes': [
+            'source_video_id',
+            'created_at_utc',
+            '-updated_at_utc',
+        ]
+    }
+
+    def save(self, *args, **kwargs):
+        """Update timestamp on save"""
+        self.updated_at_utc = datetime.now(UTC)
+        return super().save(*args, **kwargs)
+
+
 class SourceVideoDocument(Document):
     """Source video document with optimized indexes for the workflow"""
     azure_file_path = fields.EmbeddedDocumentField(AzureFilePathDocument, required=True)
     status = fields.EnumField(VideoStatus, required=True, default=VideoStatus.DOWNLOADING)
-    skip_annotation = fields.BooleanField(default=False)
     clips = fields.ListField(fields.StringField(), default=list)
     duration_sec = fields.IntField(min_value=0)
     size_MB = fields.FloatField(min_value=0)
-    created_at_utc = fields.DateTimeField(default=datetime.now(UTC))
-    updated_at_utc = fields.DateTimeField(default=datetime.now(UTC))
+    # Reference to draft annotation if exists
+    annotation_draft_id = fields.StringField()
+    # Skip annotation flag - duplicated from draft for convenience
+    skip_annotation = fields.BooleanField(default=False)
+    created_at_utc = fields.DateTimeField(default=_utc_now)
+    updated_at_utc = fields.DateTimeField(default=_utc_now)
 
     meta = {
         'collection': 'source_videos',
@@ -136,8 +184,8 @@ class ClipVideoDocument(Document):
     size_MB = fields.FloatField(min_value=0)
 
     # Timestamps
-    created_at_utc = fields.DateTimeField(default=datetime.now(UTC))
-    updated_at_utc = fields.DateTimeField(default=datetime.now(UTC))
+    created_at_utc = fields.DateTimeField(default=_utc_now)
+    updated_at_utc = fields.DateTimeField(default=_utc_now)
 
     meta = {
         'collection': 'clip_videos',
@@ -162,10 +210,13 @@ class ClipVideoDocument(Document):
             raise ValidationError("Clip cannot exceed 24 hours total duration")
 
     def save(self, *args, **kwargs):
-        """Update timestamp and round size on save"""
+        """Update timestamp, round size, and ensure extension has no dots on save"""
         self.updated_at_utc = datetime.now(UTC)
         if self.size_MB is not None:
             self.size_MB = round(self.size_MB, 2)
+        # Ensure extension has no dots
+        if self.extension and self.extension.startswith('.'):
+            self.extension = self.extension[1:]
         return super().save(*args, **kwargs)
 
 
@@ -174,8 +225,8 @@ class UserDocument(Document):
     email = fields.EmailField(required=True, unique=True)
     hashed_password = fields.StringField(required=True)
     role = fields.EnumField(UserRole, required=True)
-    created_at_utc = fields.DateTimeField(default=datetime.now(UTC))
-    updated_at_utc = fields.DateTimeField(default=datetime.now(UTC))
+    created_at_utc = fields.DateTimeField(default=_utc_now)
+    updated_at_utc = fields.DateTimeField(default=_utc_now)
     is_active = fields.BooleanField(default=True)
     last_login_at_utc = fields.DateTimeField()
 

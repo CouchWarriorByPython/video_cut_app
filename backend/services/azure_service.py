@@ -214,7 +214,7 @@ class AzureService:
                 folder_azure_path.container_name
             )
 
-            video_extensions = {'.mp4', '.avi', '.mov', '.mkv'}
+            video_extensions = {'.mp4', '.avi', '.mov', '.mkv', '.ts'}
             videos = []
 
             blobs = container_client.list_blobs(name_starts_with=prefix)

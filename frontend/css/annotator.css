@@ -432,22 +432,22 @@ video {
     opacity: 0.8;
 }
 
-.fragment.motion-det {
+.fragment.motion_detection {
     background-color: rgba(52, 152, 219, 0.4);
     border-color: #3498db;
 }
 
-.fragment.tracking {
+.fragment.military_targets_detection_and_tracking_moving {
     background-color: rgba(230, 126, 34, 0.4);
     border-color: #e67e22;
 }
 
-.fragment.mil-hardware {
+.fragment.military_targets_detection_and_tracking_static {
     background-color: rgba(46, 204, 113, 0.4);
     border-color: #2ecc71;
 }
 
-.fragment.re-id {
+.fragment.re_id {
     background-color: rgba(156, 39, 176, 0.4);
     border-color: #9c27b0;
 }
@@ -459,19 +459,19 @@ video {
     top: 0;
 }
 
-.fragment-marker.start.motion-det {
+.fragment-marker.start.motion_detection {
     background-color: #3498db;
 }
 
-.fragment-marker.start.tracking {
+.fragment-marker.start.military_targets_detection_and_tracking_moving {
     background-color: #e67e22;
 }
 
-.fragment-marker.start.mil-hardware {
+.fragment-marker.start.military_targets_detection_and_tracking_static {
     background-color: #2ecc71;
 }
 
-.fragment-marker.start.re-id {
+.fragment-marker.start.re_id {
     background-color: #9c27b0;
 }
 
@@ -522,19 +522,19 @@ video {
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
-.fragment-list li.motion-det {
+.fragment-list li.motion_detection {
     border-left: 4px solid #3498db;
 }
 
-.fragment-list li.tracking {
+.fragment-list li.military_targets_detection_and_tracking_moving {
     border-left: 4px solid #e67e22;
 }
 
-.fragment-list li.mil-hardware {
+.fragment-list li.military_targets_detection_and_tracking_static {
     border-left: 4px solid #2ecc71;
 }
 
-.fragment-list li.re-id {
+.fragment-list li.re_id {
     border-left: 4px solid #9c27b0;
 }
 
@@ -599,19 +599,19 @@ video {
     font-size: 13px;
 }
 
-.unfinished-status .badge.motion-det {
+.unfinished-status .badge.motion_detection {
     background-color: #3498db;
 }
 
-.unfinished-status .badge.tracking {
+.unfinished-status .badge.military_targets_detection_and_tracking_moving {
     background-color: #e67e22;
 }
 
-.unfinished-status .badge.mil-hardware {
+.unfinished-status .badge.military_targets_detection_and_tracking_static {
     background-color: #2ecc71;
 }
 
-.unfinished-status .badge.re-id {
+.unfinished-status .badge.re_id {
     background-color: #9c27b0;
 }
 
@@ -671,19 +671,19 @@ video {
     background-color: var(--input-bg);
 }
 
-.project-option.motion-det {
+.project-option.motion_detection {
     border-left: 4px solid #3498db;
 }
 
-.project-option.tracking {
+.project-option.military_targets_detection_and_tracking_moving {
     border-left: 4px solid #e67e22;
 }
 
-.project-option.mil-hardware {
+.project-option.military_targets_detection_and_tracking_static {
     border-left: 4px solid #2ecc71;
 }
 
-.project-option.re-id {
+.project-option.re_id {
     border-left: 4px solid #9c27b0;
 }
 

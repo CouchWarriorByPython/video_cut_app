@@ -53,7 +53,8 @@ async def refresh_token(
     token = auth_service.refresh_access_token(refresh_data.refresh_token)
 
     if not token:
-        logger.warning("Invalid refresh token used")
+        # Не логуємо WARNING тут, оскільки це нормальна поведінка для прострочених токенів
+        logger.debug("Refresh token request failed - token invalid or expired")
         raise AuthenticationException("Невалідний або прострочений refresh токен")
 
     logger.info("Token successfully refreshed")

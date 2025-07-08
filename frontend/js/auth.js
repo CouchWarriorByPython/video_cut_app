@@ -33,31 +33,41 @@ const auth = {
     async refresh() {
         try {
             const refreshToken = this.refreshToken;
-            if (!refreshToken || this.isTokenExpired(refreshToken)) {
+            if (!refreshToken) {
+                console.log('No refresh token available');
+                return false;
+            }
+            
+            if (this.isTokenExpired(refreshToken)) {
+                console.log('Refresh token is expired');
                 return false;
             }
 
+            console.log('Attempting to refresh access token');
             const data = await api.post('/auth/refresh', { refresh_token: refreshToken });
             if (data && data.access_token && data.refresh_token) {
                 this.setTokens(data.access_token, data.refresh_token);
+                console.log('Tokens refreshed successfully');
                 return true;
             }
+            console.log('Refresh response invalid');
             return false;
-        } catch {
+        } catch (error) {
+            console.error('Refresh failed:', error.message);
             return false;
         }
     },
 
     logout() {
-        localStorage.clear();
-        // Перевіряємо чи ми не на сторінці логіна
-        if (location.pathname !== '/login') {
-            location.href = '/login';
-        }
+        console.log('Logging out and clearing all tokens');
+        localStorage.removeItem('access_token');
+        localStorage.removeItem('refresh_token');
+        location.href = '/login';
     },
 
     async checkAccess() {
         const token = this.token;
+        const refreshToken = this.refreshToken;
 
         // Якщо немає токена
         if (!token) {
@@ -65,7 +75,14 @@ const auth = {
             return false;
         }
 
-        // Якщо токен прострочений, спробуємо оновити
+        // Якщо refresh токен прострочений, очищаємо все та перенаправляємо на логін
+        if (refreshToken && this.isTokenExpired(refreshToken)) {
+            console.log('Refresh token expired, clearing storage');
+            this.logout();
+            return false;
+        }
+
+        // Якщо access токен прострочений, спробуємо оновити
         if (this.isTokenExpired(token)) {
             const refreshed = await this.refresh();
             if (!refreshed) {

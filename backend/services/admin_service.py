@@ -1,6 +1,7 @@
 from typing import Dict, Any, List
 from passlib.context import CryptContext
 from pydantic import EmailStr
+from datetime import datetime
 
 from backend.database import (
     create_user_repository, create_source_video_repository,
@@ -28,6 +29,9 @@ class AdminService:
         self.user_repo = create_user_repository()
         self.video_repo = create_source_video_repository()
         self.cvat_settings_repo = create_cvat_settings_repository()
+        # Імпорт тут, щоб уникнути циклічної залежності
+        from backend.services.video_lock_service import VideoLockService
+        self.lock_service = VideoLockService()
 
     def get_system_statistics_response(self) -> AdminStatsResponse:
         """Get system statistics in API response format"""
@@ -126,6 +130,11 @@ class AdminService:
             if user_id == current_user_id:
                 raise_business_error("Не можна редагувати самого себе")
 
+            # Заборона редагування супер адмінів один одним
+            if (current_user_role == UserRole.SUPER_ADMIN.value and 
+                user_to_update.role == UserRole.SUPER_ADMIN.value):
+                raise_business_error("Супер адміни не можуть редагувати один одного")
+
             updates = {}
 
             if email and email != user_to_update.email:
@@ -176,11 +185,16 @@ class AdminService:
             if not user_to_delete:
                 raise_not_found("Користувач", user_id)
 
-            if not self._validate_user_deletion(user_to_delete.role, current_user_role):
-                raise_permission_error(current_user_role, f"видаляти {user_to_delete.role}")
-
             if user_id == current_user_id:
                 raise_business_error("Не можна видалити самого себе")
+
+            # Заборона видалення супер адмінів один одним
+            if (current_user_role == UserRole.SUPER_ADMIN.value and 
+                user_to_delete.role == UserRole.SUPER_ADMIN.value):
+                raise_business_error("Супер адміни не можуть видаляти один одного")
+
+            if not self._validate_user_deletion(user_to_delete.role, current_user_role):
+                raise_permission_error(current_user_role, f"видаляти {user_to_delete.role}")
 
             success = self.user_repo.delete_by_id(user_id)
 
@@ -232,10 +246,10 @@ class AdminService:
             existing_with_same_id = cvat_service.settings_repo.get_by_field("project_id", settings.project_id)
             if existing_with_same_id and existing_with_same_id.project_name != settings.project_name.value:
                 project_names = {
-                    'motion-det': 'Motion Detection',
-                    'tracking': 'Tracking',
-                    'mil-hardware': 'Mil Hardware',
-                    're-id': 'Re-ID'
+                    'motion_detection': 'Motion Detection',
+                    'military_targets_detection_and_tracking_moving': 'Military Targets Moving',
+                    'military_targets_detection_and_tracking_static': 'Military Targets Static',
+                    're_id': 'Re-identification'
                 }
                 current_project_name = project_names.get(existing_with_same_id.project_name, existing_with_same_id.project_name)
                 raise_business_error(f"Project ID {settings.project_id} вже використовується проєктом '{current_project_name}'. Будь ласка, оберіть інший ID.")
@@ -291,12 +305,12 @@ class AdminService:
         """Initialize default CVAT settings if they don't exist"""
         try:
             default_settings = [
-                {"project_name": "motion-det", "project_id": 5, "overlap": 5, "segment_size": 400,
+                {"project_name": "motion_detection", "project_id": 5, "overlap": 5, "segment_size": 400,
                  "image_quality": 100},
-                {"project_name": "tracking", "project_id": 6, "overlap": 5, "segment_size": 400, "image_quality": 100},
-                {"project_name": "mil-hardware", "project_id": 7, "overlap": 5, "segment_size": 400,
+                {"project_name": "military_targets_detection_and_tracking_moving", "project_id": 6, "overlap": 5, "segment_size": 400, "image_quality": 100},
+                {"project_name": "military_targets_detection_and_tracking_static", "project_id": 7, "overlap": 5, "segment_size": 400,
                  "image_quality": 100},
-                {"project_name": "re-id", "project_id": 8, "overlap": 5, "segment_size": 400, "image_quality": 100},
+                {"project_name": "re_id", "project_id": 8, "overlap": 5, "segment_size": 400, "image_quality": 100},
             ]
 
             for settings_data in default_settings:
@@ -317,12 +331,12 @@ class AdminService:
         """Reset all CVAT settings to default values"""
         try:
             default_settings = [
-                {"project_name": "motion-det", "project_id": 5, "overlap": 5, "segment_size": 400,
+                {"project_name": "motion_detection", "project_id": 5, "overlap": 5, "segment_size": 400,
                  "image_quality": 100},
-                {"project_name": "tracking", "project_id": 6, "overlap": 5, "segment_size": 400, "image_quality": 100},
-                {"project_name": "mil-hardware", "project_id": 7, "overlap": 5, "segment_size": 400,
+                {"project_name": "military_targets_detection_and_tracking_moving", "project_id": 6, "overlap": 5, "segment_size": 400, "image_quality": 100},
+                {"project_name": "military_targets_detection_and_tracking_static", "project_id": 7, "overlap": 5, "segment_size": 400,
                  "image_quality": 100},
-                {"project_name": "re-id", "project_id": 8, "overlap": 5, "segment_size": 400, "image_quality": 100},
+                {"project_name": "re_id", "project_id": 8, "overlap": 5, "segment_size": 400, "image_quality": 100},
             ]
 
             reset_count = 0
@@ -356,3 +370,315 @@ class AdminService:
         except Exception as e:
             logger.error(f"Error resetting CVAT settings: {str(e)}")
             raise_business_error(f"Помилка скидання CVAT налаштувань: {str(e)}")
+
+    def fix_orphaned_in_progress_videos(self) -> Dict[str, Any]:
+        """Виправити відео зі статусом IN_PROGRESS, які не заблоковані"""
+        try:
+            # Отримуємо всі відео зі статусом IN_PROGRESS
+            all_videos = self.video_repo.get_all()
+            in_progress_videos = [v for v in all_videos if v.status == "in_progress"]
+            
+            if not in_progress_videos:
+                return {
+                    "success": True,
+                    "message": "No IN_PROGRESS videos found",
+                    "fixed_count": 0
+                }
+                
+            video_ids = [str(video.id) for video in in_progress_videos]
+            lock_statuses = self.lock_service.get_all_video_locks(video_ids)
+            
+            fixed_count = 0
+            for video in in_progress_videos:
+                video_id = str(video.id)
+                lock_status = lock_statuses.get(video_id, {"locked": False})
+                
+                # Якщо відео має статус IN_PROGRESS, але не заблоковане - виправляємо
+                if not lock_status.get("locked"):
+                    self.video_repo.update_by_id(video_id, {"status": "not_annotated"})
+                    logger.info(f"Fixed orphaned IN_PROGRESS video {video_id} -> NOT_ANNOTATED")
+                    fixed_count += 1
+                    
+            return {
+                "success": True,
+                "message": f"Fixed {fixed_count} orphaned IN_PROGRESS videos",
+                "fixed_count": fixed_count,
+                "total_in_progress": len(in_progress_videos)
+            }
+            
+        except Exception as e:
+            logger.error(f"Error fixing orphaned IN_PROGRESS videos: {str(e)}")
+            return {
+                "success": False,
+                "error": str(e)
+            }
+
+    def delete_video(self, video_id: str) -> Dict[str, Any]:
+        """Видалити відео (локальний файл + запис з БД)"""
+        try:
+            # Отримуємо відео з бази
+            video = self.video_repo.get_by_id(video_id)
+            if not video:
+                return {
+                    "success": False,
+                    "error": "Відео не знайдено"
+                }
+
+            # Видаляємо локальний файл якщо існує
+            from backend.utils.azure_path_utils import extract_filename_from_azure_path
+            from backend.utils.video_utils import get_local_video_path
+            import os
+
+            filename = extract_filename_from_azure_path(video.azure_file_path)
+            if filename:
+                local_path = get_local_video_path(filename)
+                if os.path.exists(local_path):
+                    try:
+                        os.remove(local_path)
+                        logger.info(f"Deleted local video file: {local_path}")
+                    except Exception as e:
+                        logger.warning(f"Failed to delete local file {local_path}: {str(e)}")
+
+            # Видаляємо всі пов'язані кліпи
+            from backend.database import create_clip_video_repository
+            clip_repo = create_clip_video_repository()
+            clips = clip_repo.get_all({"source_video_id": video_id})
+            deleted_clips = 0
+            for clip in clips:
+                clip.delete()
+                deleted_clips += 1
+
+            # Видаляємо блокування з Redis якщо є
+            try:
+                lock_status = self.lock_service.get_video_lock_status(video_id)
+                if lock_status.get("locked"):
+                    self.lock_service.unlock_video(video_id, lock_status.get("user_id", ""))
+            except Exception as e:
+                logger.warning(f"Failed to unlock video {video_id}: {str(e)}")
+
+            # Видаляємо запис з бази
+            success = self.video_repo.delete_by_id(video_id)
+            if not success:
+                return {
+                    "success": False,
+                    "error": "Помилка видалення з бази даних"
+                }
+
+            logger.info(f"Video {video_id} completely deleted (including {deleted_clips} clips)")
+            
+            return {
+                "success": True,
+                "message": f"Відео успішно видалено (включно з {deleted_clips} кліпами)",
+                "deleted_clips": deleted_clips
+            }
+
+        except Exception as e:
+            logger.error(f"Error deleting video {video_id}: {str(e)}")
+            return {
+                "success": False,
+                "error": str(e)
+            }
+
+    def get_admin_videos_list(self, page: int = 1, per_page: int = 20) -> Dict[str, Any]:
+        """Отримати список всіх відео для адмінів"""
+        try:
+            # Отримуємо всі відео (без фільтрації за статусом)
+            all_videos = self.video_repo.get_all()
+            all_videos.sort(key=lambda x: x.created_at_utc, reverse=True)
+
+            total_count = len(all_videos)
+            total_pages = (total_count + per_page - 1) // per_page if total_count > 0 else 1
+
+            offset = (page - 1) * per_page
+            videos_for_page = all_videos[offset:offset + per_page]
+
+            # Отримуємо статуси блокування
+            video_ids = [str(video.id) for video in videos_for_page]
+            lock_statuses = self.lock_service.get_all_video_locks(video_ids)
+
+            # Формуємо відповідь
+            videos_info = []
+            for video in videos_for_page:
+                video_id = str(video.id)
+                lock_status = lock_statuses.get(video_id, {"locked": False})
+                
+                # Отримуємо ім'я файлу
+                from backend.utils.azure_path_utils import extract_filename_from_azure_path
+                filename = extract_filename_from_azure_path(video.azure_file_path)
+                
+                # Перевіряємо чи існує локальний файл
+                from backend.utils.video_utils import get_local_video_path
+                import os
+                local_exists = False
+                if filename:
+                    local_path = get_local_video_path(filename)
+                    local_exists = os.path.exists(local_path)
+
+                video_info = {
+                    "id": video_id,
+                    "filename": filename or f"Video #{video_id}",
+                    "status": video.status,
+                    "created_at": video.created_at_utc.isoformat(sep=" ", timespec="seconds"),
+                    "size_mb": getattr(video, 'size_MB', None),
+                    "duration_sec": getattr(video, 'duration_sec', None),
+                    "lock_status": lock_status,
+                    "local_file_exists": local_exists,
+                    "azure_path": {
+                        "account_name": video.azure_file_path.account_name,
+                        "container_name": video.azure_file_path.container_name,
+                        "blob_path": video.azure_file_path.blob_path
+                    }
+                }
+                videos_info.append(video_info)
+
+            return {
+                "success": True,
+                "videos": videos_info,
+                "pagination": {
+                    "current_page": page,
+                    "per_page": per_page,
+                    "total_count": total_count,
+                    "total_pages": total_pages,
+                    "has_next": page < total_pages,
+                    "has_prev": page > 1
+                }
+            }
+
+        except Exception as e:
+            logger.error(f"Error getting admin videos list: {str(e)}")
+            return {
+                "success": False,
+                "error": str(e)
+            }
+
+    def get_system_health_info(self) -> Dict[str, Any]:
+        """Отримати діагностичну інформацію про стан системи"""
+        try:
+            health_info = {
+                "timestamp": datetime.now().isoformat(),
+                "redis": {},
+                "mongodb": {},
+                "users": {},
+                "videos": {}
+            }
+            
+            # Redis health check
+            try:
+                redis_info = self.lock_service.get_redis_health_info()
+                health_info["redis"] = redis_info
+            except Exception as e:
+                health_info["redis"] = {"error": f"Redis check failed: {str(e)}"}
+            
+            # MongoDB health check
+            try:
+                total_users = len(self.user_repo.get_all())
+                total_videos = len(self.video_repo.get_all())
+                
+                # Перевірка з'єднання
+                from backend.database.connection import DatabaseConnection
+                connection_status = DatabaseConnection.is_connected()
+                
+                health_info["mongodb"] = {
+                    "connected": connection_status,
+                    "total_users": total_users,
+                    "total_videos": total_videos
+                }
+                
+            except Exception as e:
+                health_info["mongodb"] = {"error": f"MongoDB check failed: {str(e)}"}
+            
+            # Users info
+            try:
+                users = self.user_repo.get_all()
+                active_users = [u for u in users if u.is_active]
+                inactive_users = [u for u in users if not u.is_active]
+                
+                health_info["users"] = {
+                    "total": len(users),
+                    "active": len(active_users),
+                    "inactive": len(inactive_users),
+                    "by_role": {}
+                }
+                
+                # Count by roles
+                for role in ["super_admin", "admin", "annotator"]:
+                    role_users = [u for u in users if u.role == role]
+                    health_info["users"]["by_role"][role] = len(role_users)
+                    
+            except Exception as e:
+                health_info["users"] = {"error": f"Users check failed: {str(e)}"}
+            
+            # Videos info
+            try:
+                videos = self.video_repo.get_all()
+                
+                status_counts = {}
+                for video in videos:
+                    status = video.status
+                    status_counts[status] = status_counts.get(status, 0) + 1
+                
+                health_info["videos"] = {
+                    "total": len(videos),
+                    "by_status": status_counts
+                }
+                
+            except Exception as e:
+                health_info["videos"] = {"error": f"Videos check failed: {str(e)}"}
+            
+            return health_info
+            
+        except Exception as e:
+            logger.error(f"Error getting system health info: {str(e)}")
+            return {
+                "error": f"System health check failed: {str(e)}",
+                "timestamp": datetime.now().isoformat()
+            }
+
+    def cleanup_video_locks(self) -> Dict[str, Any]:
+        """Очистити застарілі блокування відео"""
+        try:
+            cleaned_count = self.lock_service.cleanup_expired_locks()
+            
+            logger.info(f"Video locks cleanup completed: {cleaned_count} locks cleaned")
+            
+            return {
+                "success": True,
+                "message": f"Очищено {cleaned_count} застарілих блокувань",
+                "cleaned_locks": cleaned_count
+            }
+            
+        except Exception as e:
+            logger.error(f"Error cleaning up video locks: {str(e)}")
+            return {
+                "success": False,
+                "error": str(e)
+            }
+
+    def force_cleanup_all_locks(self) -> Dict[str, Any]:
+        """Примусове видалення всіх блокувань відео"""
+        try:
+            result = self.lock_service.force_cleanup_all_locks()
+            
+            if result["success"]:
+                # Також скидаємо статуси всіх відео з IN_PROGRESS на NOT_ANNOTATED
+                videos = self.video_repo.get_all()
+                in_progress_videos = [v for v in videos if v.status == "in_progress"]
+                
+                reset_count = 0
+                for video in in_progress_videos:
+                    self.video_repo.update_by_id(str(video.id), {"status": "not_annotated"})
+                    reset_count += 1
+                
+                logger.warning(f"Force cleanup completed: {result['deleted_locks']} locks deleted, {reset_count} videos reset")
+                
+                result["reset_videos"] = reset_count
+                result["message"] += f" та скинуто статус {reset_count} відео"
+            
+            return result
+            
+        except Exception as e:
+            logger.error(f"Error in force cleanup: {str(e)}")
+            return {
+                "success": False,
+                "error": str(e)
+            }

@@ -427,6 +427,13 @@ class VideoService:
             for video in videos_for_page:
                 video_id = str(video.id)
                 lock_status = lock_statuses.get(video_id, {"locked": False})
+                
+                # Синхронізація статусу: якщо відео має статус IN_PROGRESS, але не заблоковане - виправляємо
+                if video.status == VideoStatus.IN_PROGRESS and not lock_status.get("locked"):
+                    logger.info(f"Synchronizing status for video {video_id}: IN_PROGRESS -> NOT_ANNOTATED (lock expired)")
+                    self.source_repo.update_by_id(video_id, {"status": VideoStatus.NOT_ANNOTATED})
+                    video.status = VideoStatus.NOT_ANNOTATED
+                    
                 can_start_work = self._can_user_start_work(video, lock_status, user_id)
 
                 first_clip_data = self.clip_repo.get_all({"source_video_id": video_id}, limit=1)
@@ -479,6 +486,15 @@ class VideoService:
             if video.status not in [VideoStatus.NOT_ANNOTATED, VideoStatus.IN_PROGRESS]:
                 raise VideoNotReadyException(video.status, "not_annotated або in_progress")
 
+            # Перевіряємо поточний статус блокування
+            lock_status = self.lock_service.get_video_lock_status(video_id)
+            
+            # Якщо відео має статус IN_PROGRESS, але не заблоковане - синхронізуємо
+            if video.status == VideoStatus.IN_PROGRESS and not lock_status.get("locked"):
+                logger.info(f"Synchronizing video {video_id} status: IN_PROGRESS -> NOT_ANNOTATED (lock expired)")
+                self.source_repo.update_by_id(video_id, {"status": VideoStatus.NOT_ANNOTATED})
+                video.status = VideoStatus.NOT_ANNOTATED
+
             lock_result = self.lock_service.lock_video(video_id, user_id, user_email)
 
             if not lock_result["success"]:
@@ -519,27 +535,29 @@ class VideoService:
             logger.error(f"Помилка розблокування відео {video_id}: {str(e)}")
             raise BusinessLogicException(f"Помилка розблокування відео: {str(e)}")
 
-    def get_video_file_for_streaming(self, azure_file_path: AzureFilePath, token: str) -> Dict[str, Any]:
-        """Отримання файлу відео для стрімінгу з перевіркою токена"""
+
+
+    def get_video_file_for_streaming_by_id(self, video_id: str, user_id: str) -> Dict[str, Any]:
+        """Безпечне отримання файлу відео для стрімінгу за video_id"""
         try:
-            # Перевіряємо токен
-            payload = self.auth_service.verify_token(token)
-            if not payload:
-                raise AuthenticationException("Невалідний токен")
-
-            allowed_roles = ["annotator", "admin", "super_admin"]
-            if payload.role not in allowed_roles:
-                raise BusinessLogicException("Недостатньо прав для перегляду відео")
-
-            # Отримуємо відео
-            video = self.source_repo.get_by_field("azure_file_path.blob_path", azure_file_path.blob_path)
+            # Отримуємо відео з бази даних
+            video = self.source_repo.get_by_id(video_id)
             if not video:
-                raise VideoNotFoundException()
+                raise VideoNotFoundException(video_id)
 
             if video.status not in [VideoStatus.NOT_ANNOTATED, VideoStatus.IN_PROGRESS]:
                 raise VideoNotReadyException(video.status)
 
-            filename = extract_filename_from_azure_path(azure_file_path)
+            # Перевіряємо чи має користувач доступ до цього відео
+            video_ids = [video_id]
+            lock_statuses = self.lock_service.get_all_video_locks(video_ids)
+            lock_status = lock_statuses.get(video_id, {"locked": False})
+            
+            if not self._can_user_start_work(video, lock_status, user_id):
+                raise BusinessLogicException("Недостатньо прав для перегляду цього відео")
+
+            # Отримуємо шлях до локального файлу
+            filename = extract_filename_from_azure_path(video.azure_file_path)
             if not filename:
                 raise BusinessLogicException("Не вдалося визначити ім'я файлу")
 
@@ -553,10 +571,10 @@ class VideoService:
                 "filename": filename
             }
 
-        except (AuthenticationException, VideoNotFoundException, VideoNotReadyException, BusinessLogicException):
+        except (VideoNotFoundException, VideoNotReadyException, BusinessLogicException):
             raise
         except Exception as e:
-            logger.error(f"Помилка отримання файлу для стрімінгу: {str(e)}")
+            logger.error(f"Помилка отримання файлу для стрімінгу за video_id {video_id}: {str(e)}")
             raise BusinessLogicException(f"Помилка отримання файлу: {str(e)}")
 
     @staticmethod
@@ -577,6 +595,47 @@ class VideoService:
             return user_id and lock_status.get("user_id") == user_id
 
         return False
+
+    def fix_orphaned_in_progress_videos(self) -> Dict[str, Any]:
+        """Виправлення відео зі статусом IN_PROGRESS, які не заблоковані (для запуску при старті сервісу)"""
+        try:
+            # Отримуємо всі відео зі статусом IN_PROGRESS
+            in_progress_videos = [v for v in self.source_repo.get_all() if v.status == VideoStatus.IN_PROGRESS]
+            
+            if not in_progress_videos:
+                return {
+                    "success": True,
+                    "message": "No IN_PROGRESS videos found",
+                    "fixed_count": 0
+                }
+                
+            video_ids = [str(video.id) for video in in_progress_videos]
+            lock_statuses = self.lock_service.get_all_video_locks(video_ids)
+            
+            fixed_count = 0
+            for video in in_progress_videos:
+                video_id = str(video.id)
+                lock_status = lock_statuses.get(video_id, {"locked": False})
+                
+                # Якщо відео має статус IN_PROGRESS, але не заблоковане - виправляємо
+                if not lock_status.get("locked"):
+                    self.source_repo.update_by_id(video_id, {"status": VideoStatus.NOT_ANNOTATED})
+                    logger.info(f"Fixed orphaned IN_PROGRESS video {video_id} -> NOT_ANNOTATED")
+                    fixed_count += 1
+                    
+            return {
+                "success": True,
+                "message": f"Fixed {fixed_count} orphaned IN_PROGRESS videos",
+                "fixed_count": fixed_count,
+                "total_in_progress": len(in_progress_videos)
+            }
+            
+        except Exception as e:
+            logger.error(f"Error fixing orphaned IN_PROGRESS videos: {str(e)}")
+            return {
+                "success": False,
+                "error": str(e)
+            }
 
     @staticmethod
     def _get_display_filename(video: Any) -> str:

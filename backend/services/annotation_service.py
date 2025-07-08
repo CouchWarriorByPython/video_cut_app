@@ -1,7 +1,11 @@
 from typing import Dict, Any, Optional
+from datetime import datetime
 from backend.background_tasks.tasks.clip_processing import process_all_video_clips
 
-from backend.database import create_source_video_repository, create_clip_video_repository, create_cvat_settings_repository
+from backend.database import (
+    create_source_video_repository, create_clip_video_repository, 
+    create_cvat_settings_repository, create_annotation_draft_repository
+)
 from backend.services.cvat_service import CVATService
 from backend.models.documents import AzureFilePathDocument
 from backend.models.shared import AzureFilePath, CVATSettings
@@ -21,7 +25,8 @@ class AnnotationService:
     def __init__(self):
         self.source_repo = create_source_video_repository()
         self.clip_repo = create_clip_video_repository()
-        self.cvat_settings_repo = create_cvat_settings_repository()  # Додаємо цей рядок
+        self.cvat_settings_repo = create_cvat_settings_repository()
+        self.draft_repo = create_annotation_draft_repository()
         self.cvat_service = CVATService()
 
     async def save_fragments_and_metadata(self, azure_file_path: AzureFilePath, annotation_data: Dict[str, Any]) -> \
@@ -48,8 +53,8 @@ class AnnotationService:
                 }
 
             update_data = {
-                "skip_annotation": skip_annotation,
-                "status": "annotated" if skip_annotation else "processing_clips"
+                "status": "annotated" if skip_annotation else "processing_clips",
+                "skip_annotation": skip_annotation
             }
 
             success = self.source_repo.update_by_id(str(existing.id), update_data)
@@ -60,19 +65,22 @@ class AnnotationService:
                     "error": "Failed to update document"
                 }
 
+            # Драфт не видаляємо - він залишається як історія анотації
+
             record_id = str(existing.id)
 
             if skip_annotation:
-                success_message = "Data successfully saved. Processing skipped (skip_annotation)."
+                success_message = "Дані успішно збережені. Обробка пропущена (skip_annotation)."
                 logger.info(f"Video skipped (skip_annotation): {azure_file_path.blob_path}")
                 task_id = None
             else:
+                # Для нарізки кліпів використовуємо фактичні дані з форми
                 self._prepare_clips_for_processing(str(existing.id), azure_file_path, clips, metadata)
 
                 task = process_all_video_clips.delay(str(existing.id))
                 task_id = task.id
 
-                success_message = "Data successfully saved. Processing started."
+                success_message = "Дані успішно збережені. Обробка розпочата."
                 logger.info(f"Started clips processing for video: {azure_file_path.blob_path}, task_id: {task_id}")
 
             return {
@@ -89,6 +97,71 @@ class AnnotationService:
             if existing:
                 self.source_repo.update_by_id(str(existing.id), {"status": "annotation_error"})
 
+            return {
+                "success": False,
+                "error": str(e)
+            }
+
+    async def save_annotation_only(self, azure_file_path: AzureFilePath, annotation_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Save annotation draft without starting clip processing"""
+        try:
+            metadata = annotation_data.get("metadata", {})
+            clips = annotation_data.get("clips", {})
+            
+            # Знаходимо source video
+            source_video = self.source_repo.get_by_field("azure_file_path.blob_path", azure_file_path.blob_path)
+            if not source_video:
+                return {
+                    "success": False,
+                    "error": f"Video with path {azure_file_path.blob_path} not found"
+                }
+
+            source_video_id = str(source_video.id)
+            
+            # Шукаємо існуючий драфт або створюємо новий
+            existing_draft = self.draft_repo.get_by_field("source_video_id", source_video_id)
+            
+            draft_data = {
+                "source_video_id": source_video_id,
+                "skip_annotation": metadata.get("skip", False),
+                "where": metadata.get("where"),
+                "when": metadata.get("when"),
+                "uav_type": metadata.get("uav_type", ""),
+                "video_content": metadata.get("video_content", ""),
+                "is_urban": metadata.get("is_urban", False),
+                "has_osd": metadata.get("has_osd", False),
+                "is_analog": metadata.get("is_analog", False),
+                "night_video": metadata.get("night_video", False),
+                "multiple_streams": metadata.get("multiple_streams", False),
+                "has_infantry": metadata.get("has_infantry", False),
+                "has_explosions": metadata.get("has_explosions", False),
+                "clips_data": clips
+            }
+            
+            if existing_draft:
+                # Оновлюємо існуючий драфт
+                draft_id = str(existing_draft.id)
+                success = self.draft_repo.update_by_id(draft_id, draft_data)
+                if not success:
+                    return {"success": False, "error": "Failed to update annotation draft"}
+            else:
+                # Створюємо новий драфт
+                new_draft = self.draft_repo.create(**draft_data)
+                draft_id = str(new_draft.id)
+                
+                # Оновлюємо source video з посиланням на драфт
+                self.source_repo.update_by_id(source_video_id, {"annotation_draft_id": draft_id})
+            
+            logger.info(f"Saved annotation draft for video: {azure_file_path.blob_path}")
+
+            return {
+                "success": True,
+                "_id": draft_id,
+                "message": "Анотація успішно збережена в базу"
+            }
+
+        except Exception as e:
+            logger.error(f"Error saving annotation draft: {str(e)}")
             return {
                 "success": False,
                 "error": str(e)
@@ -237,7 +310,13 @@ class AnnotationService:
                     name_without_ext = original_filename.rsplit('.', 1)[0]
                     extension = original_filename.rsplit('.', 1)[1] if '.' in original_filename else 'mp4'
 
-                    clip_filename = f"{name_without_ext}_{project_name}_{clip_idx}.{extension}"
+                    # Формуємо назву за форматом: uav_type_where_when_source_clip_name_ml_project_clip_id
+                    uav_type = metadata.get("uav_type", "unknown").replace(" ", "_").replace("-", "_")
+                    where = metadata.get("where", "unknown") or "unknown"
+                    when = metadata.get("when", "unknown") or "unknown"
+                    clip_id = clip_idx + 1  # Починаємо з 1, а не з 0
+                    
+                    clip_filename = f"{uav_type}_{where}_{when}_{name_without_ext}_{project_name}_{clip_id}.{extension}"
                     clip_azure_path = generate_clip_azure_path(azure_path, clip_filename)
 
                     azure_file_path_doc = AzureFilePathDocument(
@@ -285,68 +364,61 @@ class AnnotationService:
         )
 
         filename = azure_file_path_api.blob_path.split("/")[-1]
-        clips_data = self.clip_repo.get_all({"source_video_id": str(annotation.id)})
-
         clips = {}
         cvat_settings = {}
         metadata = None
 
-        if clips_data:
-            first_clip = clips_data[0]
-
+        # Завжди спочатку шукаємо дані в драфт колекції
+        if hasattr(annotation, 'annotation_draft_id') and annotation.annotation_draft_id:
+            draft = self.draft_repo.get_by_id(annotation.annotation_draft_id)
+            if draft:
+                metadata = VideoMetadataResponse(
+                    skip=draft.skip_annotation,
+                    where=draft.where,
+                    when=draft.when,
+                    uav_type=draft.uav_type or "",
+                    video_content=draft.video_content or "",
+                    is_urban=draft.is_urban,
+                    has_osd=draft.has_osd,
+                    is_analog=draft.is_analog,
+                    night_video=draft.night_video,
+                    multiple_streams=draft.multiple_streams,
+                    has_infantry=draft.has_infantry,
+                    has_explosions=draft.has_explosions
+                )
+                
+                # Додаємо збережені кліпи з драфту
+                if draft.clips_data:
+                    for project_name, project_clips in draft.clips_data.items():
+                        if project_name not in clips:
+                            clips[project_name] = []
+                        
+                        for clip_idx, clip in enumerate(project_clips):
+                            clips[project_name].append(ClipInfoResponse(
+                                id=clip_idx,
+                                start_time=clip["start_time"],
+                                end_time=clip["end_time"]
+                            ))
+        
+        # Якщо немає драфту, але є skip_annotation в source video - використовуємо його
+        if metadata is None and hasattr(annotation, 'skip_annotation'):
             metadata = VideoMetadataResponse(
                 skip=annotation.skip_annotation,
-                where=first_clip.where,
-                when=first_clip.when,
-                uav_type=first_clip.uav_type or "",
-                video_content=first_clip.video_content or "",
-                is_urban=first_clip.is_urban,
-                has_osd=first_clip.has_osd,
-                is_analog=first_clip.is_analog,
-                night_video=first_clip.night_video,
-                multiple_streams=first_clip.multiple_streams,
-                has_infantry=first_clip.has_infantry,
-                has_explosions=first_clip.has_explosions
+                where=None,
+                when=None,
+                uav_type="",
+                video_content="",
+                is_urban=False,
+                has_osd=False,
+                is_analog=False,
+                night_video=False,
+                multiple_streams=False,
+                has_infantry=False,
+                has_explosions=False
             )
 
-            for clip_data in clips_data:
-                project_name = clip_data.ml_project
-                if project_name not in clips:
-                    clips[project_name] = []
-                    cvat_settings[project_name] = CVATSettings(
-                        project_name=project_name,
-                        project_id=clip_data.cvat_project_id,
-                        overlap=clip_data.cvat_task_params.overlap,
-                        segment_size=clip_data.cvat_task_params.segment_size,
-                        image_quality=clip_data.cvat_task_params.image_quality
-                    )
-
-                start_time = self._seconds_to_time_string(clip_data.start_time_offset_sec)
-                end_time = self._seconds_to_time_string(
-                    clip_data.start_time_offset_sec + clip_data.duration_sec
-                )
-
-                clips[project_name].append(ClipInfoResponse(
-                    id=len(clips[project_name]),
-                    start_time=start_time,
-                    end_time=end_time
-                ))
-        else:
-            if annotation.skip_annotation:
-                metadata = VideoMetadataResponse(
-                    skip=True,
-                    where=None,
-                    when=None,
-                    uav_type="",
-                    video_content="",
-                    is_urban=False,
-                    has_osd=False,
-                    is_analog=False,
-                    night_video=False,
-                    multiple_streams=False,
-                    has_infantry=False,
-                    has_explosions=False
-                )
+        # Кліпи з clip_videos колекції (оброблені кліпи) поки не використовуємо
+        # Це буде окрема логіка пізніше
 
         return VideoAnnotationResponse(
             id=str(annotation.id),

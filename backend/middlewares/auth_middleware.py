@@ -17,7 +17,7 @@ ENDPOINT_PERMISSIONS = {
     "/favicon.ico": None,
     "/favicon.png": None,
     "/get_video": None,
-    "/video/stream": "token_in_query",  # Спеціальний випадок
+
 
     # HTML сторінки (JavaScript сам перевіряє)
     "/": "html",
@@ -60,44 +60,7 @@ async def auth_middleware(request: Request, call_next):
     if required_permission is None:
         return await call_next(request)
 
-    # Спеціальний випадок для /video/stream - токен в query
-    if required_permission == "token_in_query":
-        token = request.query_params.get("token")
 
-        if not token:
-            logger.warning(f"Missing token in query for {method} {request.url}")
-            return JSONResponse(
-                status_code=401,
-                content={"success": False, "message": "Token відсутній"}
-            )
-
-        try:
-            auth_service = AuthService()
-            current_user = auth_service.get_current_user_from_token(token)
-
-            if not current_user:
-                return JSONResponse(
-                    status_code=401,
-                    content={"success": False, "message": "Невалідний або прострочений токен"}
-                )
-
-            # Перевіряємо ролі для video/stream
-            allowed_roles = ["annotator", "admin", "super_admin"]
-            if current_user.role not in allowed_roles:
-                return JSONResponse(
-                    status_code=403,
-                    content={"success": False, "message": "Недостатньо прав доступу"}
-                )
-
-            request.state.user = current_user.model_dump()
-            return await call_next(request)
-
-        except Exception as e:
-            logger.error(f"Error validating token from query: {str(e)}")
-            return JSONResponse(
-                status_code=401,
-                content={"success": False, "message": "Помилка перевірки токена"}
-            )
 
     # HTML сторінки - дозволяємо показ, JS сам перевірить
     if required_permission == "html":
@@ -179,6 +142,10 @@ def get_endpoint_permission(path: str, method: str) -> str | list[str] | None:
     # Всі операції з користувачами тільки для адмінів
     if path.startswith("/users/"):
         return ["admin", "super_admin"]
+
+    # Відео стрімінг - перевіряємо токен вручну в endpoint
+    if path.startswith("/video/") and path.endswith("/stream"):
+        return None
 
     # За замовчуванням вимагаємо авторизацію
     return ["annotator", "admin", "super_admin"]

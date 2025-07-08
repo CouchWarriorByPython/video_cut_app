@@ -4,10 +4,10 @@ const CONFIG = {
 };
 
 const PROJECT_NAMES = {
-    'motion-det': 'Motion Detection',
-    'tracking': 'Tracking & Re-identification',
-    'mil-hardware': 'Mil Hardware Detection',
-    're-id': 'Re-ID'
+    'motion_detection': 'Motion Detection',
+    'military_targets_detection_and_tracking_moving': 'Military Targets Moving',
+    'military_targets_detection_and_tracking_static': 'Military Targets Static',
+    're_id': 'Re-identification'
 };
 
 ['error', 'unhandledrejection'].forEach(event => {

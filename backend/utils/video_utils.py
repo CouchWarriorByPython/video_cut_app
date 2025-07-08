@@ -87,50 +87,19 @@ def get_video_fps(video_path: str) -> Optional[float]:
         return None
 
 
-def check_gpu_available() -> bool:
-    """Перевірка доступності NVIDIA GPU"""
-    try:
-        result = subprocess.run(
-            ["nvidia-smi", "-L"],
-            capture_output=True,
-            text=True,
-            timeout=5
-        )
-        if result.returncode == 0 and "GPU" in result.stdout:
-            return True
-    except (subprocess.TimeoutExpired, FileNotFoundError):
-        pass
-    return False
-
-
 def trim_video_clip(source_path: str, output_path: str, start_time: str, end_time: str) -> bool:
-    """Нарізає відео фрагмент за допомогою FFmpeg з GPU підтримкою"""
+    """Нарізає відео фрагмент за допомогою FFmpeg"""
     try:
-        gpu_available = check_gpu_available()
-
-        command = ["ffmpeg", "-y"]
-
-        # GPU декодування для швидкої нарізки
-        if gpu_available and settings.enable_hardware_acceleration:
-            command.extend([
-                "-hwaccel", "cuda",
-                "-hwaccel_output_format", "cuda"
-            ])
-
-        command.extend([
+        command = [
+            "ffmpeg", "-y",
             "-ss", start_time,
             "-to", end_time,
-            "-i", source_path
-        ])
-
-        # При нарізці використовуємо копіювання потоків без перекодування
-        # для максимальної швидкості
-        command.extend([
+            "-i", source_path,
             "-c", "copy",
             "-avoid_negative_ts", "make_zero",
             "-loglevel", settings.ffmpeg_log_level,
             output_path
-        ])
+        ]
 
         logger.debug(f"Trim command: {' '.join(command)}")
 

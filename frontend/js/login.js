@@ -34,7 +34,7 @@ class LoginManager {
         try {
             const data = await api.post('/auth/login', this.form.getData());
             auth.setTokens(data.access_token, data.refresh_token);
-            window.location.href = auth.isAdmin ? '/' : '/annotator';
+            window.location.href = auth.isAdmin ? '/' : '/videos';
         } catch (error) {
             this._showError(error.message || 'Невірний email або пароль');
         } finally {

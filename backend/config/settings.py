@@ -48,7 +48,7 @@ class Settings(BaseSettings):
 
     # Logging - розумні дефолти
     log_level: str = Field(default="INFO")
-    log_max_bytes: int = Field(default=10485760)  # 10MB
+    log_max_bytes: int = Field(default=10485760)
     log_backup_count: int = Field(default=5)
 
     # FFmpeg

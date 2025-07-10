@@ -92,7 +92,6 @@ class VideoAnnotationDraftDocument(Document):
     is_analog = fields.BooleanField(default=False)
     night_video = fields.BooleanField(default=False)
     multiple_streams = fields.BooleanField(default=False)
-    has_infantry = fields.BooleanField(default=False)
     has_explosions = fields.BooleanField(default=False)
     
     # Clips data as JSON structure
@@ -128,6 +127,8 @@ class SourceVideoDocument(Document):
     annotation_draft_id = fields.StringField()
     # Skip annotation flag - duplicated from draft for convenience
     skip_annotation = fields.BooleanField(default=False)
+    # Analog video flag - important metadata for skipped videos
+    is_analog = fields.BooleanField(default=False)
     created_at_utc = fields.DateTimeField(default=_utc_now)
     updated_at_utc = fields.DateTimeField(default=_utc_now)
 
@@ -165,7 +166,6 @@ class ClipVideoDocument(Document):
     is_analog = fields.BooleanField(default=False)
     night_video = fields.BooleanField(default=False)
     multiple_streams = fields.BooleanField(default=False)
-    has_infantry = fields.BooleanField(default=False)
     has_explosions = fields.BooleanField(default=False)
 
     # CVAT integration fields

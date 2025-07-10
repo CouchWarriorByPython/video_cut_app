@@ -381,7 +381,7 @@ class AdminService:
             if not in_progress_videos:
                 return {
                     "success": True,
-                    "message": "No IN_PROGRESS videos found",
+                    "message": "Не знайдено відео зі статусом IN_PROGRESS",
                     "fixed_count": 0
                 }
                 
@@ -401,7 +401,7 @@ class AdminService:
                     
             return {
                 "success": True,
-                "message": f"Fixed {fixed_count} orphaned IN_PROGRESS videos",
+                "message": f"Виправлено {fixed_count} заблокованих відео IN_PROGRESS",
                 "fixed_count": fixed_count,
                 "total_in_progress": len(in_progress_videos)
             }

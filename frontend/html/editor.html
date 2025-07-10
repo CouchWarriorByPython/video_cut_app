@@ -1,85 +1,18 @@
 {% extends "base.html" %}
 
-{% block title %}Розмітка відео - Video Annotator{% endblock %}
+{% block title %}Редактор відео - Video Annotator{% endblock %}
 
 {% block extra_css %}
-<link rel="stylesheet" href="/css/annotator.css">
+<link rel="stylesheet" href="/css/editor.css">
 {% endblock %}
 
 {% block content %}
-<h1>Розмітка відео</h1>
-
-<!-- Список відео -->
-<div id="videos-list-section" class="videos-list-section">
-    <div class="section-header">
-        <h2>Доступні відео для анотування</h2>
-        <div class="section-controls">
-            <div class="videos-count">
-                <span id="videos-count-text">Завантаження...</span>
-            </div>
-            <div class="auto-refresh-indicator">
-                <div class="refresh-dot"></div>
-                <span>Авто-оновлення</span>
-            </div>
-        </div>
-    </div>
-
-    <!-- Фільтри -->
-    <div class="filters-section">
-        <div class="filter-group">
-            <label for="status-filter">Статус:</label>
-            <select id="status-filter" class="form-control">
-                <option value="">Всі статуси</option>
-                <option value="not_annotated">Не анотовані</option>
-                <option value="in_progress">В процесі анотації</option>
-                <option value="annotated">Анотовані</option>
-            </select>
-        </div>
-    </div>
-
-    <!-- Таблиця відео -->
-    <div class="videos-table-container">
-        <table class="videos-table" id="videos-table">
-            <thead>
-                <tr>
-                    <th>Файл</th>
-                    <th>Статус</th>
-                    <th>Тривалість</th>
-                    <th>Блокування</th>
-                    <th>Дії</th>
-                </tr>
-            </thead>
-            <tbody id="videos-table-body">
-                <!-- Заповнюється JavaScript -->
-            </tbody>
-        </table>
-    </div>
-
-    <!-- Пагінація -->
-    <div class="pagination-container" id="pagination-container">
-        <!-- Заповнюється JavaScript -->
-    </div>
-
-    <!-- Статус завантаження -->
-    <div id="loading-status" class="loading-status hidden">
-        <div class="loading-spinner"></div>
-        <p>Завантаження відео...</p>
-    </div>
-
-    <!-- Порожній стан -->
-    <div id="empty-state" class="empty-state hidden">
-        <div class="empty-icon">📹</div>
-        <h3>Немає доступних відео</h3>
-        <p>Поки що немає відео готових для анотування.</p>
-    </div>
-</div>
-
 <!-- Редактор відео -->
-<div id="video-editor" class="hidden">
+<div id="video-editor">
     <div class="card">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
             <h3>Анотування відео</h3>
-            <button id="back-to-list-btn" class="btn btn-secondary">← Назад до списку</button>
+            <button id="back-to-list" class="btn btn-secondary">← Назад до списку</button>
         </div>
         <p id="video-filename">Назва файлу: <span></span></p>
         <div id="video-lock-info" class="video-lock-info">
@@ -112,7 +45,7 @@
                 <input type="checkbox" name="project" value="military_targets_detection_and_tracking_static"> Military Targets Static
             </label>
             <label class="checkbox-label">
-                <input type="checkbox" name="project" value="re_id"> Re-identification
+                <input type="checkbox" name="project" value="re_id"> Re-ID
             </label>
         </div>
     </div>
@@ -148,10 +81,14 @@
                         <input type="checkbox" id="skip-video" name="skip">
                         <span>Skip - Відео повністю нерелевантне (зберігає без обробки кліпів)</span>
                     </label>
+                    <label id="analog-option" class="checkbox-label" style="display: none; margin-top: 10px; margin-left: 20px;">
+                        <input type="checkbox" id="is-analog" name="is_analog">
+                        <span>Is analog - Аналогове відео</span>
+                    </label>
                 </div>
 
                 <div class="form-group">
-                    <label for="uav-type">UAV (тип дрона) <span style="color: #e74c3c;">*</span>:</label>
+                    <label for="uav-type">UAV (тип дрона) <span id="uav-required" style="color: #e74c3c;">*</span>:</label>
                     <select id="uav-type" name="uav_type" class="form-control">
                         {% for uav_type in uav_types %}
                         <option value="{{ uav_type.value }}">{{ uav_type.label }}</option>
@@ -160,7 +97,7 @@
                 </div>
 
                 <div class="form-group">
-                    <label for="video-content">Контент відео <span style="color: #e74c3c;">*</span>:</label>
+                    <label for="video-content">Контент відео <span id="content-required" style="color: #e74c3c;">*</span>:</label>
                     <select id="video-content" name="video_content" class="form-control">
                         {% for content_type in video_content_types %}
                         <option value="{{ content_type.value }}">{{ content_type.label }}</option>
@@ -180,20 +117,12 @@
                             <span>Has OSD</span>
                         </label>
                         <label class="checkbox-label">
-                            <input type="checkbox" id="is-analog" name="is_analog">
-                            <span>Is analog</span>
-                        </label>
-                        <label class="checkbox-label">
                             <input type="checkbox" id="night-video" name="night_video">
                             <span>Night video</span>
                         </label>
                         <label class="checkbox-label">
                             <input type="checkbox" id="multiple-streams" name="multiple_streams">
                             <span>Multiple streams</span>
-                        </label>
-                        <label class="checkbox-label">
-                            <input type="checkbox" id="has-infantry" name="has_infantry">
-                            <span>Has infantry</span>
                         </label>
                         <label class="checkbox-label">
                             <input type="checkbox" id="has-explosions" name="has_explosions">
@@ -238,5 +167,5 @@
 {% endblock %}
 
 {% block extra_js %}
-<script src="/js/annotator.js"></script>
+<script src="/js/editor.js"></script>
 {% endblock %}

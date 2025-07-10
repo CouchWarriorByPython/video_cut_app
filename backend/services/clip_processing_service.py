@@ -35,17 +35,17 @@ class ClipProcessingService:
             clip_data = self.clip_repo.get_by_id(clip_video_id)
             if not clip_data:
                 logger.error(f"Clip not found: {clip_video_id}")
-                return {"status": "error", "message": f"Clip not found: {clip_video_id}"}
+                return {"status": "error", "message": f"Кліп не знайдено: {clip_video_id}"}
 
             source_video = self.source_repo.get_by_id(clip_data.source_video_id)
             if not source_video:
                 logger.error(f"Source video not found: {clip_data.source_video_id}")
-                return {"status": "error", "message": "Source video not found"}
+                return {"status": "error", "message": "Відео-джерело не знайдено"}
 
             temp_clip_path = self._create_clip_file(clip_data, source_video)
             if not temp_clip_path:
                 self.clip_repo.update_by_id(clip_video_id, {"status": "clip_creation_failed"})
-                return {"status": "error", "message": "Failed to create clip file"}
+                return {"status": "error", "message": "Не вдалося створити файл кліпу"}
 
             clip_video_info = get_video_info(temp_clip_path)
             if not clip_video_info:
@@ -55,7 +55,7 @@ class ClipProcessingService:
             upload_success = self._upload_clip_to_azure(clip_data, temp_clip_path, clip_video_id)
             if not upload_success:
                 self.clip_repo.update_by_id(clip_video_id, {"status": "azure_upload_failed"})
-                return {"status": "error", "message": "Failed to upload to Azure"}
+                return {"status": "error", "message": "Не вдалося завантажити до Azure"}
 
             cvat_task_id = self._create_cvat_task(clip_data, temp_clip_path)
 
@@ -73,7 +73,7 @@ class ClipProcessingService:
 
             return {
                 "status": "success" if cvat_task_id else "partial_success",
-                "message": "Clip successfully processed" if cvat_task_id else "Clip processed but CVAT task creation failed",
+                "message": "Кліп успішно оброблено" if cvat_task_id else "Кліп оброблено, але не вдалося створити завдання в CVAT",
                 "clip_video_id": clip_video_id,
                 "cvat_task_id": cvat_task_id,
                 "azure_path": clip_data.azure_file_path,
@@ -108,7 +108,7 @@ class ClipProcessingService:
             if not clips:
                 logger.warning(f"No clips found for source video: {source_video_id}")
                 self.source_repo.update_by_id(source_video_id, {"status": "annotation_error"})
-                return {"status": "error", "message": "No clips found for processing"}
+                return {"status": "error", "message": "Не знайдено кліпів для обробки"}
 
             results = self._process_clips_batch(clips)
 
@@ -117,14 +117,14 @@ class ClipProcessingService:
 
                 return {
                     "status": "completed",
-                    "message": "All clips processing completed",
+                    "message": "Обробка всіх кліпів завершена",
                     **results
                 }
             else:
                 self.source_repo.update_by_id(source_video_id, {"status": "annotation_error"})
                 return {
                     "status": "partial_success",
-                    "message": f"Processing completed with errors. {results['successful_clips'] + results['partial_success_clips']} of {results['total_clips']} clips processed",
+                    "message": f"Обробка завершена з помилками. Оброблено {results['successful_clips'] + results['partial_success_clips']} з {results['total_clips']} кліпів",
                     **results
                 }
 

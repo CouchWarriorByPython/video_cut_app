@@ -41,7 +41,7 @@ class AnnotationService:
             if not existing:
                 return {
                     "success": False,
-                    "error": f"Video with path {azure_file_path.blob_path} not found"
+                    "error": f"Відео з шляхом {azure_file_path.blob_path} не знайдено"
                 }
 
             clips = annotation_data.get("clips", {})
@@ -56,13 +56,17 @@ class AnnotationService:
                 "status": "annotated" if skip_annotation else "processing_clips",
                 "skip_annotation": skip_annotation
             }
+            
+            # Додаємо is_analog до головного запису відео якщо він встановлений
+            if skip_annotation and metadata.get("is_analog"):
+                update_data["is_analog"] = True
 
             success = self.source_repo.update_by_id(str(existing.id), update_data)
             if not success:
                 self.source_repo.update_by_id(str(existing.id), {"status": "annotation_error"})
                 return {
                     "success": False,
-                    "error": "Failed to update document"
+                    "error": "Не вдалося оновити документ"
                 }
 
             # Драфт не видаляємо - він залишається як історія анотації
@@ -113,7 +117,7 @@ class AnnotationService:
             if not source_video:
                 return {
                     "success": False,
-                    "error": f"Video with path {azure_file_path.blob_path} not found"
+                    "error": f"Відео з шляхом {azure_file_path.blob_path} не знайдено"
                 }
 
             source_video_id = str(source_video.id)
@@ -133,7 +137,6 @@ class AnnotationService:
                 "is_analog": metadata.get("is_analog", False),
                 "night_video": metadata.get("night_video", False),
                 "multiple_streams": metadata.get("multiple_streams", False),
-                "has_infantry": metadata.get("has_infantry", False),
                 "has_explosions": metadata.get("has_explosions", False),
                 "clips_data": clips
             }
@@ -143,7 +146,7 @@ class AnnotationService:
                 draft_id = str(existing_draft.id)
                 success = self.draft_repo.update_by_id(draft_id, draft_data)
                 if not success:
-                    return {"success": False, "error": "Failed to update annotation draft"}
+                    return {"success": False, "error": "Не вдалося оновити драфт анотації"}
             else:
                 # Створюємо новий драфт
                 new_draft = self.draft_repo.create(**draft_data)
@@ -183,7 +186,7 @@ class AnnotationService:
             if not annotation:
                 return {
                     "success": False,
-                    "error": f"Annotation for video '{azure_file_path.blob_path}' not found"
+                    "error": f"Анотація для відео '{azure_file_path.blob_path}' не знайдена"
                 }
 
             converted_annotation = self._convert_to_api_response(annotation)
@@ -208,7 +211,7 @@ class AnnotationService:
             if not annotation:
                 return {
                     "success": False,
-                    "error": f"Video with ID {video_id} not found"
+                    "error": f"Відео з ID {video_id} не знайдено"
                 }
 
             converted_annotation = self._convert_to_api_response(annotation)
@@ -233,14 +236,14 @@ class AnnotationService:
             if not success:
                 return {
                     "success": False,
-                    "error": f"Failed to update status for video {video_id}"
+                    "error": f"Не вдалося оновити статус для відео {video_id}"
                 }
 
             logger.info(f"Annotation status updated: {video_id} -> {status}")
 
             return {
                 "success": True,
-                "message": f"Status updated to {status}"
+                "message": f"Статус оновлено на {status}"
             }
 
         except Exception as e:
@@ -262,14 +265,14 @@ class AnnotationService:
             if not success:
                 return {
                     "success": False,
-                    "error": f"Failed to delete annotation {video_id}"
+                    "error": f"Не вдалося видалити анотацію {video_id}"
                 }
 
             logger.info(f"Annotation deleted: {video_id} with {len(clips)} clips")
 
             return {
                 "success": True,
-                "message": f"Annotation and {len(clips)} clips deleted"
+                "message": f"Анотацію та {len(clips)} кліпів видалено"
             }
 
         except Exception as e:
@@ -343,7 +346,6 @@ class AnnotationService:
                         is_analog=metadata.get("is_analog", False),
                         night_video=metadata.get("night_video", False),
                         multiple_streams=metadata.get("multiple_streams", False),
-                        has_infantry=metadata.get("has_infantry", False),
                         has_explosions=metadata.get("has_explosions", False),
                         ml_project=project_name
                     )
@@ -383,7 +385,6 @@ class AnnotationService:
                     is_analog=draft.is_analog,
                     night_video=draft.night_video,
                     multiple_streams=draft.multiple_streams,
-                    has_infantry=draft.has_infantry,
                     has_explosions=draft.has_explosions
                 )
                 
@@ -413,7 +414,6 @@ class AnnotationService:
                 is_analog=False,
                 night_video=False,
                 multiple_streams=False,
-                has_infantry=False,
                 has_explosions=False
             )
 
@@ -440,7 +440,7 @@ class AnnotationService:
                 end_seconds = self._time_to_seconds(clip["end_time"])
 
                 if end_seconds - start_seconds < 1:
-                    return f"Minimum clip duration is 1 second. Clip {clip['id']} in project {project_type} is too short."
+                    return f"Мінімальна тривалість кліпу - 1 секунда. Кліп {clip['id']} в проєкті {project_type} занадто короткий."
 
         return None
 

@@ -107,7 +107,6 @@ class VideoMetadataRequest(BaseModel):
     is_analog: bool = False
     night_video: bool = False
     multiple_streams: bool = False
-    has_infantry: bool = False
     has_explosions: bool = False
 
     @model_validator(mode='after')
@@ -290,7 +289,6 @@ class VideoMetadataResponse(BaseModel):
     is_analog: bool
     night_video: bool
     multiple_streams: bool
-    has_infantry: bool
     has_explosions: bool
 
 

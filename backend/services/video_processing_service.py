@@ -34,7 +34,7 @@ class VideoProcessingService:
         try:
             video = self.repo.get_by_field("azure_file_path.blob_path", azure_path.blob_path)
             if not video:
-                return {"status": "error", "message": "Video not found in DB"}
+                return {"status": "error", "message": "Відео не знайдено в базі даних"}
 
             filename = extract_filename_from_azure_path(azure_path)
             local_path = get_local_video_path(filename)
@@ -49,14 +49,14 @@ class VideoProcessingService:
                 self.repo.update_by_id(str(video.id), {"status": VideoStatus.DOWNLOAD_ERROR})
                 return {
                     "status": "error",
-                    "message": f'Download error: {download_result["error"]}'
+                    "message": f'Помилка завантаження: {download_result["error"]}'
                 }
 
             video_info = self._get_video_info(local_path)
             if not video_info:
                 self.repo.update_by_id(str(video.id), {"status": VideoStatus.DOWNLOAD_ERROR})
                 cleanup_file(local_path)
-                return {"status": "error", "message": "Failed to analyze video"}
+                return {"status": "error", "message": "Не вдалося проаналізувати відео"}
 
             if settings.skip_conversion_for_compatible and self._is_web_compatible(video_info):
                 logger.info(f"Video is already web-compatible, skipping conversion: {azure_path.blob_path}")
@@ -67,7 +67,7 @@ class VideoProcessingService:
                 if not converted_success:
                     self.repo.update_by_id(str(video.id), {"status": VideoStatus.DOWNLOAD_ERROR})
                     cleanup_file(local_path)
-                    return {"status": "error", "message": "Video conversion error"}
+                    return {"status": "error", "message": "Помилка конвертації відео"}
 
             update_data = {
                 "status": VideoStatus.NOT_ANNOTATED,
@@ -79,7 +79,7 @@ class VideoProcessingService:
             logger.info(f"Video successfully downloaded and converted: {azure_path.blob_path}")
             return {
                 "status": "success",
-                "message": "Video ready for annotation",
+                "message": "Відео готове для анотації",
                 "filename": filename,
                 "video_info": video_info
             }

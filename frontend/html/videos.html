@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+
+{% block title %}Список відео - Video Annotator{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="/css/videos.css">
+{% endblock %}
+
+{% block content %}
+<h1>Список відео для анотування</h1>
+
+<!-- Список відео -->
+<div id="videos-list-section" class="videos-list-section">
+    <div class="section-header">
+        <h2>Доступні відео для анотування</h2>
+        <div class="section-controls">
+            <div class="videos-count">
+                <span id="videos-count-text">Завантаження...</span>
+            </div>
+            <div class="auto-refresh-indicator">
+                <div class="refresh-dot"></div>
+                <span>Авто-оновлення</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Фільтри -->
+    <div class="filters-section">
+        <div class="filter-group">
+            <label for="status-filter">Статус:</label>
+            <select id="status-filter" class="form-control">
+                <option value="">Всі статуси</option>
+                <option value="not_annotated">Не анотовані</option>
+                <option value="in_progress">В процесі анотації</option>
+                <option value="annotated">Анотовані</option>
+            </select>
+        </div>
+    </div>
+
+    <!-- Таблиця відео -->
+    <div class="videos-table-container">
+        <table class="videos-table" id="videos-table">
+            <thead>
+                <tr>
+                    <th>Файл</th>
+                    <th>Статус</th>
+                    <th>Тривалість</th>
+                    <th>Блокування</th>
+                    <th>Дії</th>
+                </tr>
+            </thead>
+            <tbody id="videos-table-body">
+                <!-- Заповнюється JavaScript -->
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Пагінація -->
+    <div class="pagination-container" id="pagination-container">
+        <!-- Заповнюється JavaScript -->
+    </div>
+
+    <!-- Статус завантаження -->
+    <div id="loading-status" class="loading-status hidden">
+        <div class="loading-spinner"></div>
+        <p>Завантаження відео...</p>
+    </div>
+
+    <!-- Порожній стан -->
+    <div id="empty-state" class="empty-state hidden">
+        <div class="empty-icon">📹</div>
+        <h3>Немає доступних відео</h3>
+        <p>Поки що немає відео готових для анотування.</p>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="/js/videos.js"></script>
+{% endblock %}

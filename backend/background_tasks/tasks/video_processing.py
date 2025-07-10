@@ -32,7 +32,7 @@ def process_video_annotation(self, azure_link: str) -> Dict[str, Any]:
         if not video_status.ready_for_annotation:
             return {
                 "status": "error",
-                "message": f"Video not ready for annotation: {video_status.status}"
+                "message": f"Відео не готове для анотації: {video_status.status}"
             }
 
         # Запускаємо обробку всіх кліпів через іншу задачу
@@ -49,7 +49,7 @@ def process_video_annotation(self, azure_link: str) -> Dict[str, Any]:
 
         return {
             "status": "success",
-            "message": f"Started processing {result.get('total_clips', 0)} clips",
+            "message": f"Почато обробку {result.get('total_clips', 0)} кліпів",
             "task_id": task.id,
             "total_clips": result.get('total_clips', 0),
             "source_video_id": str(video_status.id)
@@ -105,7 +105,7 @@ def cleanup_source_video_files(source_video_ids: list) -> Dict[str, Any]:
 
         return {
             "status": "completed",
-            "message": f"Cleanup completed: {cleaned_files} files cleaned, {failed_cleanups} failed",
+            "message": f"Очищення завершено: {cleaned_files} файлів очищено, {failed_cleanups} помилок",
             "cleaned_files": cleaned_files,
             "failed_cleanups": failed_cleanups
         }
@@ -180,7 +180,7 @@ def periodic_system_cleanup() -> Dict[str, Any]:
         return {
             "status": "completed",
             "results": cleanup_results,
-            "message": f"Cleanup completed: {total_actions} actions, {len(cleanup_results['errors'])} errors"
+            "message": f"Очищення завершено: {total_actions} дій, {len(cleanup_results['errors'])} помилок"
         }
 
     except Exception as e:

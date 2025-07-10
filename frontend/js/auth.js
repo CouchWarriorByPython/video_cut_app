@@ -92,9 +92,9 @@ const auth = {
         }
 
         const permissions = {
-            annotator: ['/annotator', '/faq'],
-            admin: ['/', '/annotator', '/faq', '/admin'],
-            super_admin: ['/', '/annotator', '/faq', '/admin']
+            annotator: ['/videos', '/editor', '/faq'],
+            admin: ['/', '/videos', '/editor', '/faq', '/admin'],
+            super_admin: ['/', '/videos', '/editor', '/faq', '/admin']
         };
 
         const allowed = permissions[this.role] || [];
@@ -109,7 +109,7 @@ const auth = {
         const nav = document.querySelector('.navbar-menu');
         if (!nav || !this.role) return;
 
-        const links = { '/': 'Завантажити відео', '/annotator': 'Анотувати відео', '/faq': 'FAQ' };
+        const links = { '/': 'Завантажити відео', '/videos': 'Список відео', '/faq': 'FAQ' };
 
         nav.innerHTML = Object.entries(links)
             .filter(([path]) => this.hasAccess(path))
@@ -126,9 +126,9 @@ const auth = {
 
     hasAccess(path) {
         const permissions = {
-            annotator: ['/annotator', '/faq'],
-            admin: ['/', '/annotator', '/faq', '/admin'],
-            super_admin: ['/', '/annotator', '/faq', '/admin']
+            annotator: ['/videos', '/editor', '/faq'],
+            admin: ['/', '/videos', '/editor', '/faq', '/admin'],
+            super_admin: ['/', '/videos', '/editor', '/faq', '/admin']
         };
         return (permissions[this.role] || []).includes(path);
     }
@@ -145,7 +145,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     if (location.pathname === '/login' && auth.token && !auth.isTokenExpired(auth.token)) {
-        location.href = auth.isAdmin ? '/' : '/annotator';
+        location.href = auth.isAdmin ? '/' : '/videos';
         return;
     }
 

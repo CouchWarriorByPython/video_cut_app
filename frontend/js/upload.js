@@ -129,7 +129,6 @@ class VideoUploader {
         this._showDetailedInfo(data, successful, errors, info);
 
         if (successful && successful.length > 0) {
-            this._createBatchProgressDisplay(successful, data.message);
             successful.forEach(task => {
                 if (task.task_id) {
                     const uploadData = {
@@ -190,7 +189,7 @@ class VideoUploader {
                 icon: '✓',
                 files: info.existing_ready.map(v => ({
                     name: v.filename,
-                    status: this._getStatusLabel(v.status),
+                    status: 'Готове для анотації',
                     type: 'ready'
                 }))
             });
@@ -337,52 +336,6 @@ class VideoUploader {
         document.addEventListener('keydown', handleEsc);
     }
 
-    _createBatchProgressDisplay(tasks, message) {
-        const total = tasks.length;
-        let completed = 0;
-        
-        const progressId = utils.generateId();
-        const progressHTML = `
-            <div id="batch-progress-${progressId}" class="batch-progress">
-                <div class="batch-progress-header">
-                    <span class="batch-progress-title">Пакетне завантаження</span>
-                    <span class="batch-progress-summary">0/${total}</span>
-                </div>
-                <div class="batch-progress-bar">
-                    <div class="batch-progress-fill" style="width: 0%"></div>
-                </div>
-                <div class="batch-progress-details">${utils.escapeHtml(message)}</div>
-            </div>
-        `;
-        
-        this.elements.result.insertAdjacentHTML('afterbegin', progressHTML);
-        this.elements.result.classList.remove('hidden');
-        
-        const updateBatchProgress = () => {
-            const activeCount = Array.from(this.activeUploads.values())
-                .filter(upload => tasks.some(task => task.task_id === upload.taskId)).length;
-            
-            completed = total - activeCount;
-            const percentage = Math.round((completed / total) * 100);
-            
-            const element = document.getElementById(`batch-progress-${progressId}`);
-            if (element) {
-                element.querySelector('.batch-progress-summary').textContent = `${completed}/${total}`;
-                element.querySelector('.batch-progress-fill').style.width = `${percentage}%`;
-                
-                if (completed === total) {
-                    setTimeout(() => element.remove(), 3000);
-                }
-            }
-        };
-        
-        const interval = setInterval(() => {
-            updateBatchProgress();
-            if (completed === total) {
-                clearInterval(interval);
-            }
-        }, 5000);
-    }
 
     _extractFilenameFromUrl(url) {
         try {
@@ -393,15 +346,6 @@ class VideoUploader {
         }
     }
 
-    _getStatusLabel(status) {
-        const labels = {
-            'not_annotated': 'готове для анотації',
-            'in_progress': 'в процесі анотації',
-            'annotated': 'вже анотоване',
-            'processing_clips': 'обробляються кліпи'
-        };
-        return labels[status] || status;
-    }
 
     _showProgressBar(uploadData) {
         const azureUrl = uploadData.azure_file_path ?
@@ -505,8 +449,8 @@ class VideoUploader {
 
         progressElement.querySelector('.upload-actions').innerHTML = `
             ${azureFilePathParam ?
-                `<button class="btn btn-success" onclick="window.location.href='/annotator?azure_file_path=${azureFilePathParam}'">Перейти до анотування</button>` :
-                `<button class="btn btn-success" onclick="window.location.href='/annotator'">Перейти до анотування</button>`
+                `<button class="btn btn-success" onclick="window.location.href='/videos'">Перейти до списку відео</button>` :
+                `<button class="btn btn-success" onclick="window.location.href='/videos'">Перейти до списку відео</button>`
             }
             <button class="btn btn-secondary" onclick="videoUploader.removeUpload('${uploadId}')">Приховати</button>
         `;

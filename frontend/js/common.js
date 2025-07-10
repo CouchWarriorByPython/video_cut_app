@@ -105,6 +105,17 @@ class BaseForm {
 const api = {
     isRefreshing: false,
     failedQueue: [],
+    
+    get userId() {
+        try {
+            const token = localStorage.getItem('access_token');
+            if (!token) return null;
+            const payload = JSON.parse(atob(token.split('.')[1]));
+            return payload.user_id;
+        } catch {
+            return null;
+        }
+    },
 
     processQueue(error = null) {
         api.failedQueue.forEach(prom => {

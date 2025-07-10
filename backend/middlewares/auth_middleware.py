@@ -21,7 +21,8 @@ ENDPOINT_PERMISSIONS = {
 
     # HTML сторінки (JavaScript сам перевіряє)
     "/": "html",
-    "/annotator": "html",
+    "/videos": "html",
+    "/editor": "html",
     "/faq": "html",
 
     # API ендпоінти з ролями

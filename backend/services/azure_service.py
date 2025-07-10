@@ -50,13 +50,13 @@ class AzureService:
             if azure_path.account_name != settings.azure_storage_account_name:
                 return {
                     "valid": False,
-                    "error": f"URL must be from storage account '{settings.azure_storage_account_name}'"
+                    "error": f"URL має бути з облікового запису '{settings.azure_storage_account_name}'"
                 }
 
             if not validate_azure_path_structure(azure_path):
                 return {
                     "valid": False,
-                    "error": "Invalid Azure path structure"
+                    "error": "Невірна структура шляху Azure"
                 }
 
             blob_client = self.blob_service_client.get_blob_client(
@@ -68,7 +68,7 @@ class AzureService:
                 logger.error(f"Blob does not exist: {azure_path.blob_path}")
                 return {
                     "valid": False,
-                    "error": "File not found in Azure Storage"
+                    "error": "Файл не знайдено в Azure Storage"
                 }
 
             properties = blob_client.get_blob_properties()
@@ -87,7 +87,7 @@ class AzureService:
             logger.error(f"Error validating Azure URL {url}: {str(e)}")
             return {
                 "valid": False,
-                "error": f"URL validation error: {str(e)}"
+                "error": f"Помилка перевірки URL: {str(e)}"
             }
 
     @staticmethod
@@ -116,7 +116,7 @@ class AzureService:
             if not os.path.exists(file_path):
                 return {
                     "success": False,
-                    "error": f"Local file not found: {file_path}"
+                    "error": f"Локальний файл не знайдено: {file_path}"
                 }
 
             result = upload_clip_to_azure(
@@ -150,7 +150,7 @@ class AzureService:
             if not blob_client.exists():
                 return {
                     "success": False,
-                    "error": "File not found"
+                    "error": "Файл не знайдено"
                 }
 
             properties = blob_client.get_blob_properties()
@@ -182,7 +182,7 @@ class AzureService:
             if not blob_client.exists():
                 return {
                     "success": False,
-                    "error": "File not found for deletion"
+                    "error": "Файл не знайдено для видалення"
                 }
 
             blob_client.delete_blob()
@@ -191,7 +191,7 @@ class AzureService:
 
             return {
                 "success": True,
-                "message": "File deleted successfully"
+                "message": "Файл успішно видалено"
             }
 
         except Exception as e:
@@ -256,7 +256,7 @@ class AzureService:
             except Exception as e:
                 results[url] = {
                     "valid": False,
-                    "error": f"Validation error: {str(e)}"
+                    "error": f"Помилка валідації: {str(e)}"
                 }
 
         return results

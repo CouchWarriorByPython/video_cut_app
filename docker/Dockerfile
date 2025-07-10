@@ -13,15 +13,7 @@ ENV PYTHONPATH=/app \
 RUN apt-get update && apt-get install -y \
     ffmpeg \
     curl \
-    tzdata \
-    # Додаємо залежності для Azure CLI
-    ca-certificates \
-    apt-transport-https \
-    lsb-release \
-    gnupg
-
-# Встановлення Azure CLI
-RUN curl -sL https://aka.ms/InstallAzureCLIDeb | bash
+    tzdata
 
 # Налаштування часового поясу
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone

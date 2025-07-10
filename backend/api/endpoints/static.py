@@ -32,19 +32,31 @@ async def index(request: Request) -> HTMLResponse:
 
 
 @router.get(
-    "/annotator",
+    "/videos",
     response_class=HTMLResponse,
-    summary="Сторінка анотатора",
+    summary="Список відео",
+    description="Сторінка зі списком доступних відео для анотування"
+)
+async def videos_list(request: Request) -> HTMLResponse:
+    """Сторінка списку відео"""
+    return templates.TemplateResponse("videos.html", {"request": request})
+
+
+@router.get(
+    "/editor",
+    response_class=HTMLResponse,
+    summary="Редактор анотацій",
     description="Інтерфейс для розмітки відео з вибором типів дронів та контенту"
 )
-async def annotator(request: Request) -> HTMLResponse:
-    """Сторінка анотування відео"""
+async def editor(request: Request) -> HTMLResponse:
+    """Сторінка редактора анотацій"""
     context = {
         "request": request,
         "uav_types": UAV_TYPES,
         "video_content_types": VIDEO_CONTENT_TYPES
     }
-    return templates.TemplateResponse("annotator.html", context)
+    return templates.TemplateResponse("editor.html", context)
+
 
 
 @router.get(

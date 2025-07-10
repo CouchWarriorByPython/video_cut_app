@@ -24,7 +24,7 @@ def download_and_convert_video(self, azure_path_dict: Dict[str, str]) -> Dict[st
                     meta={
                         'progress': min(int(download_percent), 50),
                         'stage': 'downloading',
-                        'message': f'Downloaded {downloaded_bytes // (1024 * 1024)} MB of {total_bytes // (1024 * 1024)} MB'
+                        'message': f'Завантажено {downloaded_bytes // (1024 * 1024)} МБ з {total_bytes // (1024 * 1024)} МБ'
                     }
                 )
 
@@ -36,7 +36,7 @@ def download_and_convert_video(self, azure_path_dict: Dict[str, str]) -> Dict[st
                 meta={
                     'progress': min(int(conversion_progress), 95),
                     'stage': 'converting',
-                    'message': f'Conversion: {progress_percent:.1f}%'
+                    'message': f'Конвертація: {progress_percent:.1f}%'
                 }
             )
 
@@ -45,7 +45,7 @@ def download_and_convert_video(self, azure_path_dict: Dict[str, str]) -> Dict[st
             meta={
                 'progress': 5,
                 'stage': 'downloading',
-                'message': 'Starting download from Azure Storage...'
+                'message': 'Початок завантаження з Azure Storage...'
             }
         )
 

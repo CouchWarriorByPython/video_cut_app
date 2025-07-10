@@ -25,6 +25,8 @@ share/python-wheels/
 .installed.cfg
 *.egg
 MANIFEST
+CLAUDE.md
+.claude/
 
 # PyInstaller
 #  Usually these files are written by a python script from a template
@@ -185,3 +187,5 @@ json_data/
 frontend/static/images/drones/*
 .DS_Store
 improvements.md
+logs/
+temp/
